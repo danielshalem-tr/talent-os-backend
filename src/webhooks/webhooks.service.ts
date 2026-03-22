@@ -27,7 +27,7 @@ export class WebhooksService {
 
     // Step 1: Check for existing intake log row (idempotency per D-02)
     const existing = await this.prisma.emailIntakeLog.findUnique({
-      where: { tenantId_messageId: { tenantId, messageId } },
+      where: { idx_intake_message_id: { tenantId, messageId } },
       select: { processingStatus: true },
     });
 
