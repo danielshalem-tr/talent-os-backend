@@ -60,15 +60,15 @@
 
 ### Database Schema
 
-- [ ] **DB-01**: 7 tables created via Prisma migration: `tenants`, `jobs`, `candidates`, `applications`, `candidate_job_scores`, `duplicate_flags`, `email_intake_log`
-- [ ] **DB-02**: Every table carries `tenant_id` FK → `tenants.id` from day 1 — no schema rewrite required for multi-tenancy
-- [ ] **DB-03**: Status/type columns use `text` + CHECK constraints (not PostgreSQL ENUMs) — adding values requires no migration
-- [ ] **DB-04**: `updated_at` maintained by Prisma `@updatedAt` directive, not DB triggers
-- [ ] **DB-05**: No binary blobs stored in database — original files go to R2, only URL stored
-- [ ] **DB-06**: `applications` has UNIQUE constraint `(tenant_id, candidate_id, job_id)`
-- [ ] **DB-07**: `duplicate_flags` has UNIQUE constraint `(tenant_id, candidate_id, matched_candidate_id)` — prevents duplicate flags on worker retries
-- [ ] **DB-08**: `email_intake_log` has UNIQUE constraint `(tenant_id, message_id)` — primary idempotency guard
-- [ ] **DB-09**: All required indexes created in migration (active jobs, application stage, score lookup, unreviewed duplicates, intake status)
+- [x] **DB-01**: 7 tables created via Prisma migration: `tenants`, `jobs`, `candidates`, `applications`, `candidate_job_scores`, `duplicate_flags`, `email_intake_log`
+- [x] **DB-02**: Every table carries `tenant_id` FK → `tenants.id` from day 1 — no schema rewrite required for multi-tenancy
+- [x] **DB-03**: Status/type columns use `text` + CHECK constraints (not PostgreSQL ENUMs) — adding values requires no migration
+- [x] **DB-04**: `updated_at` maintained by Prisma `@updatedAt` directive, not DB triggers
+- [x] **DB-05**: No binary blobs stored in database — original files go to R2, only URL stored
+- [x] **DB-06**: `applications` has UNIQUE constraint `(tenant_id, candidate_id, job_id)`
+- [x] **DB-07**: `duplicate_flags` has UNIQUE constraint `(tenant_id, candidate_id, matched_candidate_id)` — prevents duplicate flags on worker retries
+- [x] **DB-08**: `email_intake_log` has UNIQUE constraint `(tenant_id, message_id)` — primary idempotency guard
+- [x] **DB-09**: All required indexes created in migration (active jobs, application stage, score lookup, unreviewed duplicates, intake status)
 
 ### Infrastructure
 
@@ -150,15 +150,15 @@
 | SCOR-03 | Phase 7 | Pending |
 | SCOR-04 | Phase 7 | Pending |
 | SCOR-05 | Phase 7 | Pending |
-| DB-01 | Phase 1 | Pending |
-| DB-02 | Phase 1 | Pending |
-| DB-03 | Phase 1 | Pending |
-| DB-04 | Phase 1 | Pending |
-| DB-05 | Phase 1 | Pending |
-| DB-06 | Phase 1 | Pending |
-| DB-07 | Phase 1 | Pending |
-| DB-08 | Phase 1 | Pending |
-| DB-09 | Phase 1 | Pending |
+| DB-01 | Phase 1 | Complete |
+| DB-02 | Phase 1 | Complete |
+| DB-03 | Phase 1 | Complete |
+| DB-04 | Phase 1 | Complete |
+| DB-05 | Phase 1 | Complete |
+| DB-06 | Phase 1 | Complete |
+| DB-07 | Phase 1 | Complete |
+| DB-08 | Phase 1 | Complete |
+| DB-09 | Phase 1 | Complete |
 | INFR-01 | Phase 1 | Complete |
 | INFR-02 | Phase 1 | Complete |
 | INFR-03 | Phase 1 | Complete |

@@ -33,11 +33,11 @@
 5. Environment variables validated at startup via @nestjs/config + Zod; app fails fast on missing config
 6. Docker Compose runs all 4 services (api, worker, postgres, redis) locally with identical configuration to VPS
 
-**Plans:** 1/3 plans executed
+**Plans:** 2/3 plans executed
 
 Plans:
 - [x] 01-01-PLAN.md — Install dependencies, clean scaffold, bootstrap main.ts + worker.ts + env validation + PrismaService
-- [ ] 01-02-PLAN.md — Prisma schema (7 tables), initial migration, pg_trgm indexes, seed data
+- [x] 01-02-PLAN.md — Prisma schema (7 tables), initial migration, pg_trgm indexes, seed data
 - [ ] 01-03-PLAN.md — Dockerfile (multi-stage), docker-compose.yml (4 services + health checks), .env.example
 
 ### Phase 2: Webhook Intake & Idempotency
@@ -144,7 +144,7 @@ Plans:
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 1/3 | In Progress|  |
+| 1. Foundation | 2/3 | In Progress|  |
 | 2. Webhook Intake & Idempotency | 0/3 | Not started | — |
 | 3. Processing Pipeline & Spam Filter | 0/3 | Not started | — |
 | 4. AI Extraction | 0/2 | Not started | — |
