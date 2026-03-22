@@ -15,13 +15,13 @@ created: 2026-03-22
 
 ## Test Infrastructure
 
-| Property | Value |
-|----------|-------|
-| **Framework** | Jest 30.0.0 (pre-installed) |
-| **Config file** | `package.json` (jest key) + `test/jest-e2e.json` |
-| **Quick run command** | `npm test -- --testPathPattern="src/" --maxWorkers=2` |
-| **Full suite command** | `npm run test:cov` |
-| **Estimated runtime** | ~10 seconds (unit), ~30 seconds (full) |
+| Property               | Value                                                 |
+| ---------------------- | ----------------------------------------------------- |
+| **Framework**          | Jest 30.0.0 (pre-installed)                           |
+| **Config file**        | `package.json` (jest key) + `test/jest-e2e.json`      |
+| **Quick run command**  | `npm test -- --testPathPattern="src/" --maxWorkers=2` |
+| **Full suite command** | `npm run test:cov`                                    |
+| **Estimated runtime**  | ~10 seconds (unit), ~30 seconds (full)                |
 
 ---
 
@@ -36,17 +36,17 @@ created: 2026-03-22
 
 ## Per-Task Verification Map
 
-| Task ID | Plan | Wave | Requirement | Test Type | Automated Command | File Exists | Status |
-|---------|------|------|-------------|-----------|-------------------|-------------|--------|
-| 1-01-01 | 01 | 0 | INFR-03 | unit | `npm test -- --testPathPattern="config" -x` | ❌ W0 | ⬜ pending |
-| 1-01-02 | 01 | 0 | DB-01, DB-04 | integration | `npm test -- --testPathPattern="prisma.service" -x` | ❌ W0 | ⬜ pending |
-| 1-01-03 | 01 | 0 | INFR-01 | unit | `npm test -- --testPathPattern="main" -x` | ❌ W0 | ⬜ pending |
-| 1-01-04 | 01 | 0 | INFR-02 | integration | `npm test -- --testPathPattern="worker" -x` | ❌ W0 | ⬜ pending |
-| 1-02-01 | 02 | 1 | DB-01..09 | integration | `npm test -- --testPathPattern="prisma" -x` | ❌ W0 | ⬜ pending |
-| 1-02-02 | 02 | 1 | DB-06, DB-07, DB-08 | integration | `npm test -- --testPathPattern="applications\|dedup\|webhooks" -x` | ❌ W0 | ⬜ pending |
-| 1-03-01 | 03 | 2 | INFR-04, PROC-01 | e2e (manual) | `docker-compose up --wait && docker-compose ps` | N/A | ⬜ pending |
+| Task ID | Plan | Wave | Requirement         | Test Type    | Automated Command                                                  | File Exists | Status     |
+| ------- | ---- | ---- | ------------------- | ------------ | ------------------------------------------------------------------ | ----------- | ---------- |
+| 1-01-01 | 01   | 0    | INFR-03             | unit         | `npm test -- --testPathPattern="config" -x`                        | ❌ W0       | ⬜ pending |
+| 1-01-02 | 01   | 0    | DB-01, DB-04        | integration  | `npm test -- --testPathPattern="prisma.service" -x`                | ❌ W0       | ⬜ pending |
+| 1-01-03 | 01   | 0    | INFR-01             | unit         | `npm test -- --testPathPattern="main" -x`                          | ❌ W0       | ⬜ pending |
+| 1-01-04 | 01   | 0    | INFR-02             | integration  | `npm test -- --testPathPattern="worker" -x`                        | ❌ W0       | ⬜ pending |
+| 1-02-01 | 02   | 1    | DB-01..09           | integration  | `npm test -- --testPathPattern="prisma" -x`                        | ❌ W0       | ⬜ pending |
+| 1-02-02 | 02   | 1    | DB-06, DB-07, DB-08 | integration  | `npm test -- --testPathPattern="applications\|dedup\|webhooks" -x` | ❌ W0       | ⬜ pending |
+| 1-03-01 | 03   | 2    | INFR-04, PROC-01    | e2e (manual) | `docker-compose up --wait && docker-compose ps`                    | N/A         | ⬜ pending |
 
-*Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky*
+_Status: ⬜ pending · ✅ green · ❌ red · ⚠️ flaky_
 
 ---
 
@@ -57,20 +57,20 @@ created: 2026-03-22
 - [ ] `src/main.ts` + `src/main.spec.ts` — rawBody: true configuration test (covers INFR-01)
 - [ ] `src/worker.ts` + `src/worker.spec.ts` — Worker bootstrap (no HTTP) test (covers INFR-02)
 
-*Existing Jest infrastructure covers all framework requirements — no install needed.*
+_Existing Jest infrastructure covers all framework requirements — no install needed._
 
 ---
 
 ## Manual-Only Verifications
 
-| Behavior | Requirement | Why Manual | Test Instructions |
-|----------|-------------|------------|-------------------|
-| Status columns use CHECK constraints, not ENUMs | DB-03 | Schema inspection only | `cat prisma/schema.prisma` and confirm no `enum` blocks for status fields |
-| No binary blobs in DB (cv_file_url is text, not bytea) | DB-05 | Schema inspection only | `cat prisma/schema.prisma` and confirm `cv_file_url String` not `Bytes` |
-| All pg_trgm GIN indexes created | DB-09 | Requires live DB | `docker-compose exec postgres psql -U postgres -c '\d candidates'` |
-| `.env.example` has all required vars | INFR-05 | File inspection | `cat .env.example` and confirm DATABASE_URL, REDIS_URL, POSTMARK_WEBHOOK_SECRET, ANTHROPIC_API_KEY, R2_*, TENANT_ID present |
-| All 4 Docker services start healthy | INFR-04 | Docker orchestration | `docker-compose up --wait && docker-compose ps` — all must show "healthy" |
-| API and Worker in separate containers | PROC-01 | Docker orchestration | `docker-compose ps` shows both `api` and `worker` containers running |
+| Behavior                                               | Requirement | Why Manual             | Test Instructions                                                                                                            |
+| ------------------------------------------------------ | ----------- | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Status columns use CHECK constraints, not ENUMs        | DB-03       | Schema inspection only | `cat prisma/schema.prisma` and confirm no `enum` blocks for status fields                                                    |
+| No binary blobs in DB (cv_file_url is text, not bytea) | DB-05       | Schema inspection only | `cat prisma/schema.prisma` and confirm `cv_file_url String` not `Bytes`                                                      |
+| All pg_trgm GIN indexes created                        | DB-09       | Requires live DB       | `docker-compose exec postgres psql -U postgres -c '\d candidates'`                                                           |
+| `.env.example` has all required vars                   | INFR-05     | File inspection        | `cat .env.example` and confirm DATABASE*URL, REDIS_URL, POSTMARK_WEBHOOK_SECRET, ANTHROPIC_API_KEY, R2*\*, TENANT_ID present |
+| All 4 Docker services start healthy                    | INFR-04     | Docker orchestration   | `docker-compose up --wait && docker-compose ps` — all must show "healthy"                                                    |
+| API and Worker in separate containers                  | PROC-01     | Docker orchestration   | `docker-compose ps` shows both `api` and `worker` containers running                                                         |
 
 ---
 
