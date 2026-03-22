@@ -118,15 +118,52 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| WBHK-01 through WBHK-06 | Phase 1 | Pending |
-| PROC-01 through PROC-06 | Phase 2 | Pending |
-| AIEX-01 through AIEX-03 | Phase 3 | Pending |
-| STOR-01 through STOR-03 | Phase 3 | Pending |
-| DEDUP-01 through DEDUP-06 | Phase 4 | Pending |
-| CAND-01 through CAND-03 | Phase 4 | Pending |
-| SCOR-01 through SCOR-05 | Phase 5 | Pending |
-| DB-01 through DB-09 | Phase 1 | Pending |
-| INFR-01 through INFR-05 | Phase 1 | Pending |
+| WBHK-01 | Phase 2 | Pending |
+| WBHK-02 | Phase 2 | Pending |
+| WBHK-03 | Phase 2 | Pending |
+| WBHK-04 | Phase 2 | Pending |
+| WBHK-05 | Phase 2 | Pending |
+| WBHK-06 | Phase 2 | Pending |
+| PROC-01 | Phase 1 | Pending |
+| PROC-02 | Phase 3 | Pending |
+| PROC-03 | Phase 3 | Pending |
+| PROC-04 | Phase 3 | Pending |
+| PROC-05 | Phase 3 | Pending |
+| PROC-06 | Phase 3 | Pending |
+| AIEX-01 | Phase 4 | Pending |
+| AIEX-02 | Phase 4 | Pending |
+| AIEX-03 | Phase 4 | Pending |
+| STOR-01 | Phase 5 | Pending |
+| STOR-02 | Phase 5 | Pending |
+| STOR-03 | Phase 5 | Pending |
+| DEDUP-01 | Phase 6 | Pending |
+| DEDUP-02 | Phase 6 | Pending |
+| DEDUP-03 | Phase 6 | Pending |
+| DEDUP-04 | Phase 6 | Pending |
+| DEDUP-05 | Phase 6 | Pending |
+| DEDUP-06 | Phase 6 | Pending |
+| CAND-01 | Phase 7 | Pending |
+| CAND-02 | Phase 7 | Pending |
+| CAND-03 | Phase 7 | Pending |
+| SCOR-01 | Phase 7 | Pending |
+| SCOR-02 | Phase 7 | Pending |
+| SCOR-03 | Phase 7 | Pending |
+| SCOR-04 | Phase 7 | Pending |
+| SCOR-05 | Phase 7 | Pending |
+| DB-01 | Phase 1 | Pending |
+| DB-02 | Phase 1 | Pending |
+| DB-03 | Phase 1 | Pending |
+| DB-04 | Phase 1 | Pending |
+| DB-05 | Phase 1 | Pending |
+| DB-06 | Phase 1 | Pending |
+| DB-07 | Phase 1 | Pending |
+| DB-08 | Phase 1 | Pending |
+| DB-09 | Phase 1 | Pending |
+| INFR-01 | Phase 1 | Pending |
+| INFR-02 | Phase 1 | Pending |
+| INFR-03 | Phase 1 | Pending |
+| INFR-04 | Phase 1 | Pending |
+| INFR-05 | Phase 1 | Pending |
 
 **Coverage:**
 - v1 requirements: 40 total
@@ -134,5 +171,6 @@
 - Unmapped: 0 ✓
 
 ---
+
 *Requirements defined: 2026-03-22*
-*Last updated: 2026-03-22 after initial definition*
+*Last updated: 2026-03-22 after roadmap creation*
