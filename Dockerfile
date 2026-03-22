@@ -31,5 +31,6 @@ COPY prisma ./prisma
 EXPOSE 3000
 
 # Default command starts the API server
-# Worker overrides this in docker-compose.yml with: command: node dist/worker.js
-CMD ["node", "dist/main.js"]
+# Worker overrides this in docker-compose.yml with: command: node dist/src/worker.js
+# Note: nest build outputs to dist/src/ because tsconfig.json baseUrl is ./ (project root)
+CMD ["node", "dist/src/main.js"]
