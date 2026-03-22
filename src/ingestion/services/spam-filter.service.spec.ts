@@ -1,5 +1,5 @@
+import { SpamFilterService, SpamFilterResult } from './spam-filter.service';
 import { PostmarkPayloadDto } from '../../webhooks/dto/postmark-payload.dto';
-import { SpamFilterService } from './spam-filter.service';
 
 export function mockPostmarkPayload(
   overrides: Partial<PostmarkPayloadDto> = {},
@@ -16,7 +16,6 @@ export function mockPostmarkPayload(
 }
 
 export function mockBase64Pdf(): string {
-  // Minimal valid base64 string — not a real PDF; used for testing Content field presence
   return Buffer.from('%PDF-1.4 fake pdf content for testing').toString('base64');
 }
 
@@ -28,27 +27,62 @@ describe('SpamFilterService', () => {
   let service: SpamFilterService;
 
   beforeEach(() => {
-    service = {
-      check: jest.fn(),
-    } as unknown as SpamFilterService;
+    service = new SpamFilterService();
   });
 
-  afterEach(() => {
-    jest.resetAllMocks();
+  // 3-01-01: PROC-02 — hard reject: no attachment AND body < 100 chars
+  it('no attachment and short body', () => {
+    const payload = mockPostmarkPayload({ TextBody: 'hi', Attachments: [] });
+    const result = service.check(payload);
+    expect(result).toEqual<SpamFilterResult>({ isSpam: true, suspicious: false });
   });
 
-  // PROC-02: Hard reject — no attachment AND body < 100 chars
-  it.todo('no attachment and short body');
+  // 3-01-02: PROC-02 — attachment present overrides short body rule
+  it('attachment present', () => {
+    const payload = mockPostmarkPayload({
+      TextBody: 'hi',
+      Attachments: [{ Name: 'cv.pdf', ContentType: 'application/pdf', ContentLength: 100 }],
+    });
+    const result = service.check(payload);
+    expect(result.isSpam).toBe(false);
+  });
 
-  // PROC-02: Not spam when attachment exists even with short body
-  it.todo('attachment present');
+  // 3-01-03: PROC-03 — keyword in subject, no attachment = hard reject
+  it('keyword subject no attachment', () => {
+    const payload = mockPostmarkPayload({
+      Subject: 'Unsubscribe from our marketing list',
+      TextBody: 'a'.repeat(150), // long enough body, but keyword in subject
+      Attachments: [],
+    });
+    const result = service.check(payload);
+    expect(result).toEqual<SpamFilterResult>({ isSpam: true, suspicious: false });
+  });
 
-  // PROC-03: Spam when keyword in subject, no attachment
-  it.todo('keyword subject no attachment');
+  // 3-01-04: PROC-03 D-09 — keyword in body, attachment present = suspicious
+  it('keyword body with attachment', () => {
+    const payload = mockPostmarkPayload({
+      Subject: 'Job Application',
+      TextBody: 'newsletter offer ' + 'x'.repeat(100),
+      Attachments: [{ Name: 'cv.pdf', ContentType: 'application/pdf', ContentLength: 100 }],
+    });
+    const result = service.check(payload);
+    expect(result).toEqual<SpamFilterResult>({ isSpam: false, suspicious: true });
+  });
 
-  // PROC-03: Suspicious when keyword in body, attachment present
-  it.todo('keyword body with attachment');
+  // 3-01-05: PROC-03 — case-insensitive keyword matching
+  it('keyword variations', () => {
+    const payloadUpper = mockPostmarkPayload({
+      Subject: 'NEWSLETTER',
+      TextBody: 'a'.repeat(150),
+      Attachments: [],
+    });
+    expect(service.check(payloadUpper)).toEqual<SpamFilterResult>({ isSpam: true, suspicious: false });
 
-  // PROC-03: Case-insensitive keyword matching
-  it.todo('keyword variations');
+    const payloadMixed = mockPostmarkPayload({
+      Subject: 'Job Application',
+      TextBody: 'Promotion Deal Offer ' + 'x'.repeat(100),
+      Attachments: [],
+    });
+    expect(service.check(payloadMixed)).toEqual<SpamFilterResult>({ isSpam: true, suspicious: false });
+  });
 });
