@@ -72,9 +72,9 @@
 
 ### Infrastructure
 
-- [ ] **INFR-01**: `main.ts` bootstraps NestJS with `rawBody: true` for HMAC signature verification
-- [ ] **INFR-02**: `worker.ts` bootstraps BullMQ worker with no HTTP layer
-- [ ] **INFR-03**: Environment variables validated at startup via `@nestjs/config` + Zod — application fails fast on missing config
+- [x] **INFR-01**: `main.ts` bootstraps NestJS with `rawBody: true` for HMAC signature verification
+- [x] **INFR-02**: `worker.ts` bootstraps BullMQ worker with no HTTP layer
+- [x] **INFR-03**: Environment variables validated at startup via `@nestjs/config` + Zod — application fails fast on missing config
 - [ ] **INFR-04**: Docker Compose defines: `api`, `worker`, `postgres` (16-alpine), `redis` (7-alpine) services
 - [ ] **INFR-05**: `.env.example` documents all required environment variables: `DATABASE_URL`, `REDIS_URL`, `ANTHROPIC_API_KEY`, `POSTMARK_WEBHOOK_TOKEN`, `TENANT_ID`, `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `NODE_ENV`
 
@@ -159,9 +159,9 @@
 | DB-07 | Phase 1 | Pending |
 | DB-08 | Phase 1 | Pending |
 | DB-09 | Phase 1 | Pending |
-| INFR-01 | Phase 1 | Pending |
-| INFR-02 | Phase 1 | Pending |
-| INFR-03 | Phase 1 | Pending |
+| INFR-01 | Phase 1 | Complete |
+| INFR-02 | Phase 1 | Complete |
+| INFR-03 | Phase 1 | Complete |
 | INFR-04 | Phase 1 | Pending |
 | INFR-05 | Phase 1 | Pending |
 
