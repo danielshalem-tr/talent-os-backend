@@ -78,12 +78,12 @@ Plans:
 4. DOCX attachments parsed to plain text via mammoth and made available to extraction agent
 5. email_intake_log.status set to 'spam' for filtered emails; normal processing resumes only if spam filter passes
 
-**Plans:** 2/4 plans executed
+**Plans:** 3/4 plans executed
 
 Plans:
 - [x] 03-00-PLAN.md — Wave 0: Create 3 test spec stub files (spam-filter, attachment-extractor, processor integration)
 - [x] 03-01-PLAN.md — Wave 1A: SpamFilterService (PROC-02, PROC-03) with 5 passing unit tests
-- [ ] 03-02-PLAN.md — Wave 1B: AttachmentExtractorService (PROC-04, PROC-05) with 5 passing unit tests
+- [x] 03-02-PLAN.md — Wave 1B: AttachmentExtractorService (PROC-04, PROC-05) with 5 passing unit tests
 - [ ] 03-03-PLAN.md — Wave 2: Fix Phase 2 blob-stripping, wire IngestionProcessor, update IngestionModule, 2 integration tests (PROC-06)
 
 ### Phase 4: AI Extraction
@@ -157,7 +157,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Foundation | 2/3 | In Progress|  |
 | 2. Webhook Intake & Idempotency | 2/3 | In Progress|  |
-| 3. Processing Pipeline & Spam Filter | 2/4 | In Progress|  |
+| 3. Processing Pipeline & Spam Filter | 3/4 | In Progress|  |
 | 4. AI Extraction | 0/2 | Not started | — |
 | 5. File Storage | 0/2 | Not started | — |
 | 6. Duplicate Detection | 0/3 | Not started | — |
