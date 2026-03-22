@@ -7,10 +7,13 @@ import { PostmarkPayloadDto } from '../webhooks/dto/postmark-payload.dto';
 import { SpamFilterService } from './services/spam-filter.service';
 import { AttachmentExtractorService } from './services/attachment-extractor.service';
 import { ExtractionAgentService, CandidateExtract } from './services/extraction-agent.service';
+import { StorageService } from '../storage/storage.service';
 
 export interface ProcessingContext {
   fullText: string;
   suspicious: boolean;
+  fileKey: string | null;  // R2 object key (D-04) or null if no CV attachment found
+  cvText: string;          // Phase 3 extracted text — written to candidates.cv_text in Phase 7
 }
 
 @Processor('ingest-email')
@@ -23,6 +26,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly extractionAgent: ExtractionAgentService,
+    private readonly storageService: StorageService,
   ) {
     super();
   }
@@ -74,6 +78,8 @@ export class IngestionProcessor extends WorkerHost {
     const context: ProcessingContext = {
       fullText,
       suspicious: filterResult.suspicious,
+      fileKey: null,    // populated after Phase 5 upload below
+      cvText: fullText, // same as fullText — alias for Phase 7 clarity
     };
 
     // Phase 4: AI extraction (D-06 mock — real call activated in follow-up task)
@@ -114,6 +120,19 @@ export class IngestionProcessor extends WorkerHost {
     this.logger.log(
       `Phase 4 complete for MessageID: ${payload.MessageID} — extracted: ${extraction.fullName}`,
     );
-    // Phase 5 stub — file storage will be implemented in Phase 5
+
+    // Phase 5: Upload original CV to Cloudflare R2 (D-07: errors propagate to BullMQ, no catch)
+    const fileKey = await this.storageService.upload(
+      payload.Attachments ?? [],
+      tenantId,
+      payload.MessageID,
+    );
+    context.fileKey = fileKey;
+    context.cvText = fullText;
+
+    this.logger.log(
+      `Phase 5 complete for MessageID: ${payload.MessageID} — fileKey: ${fileKey ?? 'none'}`,
+    );
+    // Phase 6 stub — duplicate detection will be implemented in Phase 6
   }
 }
