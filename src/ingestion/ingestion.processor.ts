@@ -82,6 +82,20 @@ export class IngestionProcessor extends WorkerHost {
       cvText: fullText, // same as fullText — alias for Phase 7 clarity
     };
 
+    // Phase 5: Upload original CV to Cloudflare R2 BEFORE AI extraction (D-07: errors propagate to BullMQ, no catch)
+    // BUG-CV-LOSS fix: upload must happen before extraction so the file is persisted even if AI fails
+    const fileKey = await this.storageService.upload(
+      payload.Attachments ?? [],
+      tenantId,
+      payload.MessageID,
+    );
+    context.fileKey = fileKey;
+    context.cvText = fullText;
+
+    this.logger.log(
+      `Phase 5 complete for MessageID: ${payload.MessageID} — fileKey: ${fileKey ?? 'none'}`,
+    );
+
     // Phase 4: AI extraction (D-06 mock — real call activated in follow-up task)
     let extraction: CandidateExtract;
     try {
@@ -100,10 +114,11 @@ export class IngestionProcessor extends WorkerHost {
       this.logger.error(
         `Extraction failed for MessageID: ${payload.MessageID} — ${(err as Error).message}`,
       );
-      return;
+      // BUG-RETRY fix: re-throw so BullMQ sees a failure and retries via exponential backoff
+      throw err;
     }
 
-    // D-04, D-05: empty fullName is treated the same as extraction failure
+    // D-04, D-05: empty fullName is treated the same as extraction failure (permanent — do not retry)
     if (!extraction.fullName?.trim()) {
       await this.prisma.emailIntakeLog.update({
         where: {
@@ -119,19 +134,6 @@ export class IngestionProcessor extends WorkerHost {
 
     this.logger.log(
       `Phase 4 complete for MessageID: ${payload.MessageID} — extracted: ${extraction.fullName}`,
-    );
-
-    // Phase 5: Upload original CV to Cloudflare R2 (D-07: errors propagate to BullMQ, no catch)
-    const fileKey = await this.storageService.upload(
-      payload.Attachments ?? [],
-      tenantId,
-      payload.MessageID,
-    );
-    context.fileKey = fileKey;
-    context.cvText = fullText;
-
-    this.logger.log(
-      `Phase 5 complete for MessageID: ${payload.MessageID} — fileKey: ${fileKey ?? 'none'}`,
     );
     // Phase 6 stub — duplicate detection will be implemented in Phase 6
   }

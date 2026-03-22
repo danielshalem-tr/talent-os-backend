@@ -19,6 +19,7 @@ describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
   let prisma: { emailIntakeLog: { update: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
+  let storageService: { upload: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -27,6 +28,10 @@ describe('IngestionProcessor', () => {
 
     extractionAgent = {
       extract: jest.fn().mockResolvedValue(mockCandidateExtract()),
+    };
+
+    storageService = {
+      upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/msg-id.pdf'),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -40,10 +45,7 @@ describe('IngestionProcessor', () => {
           useValue: { get: jest.fn().mockReturnValue('test-tenant-id') },
         },
         { provide: ExtractionAgentService, useValue: extractionAgent },
-        {
-          provide: StorageService,
-          useValue: { upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/msg-id.pdf') },
-        },
+        { provide: StorageService, useValue: storageService },
       ],
     }).compile();
 
@@ -109,7 +111,7 @@ describe('IngestionProcessor', () => {
     });
     const job = { id: 'test-job-3', data: payload } as any;
 
-    await processor.process(job);
+    await expect(processor.process(job)).rejects.toThrow('LLM timeout');
 
     // First call: 'processing'; second call: 'failed'
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledTimes(2);
@@ -118,6 +120,26 @@ describe('IngestionProcessor', () => {
         data: { processingStatus: 'failed' },
       }),
     );
+  });
+
+  // BUG-CV-LOSS: upload is called before extraction, so file is persisted even if AI fails
+  it('upload is called before extraction even when extraction fails', async () => {
+    extractionAgent.extract.mockRejectedValueOnce(new Error('LLM timeout'));
+
+    const payload = mockPostmarkPayload({
+      Subject: 'Job Application from Jane Doe',
+      TextBody:
+        'Dear Hiring Manager, I am writing to apply for the position. ' +
+        'I have 5 years of experience in software engineering. ' +
+        'Please find my CV attached.',
+      Attachments: [],
+    });
+    const job = { id: 'test-job-upload-before', data: payload } as any;
+
+    await expect(processor.process(job)).rejects.toThrow('LLM timeout');
+
+    // storageService.upload must have been called before extraction failed
+    expect(storageService.upload).toHaveBeenCalled();
   });
 
   // 4-02-02: AIEX-02 — successful extraction does not update status to failed
