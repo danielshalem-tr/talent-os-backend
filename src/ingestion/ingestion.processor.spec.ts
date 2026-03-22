@@ -5,6 +5,8 @@ import { SpamFilterService } from './services/spam-filter.service';
 import { AttachmentExtractorService } from './services/attachment-extractor.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { mockPostmarkPayload } from './services/spam-filter.service.spec';
+import { ExtractionAgentService } from './services/extraction-agent.service';
+import { mockCandidateExtract } from './services/extraction-agent.service.spec';
 
 // Mock pdf-parse and mammoth so AttachmentExtractorService doesn't crash on fake content
 jest.mock('pdf-parse', () => jest.fn().mockResolvedValue({ text: 'pdf text' }));
@@ -15,10 +17,15 @@ jest.mock('mammoth', () => ({
 describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
   let prisma: { emailIntakeLog: { update: jest.Mock } };
+  let extractionAgent: { extract: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+    };
+
+    extractionAgent = {
+      extract: jest.fn().mockResolvedValue(mockCandidateExtract()),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -31,6 +38,7 @@ describe('IngestionProcessor', () => {
           provide: ConfigService,
           useValue: { get: jest.fn().mockReturnValue('test-tenant-id') },
         },
+        { provide: ExtractionAgentService, useValue: extractionAgent },
       ],
     }).compile();
 
@@ -78,6 +86,58 @@ describe('IngestionProcessor', () => {
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: { processingStatus: 'processing' },
+      }),
+    );
+  });
+
+  // 4-02-01: AIEX-01 — extraction failure marks log as 'failed' and returns
+  it('extraction failure marks status failed', async () => {
+    extractionAgent.extract.mockRejectedValueOnce(new Error('LLM timeout'));
+
+    const payload = mockPostmarkPayload({
+      Subject: 'Job Application from Jane Doe',
+      TextBody:
+        'Dear Hiring Manager, I am writing to apply for the position. ' +
+        'I have 5 years of experience in software engineering. ' +
+        'Please find my CV attached.',
+      Attachments: [],
+    });
+    const job = { id: 'test-job-3', data: payload } as any;
+
+    await processor.process(job);
+
+    // First call: 'processing'; second call: 'failed'
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledTimes(2);
+    expect(prisma.emailIntakeLog.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: { processingStatus: 'failed' },
+      }),
+    );
+  });
+
+  // 4-02-02: AIEX-02 — successful extraction does not update status to failed
+  it('successful extraction does not update failed status', async () => {
+    extractionAgent.extract.mockResolvedValueOnce(
+      mockCandidateExtract({ fullName: 'Jane Doe' }),
+    );
+
+    const payload = mockPostmarkPayload({
+      Subject: 'Job Application from Jane Doe',
+      TextBody:
+        'Dear Hiring Manager, I am writing to apply for the position. ' +
+        'I have 5 years of experience in software engineering. ' +
+        'Please find my CV attached.',
+      Attachments: [],
+    });
+    const job = { id: 'test-job-4', data: payload } as any;
+
+    await processor.process(job);
+
+    // Only one prisma.update call ('processing') — no 'failed' call
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledTimes(1);
+    expect(prisma.emailIntakeLog.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { processingStatus: 'failed' },
       }),
     );
   });
