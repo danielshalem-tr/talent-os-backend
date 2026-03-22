@@ -23,7 +23,7 @@ progress:
 
 **Current Focus:** Phase 01 — foundation
 
-**Tech Stack (Locked):** TypeScript, NestJS 11, BullMQ + Redis, Prisma 6, PostgreSQL 16, Vercel AI SDK, Claude Haiku + Sonnet, Cloudflare R2, Postmark Inbound webhooks.
+**Tech Stack (Locked):** TypeScript, NestJS 11, BullMQ + Redis, Prisma 7, PostgreSQL 16, Vercel AI SDK, Claude Haiku + Sonnet, Cloudflare R2, Postmark Inbound webhooks.
 
 ## Current Position
 
