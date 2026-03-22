@@ -12,7 +12,7 @@ progress:
   completed_plans: 13
 ---
 
-# State: Triolla Talent OS — Backend (Phase 1)
+# State: Triolla Talent OS — Backend
 
 **Initialized:** 2026-03-22 at 00:00 UTC
 **Model:** Claude Haiku 4.5
@@ -22,7 +22,7 @@ progress:
 
 **Core Value:** Inbound CVs are automatically processed, de-duplicated, and scored against open jobs without any manual recruiter effort — end-to-end from email receipt to scored candidate record.
 
-**Current Focus:** Phase 04 — ai-extraction
+**Current Focus:** Phase 05 — file-storage
 
 **Tech Stack (Locked):** TypeScript, NestJS 11, BullMQ + Redis, Prisma 7, PostgreSQL 16, Vercel AI SDK, Claude Haiku + Sonnet, Cloudflare R2, Postmark Inbound webhooks.
 
@@ -83,11 +83,26 @@ Last activity: 2026-03-22
    - 01-01: NestJS bootstrap + BullMQ worker entry point
    - 01-02: Prisma schema (7 tables), migration, pg_trgm indexes, seed data
    - 01-03: Multi-stage Dockerfile + docker-compose.yml (4 services, health checks) — human checkpoint passed
-2. Docker Compose verified: all 4 services (api, worker, postgres, redis) started healthy
-3. Quick task 260322-kkx: Upgraded Prisma 6 → 7.5.0 with @prisma/adapter-pg; created prisma.config.ts; tsc clean; all unit tests pass
+2. Quick tasks: Prisma 6→7 upgrade (260322-kkx), env/docker-compose fix (260322-lsq)
+3. Phase 02 (Webhook Intake & Idempotency) — all 3 plans complete ✓
+   - 02-01: PostmarkPayloadDto (Zod), test scaffolds, IngestionProcessor stub
+   - 02-02: PostmarkAuthGuard (Basic Auth), WebhooksService (idempotency + enqueue), WebhooksController
+   - 02-03: Wire WebhooksModule + IngestionModule into root modules; human smoke test passed (all 8 checks)
+   - Auto-fix applied: Dockerfile CMD path + UUID validation corrected during Docker startup verification
+4. Phase 03 (Processing Pipeline & Spam Filter) — all 4 plans complete ✓
+   - 03-00: 3 test spec stub files created (spam-filter, attachment-extractor, processor integration)
+   - 03-01: SpamFilterService with 5 passing unit tests (PROC-02, PROC-03)
+   - 03-02: AttachmentExtractorService (pdf-parse + mammoth) with 5 passing unit tests (PROC-04, PROC-05)
+   - 03-03: Fixed Phase 2 blob-stripping bug; wired full IngestionProcessor pipeline; 2 integration tests (PROC-06)
+   - 22 total tests passing across 3 suites after Phase 03
+5. Phase 04 (AI Extraction) — all 3 plans complete ✓
+   - 04-00: extraction-agent.service.spec.ts stub + minimal service stub created
+   - 04-01: ExtractionAgentService (deterministic mock) with CandidateExtractSchema (Zod) + 5 unit tests (AIEX-01, AIEX-02, AIEX-03)
+   - 04-02: ExtractionAgentService wired into IngestionProcessor + IngestionModule; 2 integration tests; 34 total tests passing
+   - Note: ExtractionAgentService.extract() is a deterministic mock returning hardcoded 'Jane Doe' — real Anthropic Haiku call pending Phase 5 or follow-up
 
 **Next Step:**
-Phase 02 — Postmark Webhook intake. Run `/gsd:plan-phase 2` (or `/gsd:discuss-phase 2` first for context gathering).
+Phase 05 — File Storage. Run `/gsd:plan-phase 5` (or `/gsd:discuss-phase 5` first).
 
 ---
 
