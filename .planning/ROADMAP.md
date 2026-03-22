@@ -61,7 +61,7 @@ Plans:
 Plans:
 - [x] 02-01-PLAN.md — PostmarkPayloadDto (Zod), test spec scaffolds (guard/service/controller), IngestionProcessor stub
 - [x] 02-02-PLAN.md — PostmarkAuthGuard (Basic Auth), WebhooksService (idempotency + enqueue + health), WebhooksController, WebhooksModule
-- [ ] 02-03-PLAN.md — Wire WebhooksModule into AppModule, IngestionModule into WorkerModule, human smoke test
+- [x] 02-03-PLAN.md — Wire WebhooksModule into AppModule, IngestionModule into WorkerModule, human smoke test
 
 ### Phase 3: Processing Pipeline & Spam Filter
 
