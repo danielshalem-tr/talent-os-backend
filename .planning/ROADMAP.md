@@ -56,7 +56,12 @@ Plans:
 5. Job enqueued to BullMQ ingest-email queue with 3 retry attempts and exponential backoff
 6. Raw Postmark payload stored in email_intake_log.raw_payload with attachment binary blobs stripped
 
-**Plans:** TBD
+**Plans:** 3 plans
+
+Plans:
+- [ ] 02-01-PLAN.md — PostmarkPayloadDto (Zod), test spec scaffolds (guard/service/controller), IngestionProcessor stub
+- [ ] 02-02-PLAN.md — PostmarkAuthGuard (Basic Auth), WebhooksService (idempotency + enqueue + health), WebhooksController, WebhooksModule
+- [ ] 02-03-PLAN.md — Wire WebhooksModule into AppModule, IngestionModule into WorkerModule, human smoke test
 
 ### Phase 3: Processing Pipeline & Spam Filter
 
