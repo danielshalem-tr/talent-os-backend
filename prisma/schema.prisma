@@ -1,6 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,4 +5,167 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// ─── tenants ─────────────────────────────────────────────────────────────────
+model Tenant {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  jobs            Job[]
+  candidates      Candidate[]
+  applications    Application[]
+  scores          CandidateJobScore[]
+  duplicateFlags  DuplicateFlag[]
+  emailIntakeLogs EmailIntakeLog[]
+
+  @@map("tenants")
+}
+
+// ─── jobs ─────────────────────────────────────────────────────────────────────
+model Job {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  title         String   @db.Text
+  department    String?  @db.Text
+  location      String?  @db.Text
+  jobType       String   @default("full_time") @map("job_type") @db.Text
+  status        String   @default("draft") @db.Text
+  description   String?  @db.Text
+  requirements  String[] @default([])
+  salaryRange   String?  @map("salary_range") @db.Text
+  hiringManager String?  @map("hiring_manager") @db.Text
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  applications Application[]
+
+  @@index([tenantId, status], name: "idx_jobs_active")
+  @@map("jobs")
+}
+
+// ─── candidates ───────────────────────────────────────────────────────────────
+model Candidate {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  email           String?  @db.Text
+  fullName        String   @map("full_name") @db.Text
+  phone           String?  @db.Text
+  currentRole     String?  @map("current_role") @db.Text
+  location        String?  @db.Text
+  yearsExperience Int?     @map("years_experience") @db.SmallInt
+  skills          String[] @default([])
+  cvText          String?  @map("cv_text") @db.Text
+  cvFileUrl       String?  @map("cv_file_url") @db.Text
+  source          String   @db.Text
+  sourceAgency    String?  @map("source_agency") @db.Text
+  sourceEmail     String?  @map("source_email") @db.Text
+  metadata        Json?    @db.JsonB
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant          Tenant           @relation(fields: [tenantId], references: [id])
+  applications    Application[]
+  duplicateFlags  DuplicateFlag[]  @relation("CandidateFlags")
+  matchedIn       DuplicateFlag[]  @relation("MatchedCandidateFlags")
+  emailIntakeLogs EmailIntakeLog[]
+
+  // Unique email per tenant (partial — only when email is not null, enforced via raw SQL index)
+  @@map("candidates")
+}
+
+// ─── applications ─────────────────────────────────────────────────────────────
+model Application {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  candidateId String   @map("candidate_id") @db.Uuid
+  jobId       String   @map("job_id") @db.Uuid
+  stage       String   @default("new") @db.Text
+  notes       String?  @db.Text
+  intakeLogId String?  @map("intake_log_id") @db.Uuid
+  appliedAt   DateTime @default(now()) @map("applied_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant    Tenant              @relation(fields: [tenantId], references: [id])
+  candidate Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job       Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  intakeLog EmailIntakeLog?     @relation(fields: [intakeLogId], references: [id])
+  scores    CandidateJobScore[]
+
+  // DB-06: unique application per candidate per job per tenant
+  @@unique([tenantId, candidateId, jobId], name: "idx_applications_unique")
+  @@index([jobId], name: "idx_applications_job")
+  @@index([tenantId, stage], name: "idx_applications_stage")
+  @@map("applications")
+}
+
+// ─── candidate_job_scores ─────────────────────────────────────────────────────
+model CandidateJobScore {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId      String   @map("tenant_id") @db.Uuid
+  applicationId String   @map("application_id") @db.Uuid
+  score         Int      @db.SmallInt
+  reasoning     String?  @db.Text
+  strengths     String[] @default([])
+  gaps          String[] @default([])
+  modelUsed     String   @map("model_used") @db.Text
+  scoredAt      DateTime @default(now()) @map("scored_at") @db.Timestamptz
+
+  // Relations
+  tenant      Tenant      @relation(fields: [tenantId], references: [id])
+  application Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId], name: "idx_scores_application")
+  @@map("candidate_job_scores")
+}
+
+// ─── duplicate_flags ──────────────────────────────────────────────────────────
+model DuplicateFlag {
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  candidateId        String   @map("candidate_id") @db.Uuid
+  matchedCandidateId String   @map("matched_candidate_id") @db.Uuid
+  confidence         Decimal  @db.Decimal(4, 3)
+  matchFields        String[] @map("match_fields")
+  reviewed           Boolean  @default(false)
+  createdAt          DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant           Tenant    @relation(fields: [tenantId], references: [id])
+  candidate        Candidate @relation("CandidateFlags", fields: [candidateId], references: [id], onDelete: Restrict)
+  matchedCandidate Candidate @relation("MatchedCandidateFlags", fields: [matchedCandidateId], references: [id], onDelete: Restrict)
+
+  // DB-07: unique pair per tenant — prevents duplicate flags on worker retries
+  @@unique([tenantId, candidateId, matchedCandidateId], name: "idx_duplicates_pair")
+  @@map("duplicate_flags")
+}
+
+// ─── email_intake_log ─────────────────────────────────────────────────────────
+model EmailIntakeLog {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId         String   @map("tenant_id") @db.Uuid
+  messageId        String   @map("message_id") @db.Text
+  fromEmail        String   @map("from_email") @db.Text
+  subject          String?  @db.Text
+  receivedAt       DateTime @map("received_at") @db.Timestamptz
+  processingStatus String   @default("pending") @map("processing_status") @db.Text
+  errorMessage     String?  @map("error_message") @db.Text
+  candidateId      String?  @map("candidate_id") @db.Uuid
+  rawPayload       Json?    @map("raw_payload") @db.JsonB
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  candidate    Candidate?    @relation(fields: [candidateId], references: [id])
+  applications Application[]
+
+  // DB-08: unique message_id per tenant — primary idempotency guard
+  @@unique([tenantId, messageId], name: "idx_intake_message_id")
+  @@map("email_intake_log")
 }
