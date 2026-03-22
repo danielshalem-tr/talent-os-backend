@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { mockPostmarkPayload } from './services/spam-filter.service.spec';
 import { ExtractionAgentService } from './services/extraction-agent.service';
 import { mockCandidateExtract } from './services/extraction-agent.service.spec';
+import { StorageService } from '../storage/storage.service';
 
 // Mock pdf-parse and mammoth so AttachmentExtractorService doesn't crash on fake content
 jest.mock('pdf-parse', () => jest.fn().mockResolvedValue({ text: 'pdf text' }));
@@ -39,6 +40,10 @@ describe('IngestionProcessor', () => {
           useValue: { get: jest.fn().mockReturnValue('test-tenant-id') },
         },
         { provide: ExtractionAgentService, useValue: extractionAgent },
+        {
+          provide: StorageService,
+          useValue: { upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/msg-id.pdf') },
+        },
       ],
     }).compile();
 
@@ -171,7 +176,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
           useValue: { get: jest.fn().mockReturnValue('test-tenant-id') },
         },
         { provide: ExtractionAgentService, useValue: extractionAgent },
-        { provide: 'StorageService', useValue: storageService },
+        { provide: StorageService, useValue: storageService },
       ],
     }).compile();
 
@@ -182,21 +187,69 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
     jest.clearAllMocks();
   });
 
-  // 5-02-01: STOR-01 — storageService.upload called before dedup
-  it('5-02-01: calls storageService.upload with attachments, tenantId, messageId', () => {
-    // Wave 2 stub — implementation in 05-02-PLAN.md
-    expect(true).toBe(true); // placeholder
+  // 5-02-01: STOR-01 — storageService.upload called with correct args
+  it('5-02-01: calls storageService.upload with attachments, tenantId, messageId', async () => {
+    const payload = mockPostmarkPayload({
+      MessageID: 'test-message-id',
+      Subject: 'Job Application from Jane Doe',
+      TextBody:
+        'Dear Hiring Manager, I have 5 years of experience in software engineering. Please find my CV attached.',
+      Attachments: [
+        {
+          Name: 'cv.pdf',
+          ContentType: 'application/pdf',
+          ContentLength: 150000,
+          Content: Buffer.from('PDF data').toString('base64'),
+        },
+      ],
+    });
+    const job = { id: 'test-job-5', data: payload } as any;
+
+    await processor.process(job);
+
+    expect(storageService.upload).toHaveBeenCalledWith(
+      payload.Attachments,
+      'test-tenant-id',
+      payload.MessageID,
+    );
   });
 
   // 5-02-02: D-07 — upload errors propagate (no inline catch in processor)
-  it('5-02-02: propagates upload error to BullMQ (no inline catch)', () => {
-    // Wave 2 stub — implementation in 05-02-PLAN.md
-    expect(true).toBe(true); // placeholder
+  it('5-02-02: propagates upload error to BullMQ (no inline catch)', async () => {
+    storageService.upload.mockRejectedValueOnce(new Error('R2 service unavailable'));
+
+    const payload = mockPostmarkPayload({
+      Subject: 'Job Application from Jane Doe',
+      TextBody:
+        'Dear Hiring Manager, I have 5 years of experience in software engineering. Please find my CV attached.',
+      Attachments: [
+        {
+          Name: 'cv.pdf',
+          ContentType: 'application/pdf',
+          ContentLength: 150000,
+          Content: Buffer.from('PDF data').toString('base64'),
+        },
+      ],
+    });
+    const job = { id: 'test-job-6', data: payload } as any;
+
+    await expect(processor.process(job)).rejects.toThrow('R2 service unavailable');
   });
 
-  // 5-02-03: D-02, STOR-03 — null fileKey + cvText forwarded when no attachment
-  it('5-02-03: passes null fileKey and cvText through ProcessingContext when no CV attachment', () => {
-    // Wave 2 stub — implementation in 05-02-PLAN.md
-    expect(true).toBe(true); // placeholder
+  // 5-02-03: D-02, STOR-03 — null fileKey + processor continues normally
+  it('5-02-03: passes null fileKey and cvText through ProcessingContext when no CV attachment', async () => {
+    storageService.upload.mockResolvedValueOnce(null);
+
+    const payload = mockPostmarkPayload({
+      Subject: 'Job Application from Jane Doe',
+      TextBody:
+        'Dear Hiring Manager, I have 5 years of experience in software engineering. Please find my CV attached.',
+      Attachments: [],
+    });
+    const job = { id: 'test-job-7', data: payload } as any;
+
+    // Processor should not throw; upload was called and returned null gracefully
+    await expect(processor.process(job)).resolves.not.toThrow();
+    expect(storageService.upload).toHaveBeenCalled();
   });
 });
