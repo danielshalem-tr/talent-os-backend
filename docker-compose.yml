@@ -1,0 +1,30 @@
+services:
+  api:
+    build: .
+    ports: ['3000:3000']
+    env_file: .env
+    depends_on: [postgres, redis]
+
+  worker:
+    build: .
+    command: node dist/worker.js
+    env_file: .env
+    depends_on: [postgres, redis]
+
+  postgres:
+    image: postgres:16-alpine
+    ports: ['5432:5432']
+    volumes: ['postgres_data:/var/lib/postgresql/data']
+    environment:
+      POSTGRES_DB: triolla
+      POSTGRES_USER: triolla
+      POSTGRES_PASSWORD: password
+
+  redis:
+    image: redis:7-alpine
+    ports: ['6379:6379']
+    volumes: ['redis_data:/data']
+
+volumes:
+  postgres_data:
+  redis_data:
