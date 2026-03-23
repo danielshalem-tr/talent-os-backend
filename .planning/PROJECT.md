@@ -30,8 +30,8 @@ Inbound CVs are automatically processed, de-duplicated, and scored against open 
 - [ ] API and Worker run as separate processes (separate Docker containers) — CPU-heavy work never blocks webhook receipt
 - [ ] Agent 1 (Haiku): real Anthropic generateObject call enabled (scaffolded in Phase 4, activated in Phase 5+)
 - [x] Original CV file is uploaded to Cloudflare R2 before dedup (Postmark does not retain attachments) — *Validated in Phase 5: File Storage*
-- [ ] Duplicate detection runs in PostgreSQL via pg_trgm — no candidates loaded into memory
-- [ ] Exact email match → UPSERT; fuzzy match → INSERT new + `duplicate_flags` row for human review
+- [x] Duplicate detection runs in PostgreSQL via pg_trgm — no candidates loaded into memory — *Validated in Phase 6: Duplicate Detection*
+- [x] Exact email match → UPSERT; fuzzy match → INSERT new + `duplicate_flags` row for human review — *Validated in Phase 6*
 - [ ] Agent 2 (Sonnet): scores candidate against each active job; results stored append-only in `candidate_job_scores`
 - [ ] Multi-tenant schema from day 1: `tenant_id` on every table; Phase 1 has exactly one tenant
 - [ ] Environment variables validated at startup via @nestjs/config + Zod
@@ -102,4 +102,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-22 after Phase 5 completion*
+*Last updated: 2026-03-23 after Phase 6 completion*
