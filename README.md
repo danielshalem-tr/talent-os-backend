@@ -21,18 +21,18 @@ cp .env.example .env
 
 Then edit `.env` and fill in each variable:
 
-| Variable | Where to get it |
-|---|---|
-| `ANTHROPIC_API_KEY` | Anthropic Console -> API Keys |
+| Variable                 | Where to get it                                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `ANTHROPIC_API_KEY`      | Anthropic Console -> API Keys                                                                                     |
 | `POSTMARK_WEBHOOK_TOKEN` | Choose any secret string; configure the same value in Postmark -> Settings -> Inbound -> HTTP Basic Auth password |
-| `R2_ACCOUNT_ID` | Cloudflare dashboard -> R2 -> Manage R2 API Tokens |
-| `R2_ACCESS_KEY_ID` | Cloudflare R2 API token |
-| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 API token |
-| `R2_BUCKET_NAME` | Your R2 bucket name (e.g. `triolla-cvs`) |
-| `POSTGRES_PASSWORD` | Set to any local password (e.g. `changeme`) |
-| `TENANT_ID` | Leave as `00000000-0000-0000-0000-000000000001` (hardcoded dev tenant) |
-| `DATABASE_URL` | Leave as-is — matches `docker-compose.dev.yml` |
-| `REDIS_URL` | Leave as-is — matches `docker-compose.dev.yml` |
+| `R2_ACCOUNT_ID`          | Cloudflare dashboard -> R2 -> Manage R2 API Tokens                                                                |
+| `R2_ACCESS_KEY_ID`       | Cloudflare R2 API token                                                                                           |
+| `R2_SECRET_ACCESS_KEY`   | Cloudflare R2 API token                                                                                           |
+| `R2_BUCKET_NAME`         | Your R2 bucket name (e.g. `triolla-cvs`)                                                                          |
+| `POSTGRES_PASSWORD`      | Set to any local password (e.g. `changeme`)                                                                       |
+| `TENANT_ID`              | Leave as `00000000-0000-0000-0000-000000000001` (hardcoded dev tenant)                                            |
+| `DATABASE_URL`           | Leave as-is — matches `docker-compose.dev.yml`                                                                    |
+| `REDIS_URL`              | Leave as-is — matches `docker-compose.dev.yml`                                                                    |
 
 ## First Run
 
@@ -107,19 +107,19 @@ npm run db:studio
 
 ## Useful Commands
 
-| Command | What it does |
-|---|---|
-| `npm run docker:dev` | Start all services, stream logs |
-| `npm run docker:down` | Stop and remove containers |
-| `npm run docker:logs` | Tail all service logs |
-| `npm run docker:logs:api` | Tail API logs only |
-| `npm run docker:logs:worker` | Tail worker logs only |
-| `npm run db:setup` | Run migrations + seed (first run) |
-| `npm run db:studio` | Open Prisma Studio at localhost:5555 |
-| `npm run ngrok` | Start ngrok tunnel, print Postmark URL |
-| `npm test` | Run unit tests |
-| `node local-test/run.js` | Send all CVs in local-test/files/ |
-| `node local-test/run.js --health` | Check API health |
+| Command                           | What it does                           |
+| --------------------------------- | -------------------------------------- |
+| `npm run docker:dev`              | Start all services, stream logs        |
+| `npm run docker:down`             | Stop and remove containers             |
+| `npm run docker:logs`             | Tail all service logs                  |
+| `npm run docker:logs:api`         | Tail API logs only                     |
+| `npm run docker:logs:worker`      | Tail worker logs only                  |
+| `npm run db:setup`                | Run migrations + seed (first run)      |
+| `npm run db:studio`               | Open Prisma Studio at localhost:5555   |
+| `npm run ngrok`                   | Start ngrok tunnel, print Postmark URL |
+| `npm test`                        | Run unit tests                         |
+| `node local-test/run.js`          | Send all CVs in local-test/files/      |
+| `node local-test/run.js --health` | Check API health                       |
 
 ## Architecture
 

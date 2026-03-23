@@ -13,7 +13,6 @@ async function bootstrap() {
   // Postmark sends CV attachments as base64 inside JSON — a 2 MB PDF becomes ~2.7 MB.
   // Default Express limit is 100 KB which rejects most real CVs.
   app.useBodyParser('json', { limit: '10mb' });
-
   await app.listen(process.env.PORT ?? 3000);
 }
 bootstrap();
