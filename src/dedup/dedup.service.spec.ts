@@ -136,4 +136,35 @@ describe('DedupService', () => {
       }),
     );
   });
+
+  // DEDUP-06: inverted name tokens (Smith John vs John Smith) still returns a match above 0.7
+  it('DEDUP-06: inverted name tokens (Smith John vs John Smith) still returns a match above 0.7', async () => {
+    prisma.candidate.findFirst.mockResolvedValue(null); // no exact email match
+    // SQL returns match when reversed name is used in query
+    prisma.$queryRaw.mockResolvedValue([
+      { id: 'fuzzy-789', full_name: 'John Smith', name_sim: 0.82 },
+    ]);
+    // Input name is inverted compared to stored name
+    const extract = mockCandidateDedupExtract({ fullName: 'Smith John', email: null });
+
+    const result = await service.check(extract, 'tenant-abc');
+
+    expect(result).not.toBeNull();
+    expect(result!.confidence).toBe(0.82);
+    expect(result!.match.id).toBe('fuzzy-789');
+  });
+
+  // DEDUP-07: name_sim below 0.7 returns null (threshold enforced in SQL, not app layer)
+  it('DEDUP-07: name_sim below 0.7 returns null (threshold enforced in SQL, not app layer)', async () => {
+    prisma.candidate.findFirst.mockResolvedValue(null); // no exact email match
+    // SQL already filtered out low-similarity rows — returns empty array
+    prisma.$queryRaw.mockResolvedValue([]);
+    const extract = mockCandidateDedupExtract({ fullName: 'Jane Doe', email: null });
+
+    const result = await service.check(extract, 'tenant-abc');
+
+    expect(result).toBeNull();
+    // $queryRaw called once with both name variants in the template
+    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+  });
 });

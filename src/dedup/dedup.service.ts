@@ -35,17 +35,26 @@ export class DedupService {
     }
 
     // Step 2: Fuzzy name match via pg_trgm — runs entirely in PostgreSQL (DEDUP-01)
+    // Compute reversed token order to catch "Smith John" matching stored "John Smith" (DEDUP-06)
+    const reversedName = candidate.fullName.trim().split(/\s+/).reverse().join(' ');
+
     const fuzzy = await this.prisma.$queryRaw<FuzzyMatch[]>`
       SELECT id::text, full_name,
-             similarity(full_name, ${candidate.fullName}) AS name_sim
+             GREATEST(
+               similarity(full_name, ${candidate.fullName}),
+               similarity(full_name, ${reversedName})
+             ) AS name_sim
       FROM candidates
       WHERE tenant_id = ${tenantId}::uuid
-        AND full_name % ${candidate.fullName}
+        AND (
+          similarity(full_name, ${candidate.fullName}) > 0.7
+          OR similarity(full_name, ${reversedName}) > 0.7
+        )
       ORDER BY name_sim DESC
       LIMIT 1
     `;
 
-    if (fuzzy.length > 0 && fuzzy[0].name_sim > 0.7) {
+    if (fuzzy.length > 0) {
       return {
         match: { id: fuzzy[0].id },
         confidence: fuzzy[0].name_sim,
