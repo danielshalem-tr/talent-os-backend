@@ -49,9 +49,9 @@ function buildPayload(filename, fileBuffer) {
   const candidateName = path.basename(filename, path.extname(filename)).replace(/[-_]/g, ' ');
 
   return {
-    // Postmark fills these from inbound email metadata
+    // Postmark sends just the email address in 'From' (name goes in 'FromFull' which we don't use)
     MessageID: `test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    From: `${candidateName} <${SENDER_EMAIL}>`,
+    From: SENDER_EMAIL,
     Subject: `CV - ${candidateName}`,
     Date: new Date().toISOString(),
     TextBody: `Hi,\n\nPlease find my CV attached.\n\nBest regards,\n${candidateName}`,
