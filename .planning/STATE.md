@@ -71,6 +71,7 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 | 260322-scj | Update STATE.md to reflect Phase 5 completion and Phase 6 readiness | 2026-03-22 | 3c54976 | [260322-scj-update-state-md-and-requirements-md-to-r](./quick/260322-scj-update-state-md-and-requirements-md-to-r/) |
 | 260322-uov | Fix 3 critical bugs: CV loss, BullMQ retry, race condition duplicate | 2026-03-22 | 4b89bf4 | [260322-uov-fix-3-critical-bugs-in-implemented-phase](./quick/260322-uov-fix-3-critical-bugs-in-implemented-phase/) |
 | 260323-d4s | Fix Phase 6 bugs: pg_trgm % operator (wrong threshold), inverted name miss, non-atomic DB writes | 2026-03-23 | 6a9d372 | [260323-d4s-investigate-and-fix-4-reported-phase-6-i](./quick/260323-d4s-investigate-and-fix-4-reported-phase-6-i/) |
+| 260323-dhl | Commit untracked PLAN.md from 260323-d4s quick task | 2026-03-23 | e5284a2 | [260323-dhl-commit-the-unsaved-changes-from-the-last](./quick/260323-dhl-commit-the-unsaved-changes-from-the-last/) |
 
 ### Todos
 
