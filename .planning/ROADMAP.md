@@ -191,6 +191,21 @@ Plans:
 Plans:
 - [ ] 08-01-PLAN.md — Write 01-VERIFICATION.md (15 requirements) and tick PROC-01/INFR-04/INFR-05 checkboxes in REQUIREMENTS.md
 
+### Phase 9: Create client-facing REST API endpoints
+
+**Goal:** Expose three read-only REST API endpoints for the recruiter UI: GET /api/candidates (with search + filter), GET /api/jobs (with candidate_count), and GET /api/applications (with nested candidate + ai_score). Includes CORS for localhost:5173 and global /api prefix.
+
+**Depends on:** Phase 8
+
+**Requirements:** RAPI-01
+
+**Plans:** 3 plans
+
+Plans:
+- [ ] 09-01-PLAN.md — Wave 1: CandidatesModule (GET /candidates with q + filter params, ai_score, is_duplicate)
+- [ ] 09-02-PLAN.md — Wave 1: JobsModule (GET /jobs with candidate_count) + ApplicationsModule (GET /applications with nested candidate)
+- [ ] 09-03-PLAN.md — Wave 2: Wire modules into AppModule, add CORS + global prefix to main.ts, human smoke test
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -203,6 +218,7 @@ Plans:
 | 6. Duplicate Detection | 3/3 | Complete   | 2026-03-23 |
 | 7. Candidate Storage & Scoring | 2/2 | Complete   | 2026-03-23 |
 | 8. Phase 1 Verification | 0/1 | Complete    | 2026-03-23 |
+| 9. Client-facing REST API | 0/3 | In Progress | — |
 
 ---
 
