@@ -37,12 +37,12 @@
 
 ### Duplicate Detection
 
-- [ ] **DEDUP-01**: Dedup runs entirely in PostgreSQL via `pg_trgm` extension — no candidates loaded into application memory
-- [ ] **DEDUP-02**: Exact email match (`confidence = 1.0`) → UPSERT existing candidate record
-- [ ] **DEDUP-03**: Fuzzy name match (`similarity > 0.7`, `confidence < 1.0`) → INSERT new candidate + create `duplicate_flags` row for human review
-- [ ] **DEDUP-04**: No match → INSERT new candidate record
-- [ ] **DEDUP-05**: System never auto-merges on fuzzy match — creates `duplicate_flags` with `reviewed = false`
-- [ ] **DEDUP-06**: `pg_trgm` GIN indexes on `candidates.full_name` and `candidates.phone` are created in migration
+- [x] **DEDUP-01**: Dedup runs entirely in PostgreSQL via `pg_trgm` extension — no candidates loaded into application memory
+- [x] **DEDUP-02**: Exact email match (`confidence = 1.0`) → UPSERT existing candidate record
+- [x] **DEDUP-03**: Fuzzy name match (`similarity > 0.7`, `confidence < 1.0`) → INSERT new candidate + create `duplicate_flags` row for human review
+- [x] **DEDUP-04**: No match → INSERT new candidate record
+- [x] **DEDUP-05**: System never auto-merges on fuzzy match — creates `duplicate_flags` with `reviewed = false`
+- [x] **DEDUP-06**: `pg_trgm` GIN indexes on `candidates.full_name` and `candidates.phone` are created in migration
 
 ### Candidate Storage
 
@@ -136,12 +136,12 @@
 | STOR-01 | Phase 5 | Complete |
 | STOR-02 | Phase 5 | Complete |
 | STOR-03 | Phase 5 | Complete |
-| DEDUP-01 | Phase 6 | Pending |
-| DEDUP-02 | Phase 6 | Pending |
-| DEDUP-03 | Phase 6 | Pending |
-| DEDUP-04 | Phase 6 | Pending |
-| DEDUP-05 | Phase 6 | Pending |
-| DEDUP-06 | Phase 6 | Pending |
+| DEDUP-01 | Phase 6 | Complete |
+| DEDUP-02 | Phase 6 | Complete |
+| DEDUP-03 | Phase 6 | Complete |
+| DEDUP-04 | Phase 6 | Complete |
+| DEDUP-05 | Phase 6 | Complete |
+| DEDUP-06 | Phase 6 | Complete |
 | CAND-01 | Phase 7 | Pending |
 | CAND-02 | Phase 7 | Pending |
 | CAND-03 | Phase 7 | Pending |

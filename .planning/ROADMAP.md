@@ -141,10 +141,10 @@ Plans:
 4. pg_trgm GIN indexes on candidates.full_name and candidates.phone created in migration
 5. Dedup runs entirely in PostgreSQL; zero candidates loaded into application memory
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
-- [ ] 06-00-PLAN.md — Wave 0: DedupModule skeleton, DedupService stub, 5+3 it.todo test stubs, ai_summary migration
+- [x] 06-00-PLAN.md — Wave 0: DedupModule skeleton, DedupService stub, 5+3 it.todo test stubs, ai_summary migration
 - [ ] 06-01-PLAN.md — Wave 1: Implement DedupService (check/insertCandidate/upsertCandidate/createFlag); 5 unit tests green
 - [ ] 06-02-PLAN.md — Wave 2: Wire DedupService into IngestionProcessor + IngestionModule; extend ProcessingContext; 3 integration tests green
 
@@ -175,7 +175,7 @@ Plans:
 | 3. Processing Pipeline & Spam Filter | 4/4 | Complete   | 2026-03-22 |
 | 4. AI Extraction | 3/3 | Complete   | 2026-03-22 |
 | 5. File Storage | 3/3 | Complete   | 2026-03-22 |
-| 6. Duplicate Detection | 0/3 | Not started | — |
+| 6. Duplicate Detection | 1/3 | In Progress|  |
 | 7. Candidate Storage & Scoring | 0/4 | Not started | — |
 
 ---
