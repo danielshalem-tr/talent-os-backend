@@ -1,0 +1,74 @@
+services:
+  api:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: sh -c "npm run start:dev"
+    ports:
+      - '3000:3000'
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://triolla:password@postgres:5432/triolla
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      TZ: Asia/Jerusalem
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    image: node:22-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: sh -c "npx ts-node src/worker.ts"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://triolla:password@postgres:5432/triolla
+      REDIS_URL: redis://redis:6379
+      NODE_ENV: development
+      TZ: Asia/Jerusalem
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: triolla
+      POSTGRES_USER: triolla
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U triolla -d triolla']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+volumes:
+  postgres_data:
+  redis_data:

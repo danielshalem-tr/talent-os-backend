@@ -3,6 +3,8 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  process.env.TZ = process.env.TZ ?? 'Asia/Jerusalem';
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
     bodyParser: true,

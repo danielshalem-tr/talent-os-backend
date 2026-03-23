@@ -17,7 +17,16 @@
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json"
+    "test:e2e": "jest --config ./test/jest-e2e.json",
+    "docker:dev": "docker compose -f docker-compose.dev.yml up",
+    "docker:dev:build": "docker compose -f docker-compose.dev.yml up --build",
+    "docker:down": "docker compose -f docker-compose.dev.yml down",
+    "docker:logs": "docker compose -f docker-compose.dev.yml logs -f --tail=100",
+    "docker:logs:api": "docker compose -f docker-compose.dev.yml logs -f api",
+    "docker:logs:worker": "docker compose -f docker-compose.dev.yml logs -f worker",
+    "db:setup": "docker compose -f docker-compose.dev.yml exec api npx prisma migrate deploy && docker compose -f docker-compose.dev.yml exec api npx prisma db seed",
+    "db:studio": "npx prisma studio",
+    "ngrok": "bash scripts/ngrok-webhook.sh"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.63",
