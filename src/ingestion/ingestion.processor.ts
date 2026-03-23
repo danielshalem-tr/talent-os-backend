@@ -9,6 +9,7 @@ import { AttachmentExtractorService } from './services/attachment-extractor.serv
 import { ExtractionAgentService, CandidateExtract } from './services/extraction-agent.service';
 import { StorageService } from '../storage/storage.service';
 import { DedupService, DedupResult } from '../dedup/dedup.service';
+import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
 
 export interface ProcessingContext {
   fullText: string;
@@ -34,6 +35,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly extractionAgent: ExtractionAgentService,
     private readonly storageService: StorageService,
     private readonly dedupService: DedupService,
+    private readonly scoringService: ScoringAgentService,
   ) {
     super();
   }
