@@ -13,7 +13,7 @@
 - [x] **Phase 4: AI Extraction** - Claude Haiku agent extracts structured candidate fields (completed 2026-03-22)
 - [x] **Phase 5: File Storage** - Original CV files uploaded to Cloudflare R2 (completed 2026-03-22)
 - [x] **Phase 6: Duplicate Detection** - pg_trgm fuzzy matching, duplicate flags for human review (completed 2026-03-23)
-- [ ] **Phase 7: Candidate Storage & Scoring** - Store candidates, score against active jobs with Claude Sonnet
+- [x] **Phase 7: Candidate Storage & Scoring** - Store candidates, score against active jobs with Claude Sonnet (completed 2026-03-23)
 
 ## Phase Details
 
@@ -164,11 +164,11 @@ Plans:
 5. Claude Sonnet scores candidate against each active job; returns score (0–100), reasoning, strengths[], gaps[]
 6. Scores inserted append-only to candidate_job_scores; existing scores never updated; model_used recorded
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 07-01-PLAN.md — Wave 1: Create ScoringModule + ScoringAgentService (mock-first, real call scaffolded); 3 unit tests
-- [ ] 07-02-PLAN.md — Wave 2: Implement Phase 7 in IngestionProcessor (enrichment + scoring loop + terminal status); wire ScoringModule; 5 integration tests
+- [x] 07-02-PLAN.md — Wave 2: Implement Phase 7 in IngestionProcessor (enrichment + scoring loop + terminal status); wire ScoringModule; 5 integration tests
 
 ## Progress
 
@@ -180,7 +180,7 @@ Plans:
 | 4. AI Extraction | 3/3 | Complete   | 2026-03-22 |
 | 5. File Storage | 3/3 | Complete   | 2026-03-22 |
 | 6. Duplicate Detection | 3/3 | Complete   | 2026-03-23 |
-| 7. Candidate Storage & Scoring | 1/2 | In Progress|  |
+| 7. Candidate Storage & Scoring | 2/2 | Complete   | 2026-03-23 |
 
 ---
 
