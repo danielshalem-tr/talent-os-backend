@@ -186,7 +186,10 @@ Plans:
 2. PROC-01, INFR-04, INFR-05 checkboxes marked `[x]` in REQUIREMENTS.md
 3. Traceability table updated: PROC-01, INFR-04, INFR-05 → Phase 8, Status: Complete
 
-**Plans:** TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 08-01-PLAN.md — Write 01-VERIFICATION.md (15 requirements) and tick PROC-01/INFR-04/INFR-05 checkboxes in REQUIREMENTS.md
 
 ## Progress
 
@@ -199,7 +202,7 @@ Plans:
 | 5. File Storage | 3/3 | Complete   | 2026-03-22 |
 | 6. Duplicate Detection | 3/3 | Complete   | 2026-03-23 |
 | 7. Candidate Storage & Scoring | 2/2 | Complete   | 2026-03-23 |
-| 8. Phase 1 Verification | 0/? | Pending | — |
+| 8. Phase 1 Verification | 0/1 | Pending | — |
 
 ---
 
