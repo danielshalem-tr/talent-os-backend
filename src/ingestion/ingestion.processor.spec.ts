@@ -8,6 +8,7 @@ import { mockPostmarkPayload } from './services/spam-filter.service.spec';
 import { ExtractionAgentService } from './services/extraction-agent.service';
 import { mockCandidateExtract } from './services/extraction-agent.service.spec';
 import { StorageService } from '../storage/storage.service';
+import { DedupService } from '../dedup/dedup.service';
 
 // Mock pdf-parse and mammoth so AttachmentExtractorService doesn't crash on fake content
 jest.mock('pdf-parse', () => jest.fn().mockResolvedValue({ text: 'pdf text' }));
@@ -20,6 +21,7 @@ describe('IngestionProcessor', () => {
   let prisma: { emailIntakeLog: { update: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
+  let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -34,6 +36,13 @@ describe('IngestionProcessor', () => {
       upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/msg-id.pdf'),
     };
 
+    dedupService = {
+      check: jest.fn().mockResolvedValue(null),
+      insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
+      upsertCandidate: jest.fn().mockResolvedValue(undefined),
+      createFlag: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         IngestionProcessor,
@@ -46,6 +55,7 @@ describe('IngestionProcessor', () => {
         },
         { provide: ExtractionAgentService, useValue: extractionAgent },
         { provide: StorageService, useValue: storageService },
+        { provide: DedupService, useValue: dedupService },
       ],
     }).compile();
 
@@ -160,8 +170,8 @@ describe('IngestionProcessor', () => {
 
     await processor.process(job);
 
-    // Only one prisma.update call ('processing') — no 'failed' call
-    expect(prisma.emailIntakeLog.update).toHaveBeenCalledTimes(1);
+    // Two prisma.update calls: 'processing' then candidateId — neither is 'failed'
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledTimes(2);
     expect(prisma.emailIntakeLog.update).not.toHaveBeenCalledWith(
       expect.objectContaining({
         data: { processingStatus: 'failed' },
@@ -175,6 +185,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
   let prisma: { emailIntakeLog: { update: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
+  let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
@@ -185,6 +196,12 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
     };
     storageService = {
       upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/test-message-id.pdf'),
+    };
+    dedupService = {
+      check: jest.fn().mockResolvedValue(null),
+      insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
+      upsertCandidate: jest.fn().mockResolvedValue(undefined),
+      createFlag: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -199,6 +216,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
         },
         { provide: ExtractionAgentService, useValue: extractionAgent },
         { provide: StorageService, useValue: storageService },
+        { provide: DedupService, useValue: dedupService },
       ],
     }).compile();
 
@@ -277,12 +295,139 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
 });
 
 describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
-  // CAND-03: email_intake_log.candidate_id is set after Phase 6 candidate creation
-  it.todo('6-02-01: CAND-03 — email_intake_log.candidate_id set to new candidateId after no-match INSERT');
+  let processor: IngestionProcessor;
+  let prisma: { emailIntakeLog: { update: jest.Mock } };
+  let extractionAgent: { extract: jest.Mock };
+  let storageService: { upload: jest.Mock };
+  let dedupService: {
+    check: jest.Mock;
+    insertCandidate: jest.Mock;
+    upsertCandidate: jest.Mock;
+    createFlag: jest.Mock;
+  };
 
-  // Integration: exact email match triggers UPSERT (candidateId = existing candidate)
-  it.todo('6-02-02: exact email match — DedupService called, existing candidateId set on intake log');
+  beforeEach(async () => {
+    prisma = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+    };
+    extractionAgent = {
+      extract: jest.fn().mockResolvedValue({
+        fullName: 'Jane Doe',
+        email: 'jane.doe@example.com',
+        phone: '+1-555-0100',
+        currentRole: 'Senior Software Engineer',
+        yearsExperience: 7,
+        skills: ['TypeScript'],
+        summary: 'Experienced engineer.',
+        source: 'direct',
+        suspicious: false,
+      }),
+    };
+    storageService = {
+      upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/msg-id.pdf'),
+    };
+    dedupService = {
+      check: jest.fn().mockResolvedValue(null),
+      insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
+      upsertCandidate: jest.fn().mockResolvedValue(undefined),
+      createFlag: jest.fn().mockResolvedValue(undefined),
+    };
 
-  // Integration: fuzzy match triggers INSERT + createFlag, candidateId set on intake log
-  it.todo('6-02-03: fuzzy match — new candidate inserted, duplicate_flags created, candidateId set on intake log');
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        IngestionProcessor,
+        SpamFilterService,
+        AttachmentExtractorService,
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: ConfigService,
+          useValue: { get: jest.fn().mockReturnValue('test-tenant-id') },
+        },
+        { provide: ExtractionAgentService, useValue: extractionAgent },
+        { provide: StorageService, useValue: storageService },
+        { provide: DedupService, useValue: dedupService },
+      ],
+    }).compile();
+
+    processor = module.get<IngestionProcessor>(IngestionProcessor);
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  const validJobPayload = () =>
+    mockPostmarkPayload({
+      MessageID: 'msg-dedup-test',
+      From: 'sender@example.com',
+      Subject: 'Job Application from Jane Doe',
+      TextBody:
+        'Dear Hiring Manager, I have 5 years of experience in software engineering. Please find my CV attached.',
+      Attachments: [],
+    });
+
+  // 6-02-01: CAND-03 — no match → INSERT → email_intake_log.candidate_id set
+  it('6-02-01: CAND-03 — no-match INSERT sets email_intake_log.candidate_id', async () => {
+    dedupService.check.mockResolvedValue(null);
+    dedupService.insertCandidate.mockResolvedValue('new-candidate-id');
+
+    const job = { id: 'test-dedup-1', data: validJobPayload() } as any;
+    await processor.process(job);
+
+    expect(dedupService.check).toHaveBeenCalledTimes(1);
+    expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
+    expect(dedupService.upsertCandidate).not.toHaveBeenCalled();
+    expect(dedupService.createFlag).not.toHaveBeenCalled();
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { candidateId: 'new-candidate-id' },
+      }),
+    );
+  });
+
+  // 6-02-02: exact email match → UPSERT existing candidate → email_intake_log.candidate_id = existing ID
+  it('6-02-02: exact match — UPSERT called, existing candidateId set on intake log', async () => {
+    dedupService.check.mockResolvedValue({
+      match: { id: 'existing-cand-id' },
+      confidence: 1.0,
+      fields: ['email'],
+    });
+
+    const job = { id: 'test-dedup-2', data: validJobPayload() } as any;
+    await processor.process(job);
+
+    expect(dedupService.upsertCandidate).toHaveBeenCalledWith('existing-cand-id', expect.any(Object));
+    expect(dedupService.insertCandidate).not.toHaveBeenCalled();
+    expect(dedupService.createFlag).not.toHaveBeenCalled();
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { candidateId: 'existing-cand-id' },
+      }),
+    );
+  });
+
+  // 6-02-03: fuzzy match → INSERT new candidate + createFlag + email_intake_log.candidate_id = new ID
+  it('6-02-03: fuzzy match — new candidate inserted, flag created, candidateId set on intake log', async () => {
+    dedupService.check.mockResolvedValue({
+      match: { id: 'matched-cand-id' },
+      confidence: 0.85,
+      fields: ['name'],
+    });
+    dedupService.insertCandidate.mockResolvedValue('fuzzy-new-candidate-id');
+
+    const job = { id: 'test-dedup-3', data: validJobPayload() } as any;
+    await processor.process(job);
+
+    expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
+    expect(dedupService.createFlag).toHaveBeenCalledWith(
+      'fuzzy-new-candidate-id',
+      'matched-cand-id',
+      0.85,
+      'test-tenant-id',
+    );
+    expect(dedupService.upsertCandidate).not.toHaveBeenCalled();
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { candidateId: 'fuzzy-new-candidate-id' },
+      }),
+    );
+  });
 });
