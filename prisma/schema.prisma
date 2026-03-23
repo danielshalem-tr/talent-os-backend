@@ -63,6 +63,7 @@ model Candidate {
   source          String   @db.Text
   sourceAgency    String?  @map("source_agency") @db.Text
   sourceEmail     String?  @map("source_email") @db.Text
+  aiSummary       String?  @map("ai_summary") @db.Text
   metadata        Json?    @db.JsonB
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
