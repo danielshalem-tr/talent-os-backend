@@ -22,20 +22,20 @@ Inbound CVs are automatically processed, de-duplicated, and scored against open 
 - [x] Spam pre-filter discards obvious non-CV emails before any LLM call — *Validated in Phase 3: Processing Pipeline*
 - [x] PDF and DOCX attachments are parsed to plain text (pdf-parse + mammoth) — *Validated in Phase 3*
 - [x] Agent 1 (Haiku): ExtractionAgentService with CandidateExtractSchema (8 fields, Zod), mock extract() wired into IngestionProcessor with fullName failure handling — *Validated in Phase 4: AI Extraction*
+- [x] API and Worker run as separate processes (separate Docker containers) — CPU-heavy work never blocks webhook receipt — *Validated in Phase 8: Phase 1 Verification*
+- [x] Environment variables validated at startup via @nestjs/config + Zod — *Validated in Phase 8: Phase 1 Verification*
+- [x] Docker Compose runs identically locally and on Hetzner VPS — *Validated in Phase 8: Phase 1 Verification*
 
 ### Active
 
 - [ ] Postmark inbound webhook receives CV emails and verifies HMAC-SHA256 signature
 - [ ] Idempotency: duplicate webhook deliveries are detected via `MessageID` and silently skipped
-- [ ] API and Worker run as separate processes (separate Docker containers) — CPU-heavy work never blocks webhook receipt
 - [ ] Agent 1 (Haiku): real Anthropic generateObject call enabled (scaffolded in Phase 4, activated in Phase 5+)
 - [x] Original CV file is uploaded to Cloudflare R2 before dedup (Postmark does not retain attachments) — *Validated in Phase 5: File Storage*
 - [x] Duplicate detection runs in PostgreSQL via pg_trgm — no candidates loaded into memory — *Validated in Phase 6: Duplicate Detection*
 - [x] Exact email match → UPSERT; fuzzy match → INSERT new + `duplicate_flags` row for human review — *Validated in Phase 6*
 - [ ] Agent 2 (Sonnet): scores candidate against each active job; results stored append-only in `candidate_job_scores`
 - [ ] Multi-tenant schema from day 1: `tenant_id` on every table; Phase 1 has exactly one tenant
-- [ ] Environment variables validated at startup via @nestjs/config + Zod
-- [ ] Docker Compose runs identically locally and on Hetzner VPS
 
 ### Out of Scope
 
@@ -102,4 +102,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-03-23 after Phase 7 completion — end-to-end ingestion pipeline complete (email receipt → scoring → terminal status)*
+*Last updated: 2026-03-23 after Phase 8 completion — Phase 1 gap closure*
