@@ -1,98 +1,130 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# Triolla Talent OS — Backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+Automated email intake pipeline: receive CVs by email, extract candidate data with AI, deduplicate, score against open jobs.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Prerequisites
 
-## Description
+Before you start, ensure you have the following installed:
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- **Docker Desktop** — for running services with `docker compose`
+- **Node.js 22+** and **npm** — for running scripts and the Prisma CLI locally
+- **ngrok** — for exposing localhost to Postmark inbound webhooks
+  - macOS: `brew install ngrok`
+  - Other platforms: https://ngrok.com/download
+- **A Postmark account** with an inbound webhook server configured (free tier works)
 
-## Project setup
+## Environment Setup
 
 ```bash
-$ npm install
+cp .env.example .env
 ```
 
-## Compile and run the project
+Then edit `.env` and fill in each variable:
+
+| Variable | Where to get it |
+|---|---|
+| `ANTHROPIC_API_KEY` | Anthropic Console -> API Keys |
+| `POSTMARK_WEBHOOK_TOKEN` | Choose any secret string; configure the same value in Postmark -> Settings -> Inbound -> HTTP Basic Auth password |
+| `R2_ACCOUNT_ID` | Cloudflare dashboard -> R2 -> Manage R2 API Tokens |
+| `R2_ACCESS_KEY_ID` | Cloudflare R2 API token |
+| `R2_SECRET_ACCESS_KEY` | Cloudflare R2 API token |
+| `R2_BUCKET_NAME` | Your R2 bucket name (e.g. `triolla-cvs`) |
+| `POSTGRES_PASSWORD` | Set to any local password (e.g. `changeme`) |
+| `TENANT_ID` | Leave as `00000000-0000-0000-0000-000000000001` (hardcoded dev tenant) |
+| `DATABASE_URL` | Leave as-is — matches `docker-compose.dev.yml` |
+| `REDIS_URL` | Leave as-is — matches `docker-compose.dev.yml` |
+
+## First Run
+
+**Step 1 — Install dependencies:**
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
 ```
 
-## Run tests
+**Step 2 — Start all services:**
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+npm run docker:dev
 ```
 
-## Deployment
+Wait until you see `NestJS application listening` in the logs (usually 15-20 seconds).
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+**Step 3 — Bootstrap the database** (new terminal, first run only):
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run db:setup
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+This runs Prisma migrations and seeds 1 tenant + 1 "Software Engineer" job.
 
-## Resources
+**Step 4 — Verify the API is healthy:**
 
-Check out a few resources that may come in handy when working with NestJS:
+```bash
+node local-test/run.js --health
+# Expected output: Health OK
+```
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Testing the Full Flow
 
-## Support
+**Step 1 — Add at least one CV file** (PDF, DOC, or DOCX) to `local-test/files/`.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+**Step 2 — Start an ngrok tunnel** so Postmark can reach localhost:
 
-## Stay in touch
+```bash
+npm run ngrok
+```
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+Copy the printed URL, e.g.: `https://abc123.ngrok-free.app/webhooks/email`
 
-## License
+**Step 3 — Configure Postmark:**
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+- Go to Postmark -> Settings -> Inbound
+- Set the Webhook URL to the ngrok URL printed above
+- Set HTTP Basic Auth: username = `postmark`, password = value of `POSTMARK_WEBHOOK_TOKEN` from `.env`
+
+**Step 4 — Send a test webhook locally** (bypasses Postmark, hits localhost directly):
+
+```bash
+node local-test/run.js
+# Or send a specific file:
+node local-test/run.js my-cv.pdf
+```
+
+**Step 5 — Watch the worker process the job:**
+
+```bash
+npm run docker:logs:worker
+```
+
+**Step 6 — Inspect results in Prisma Studio:**
+
+```bash
+npm run db:studio
+# Open http://localhost:5555
+# Check: email_intake_log (status: success), candidates, applications, candidate_job_scores
+```
+
+## Useful Commands
+
+| Command | What it does |
+|---|---|
+| `npm run docker:dev` | Start all services, stream logs |
+| `npm run docker:down` | Stop and remove containers |
+| `npm run docker:logs` | Tail all service logs |
+| `npm run docker:logs:api` | Tail API logs only |
+| `npm run docker:logs:worker` | Tail worker logs only |
+| `npm run db:setup` | Run migrations + seed (first run) |
+| `npm run db:studio` | Open Prisma Studio at localhost:5555 |
+| `npm run ngrok` | Start ngrok tunnel, print Postmark URL |
+| `npm test` | Run unit tests |
+| `node local-test/run.js` | Send all CVs in local-test/files/ |
+| `node local-test/run.js --health` | Check API health |
+
+## Architecture
+
+- **API service** (port 3000): Receives Postmark inbound webhooks, validates auth via HTTP Basic Auth, enqueues jobs in BullMQ
+- **Worker service**: Processes jobs — extracts text from CV attachments, runs AI extraction (Claude Haiku), deduplicates candidates via pg_trgm, scores against open jobs (Claude Sonnet), stores results in PostgreSQL
+- **PostgreSQL 16**: All persistent data; pg_trgm extension for fuzzy candidate deduplication
+- **Redis 7**: BullMQ job queue between API and Worker
+- **Cloudflare R2**: Stores original CV files (S3-compatible, 10 GB free tier)
