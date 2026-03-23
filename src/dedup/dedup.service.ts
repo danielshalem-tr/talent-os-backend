@@ -69,8 +69,10 @@ export class DedupService {
     candidate: CandidateExtract,
     tenantId: string,
     fromEmail: string,
+    tx?: Prisma.TransactionClient,
   ): Promise<string> {
-    const created = await this.prisma.candidate.create({
+    const client = tx ?? this.prisma;
+    const created = await client.candidate.create({
       data: {
         tenantId,
         fullName: candidate.fullName,
@@ -88,8 +90,10 @@ export class DedupService {
   async upsertCandidate(
     candidateId: string,
     candidate: CandidateExtract,
+    tx?: Prisma.TransactionClient,
   ): Promise<void> {
-    await this.prisma.candidate.update({
+    const client = tx ?? this.prisma;
+    await client.candidate.update({
       where: { id: candidateId },
       data: {
         fullName: candidate.fullName,
@@ -104,8 +108,10 @@ export class DedupService {
     matchedCandidateId: string,
     confidence: number,
     tenantId: string,
+    tx?: Prisma.TransactionClient,
   ): Promise<void> {
-    await this.prisma.duplicateFlag.upsert({
+    const client = tx ?? this.prisma;
+    await client.duplicateFlag.upsert({
       where: {
         idx_duplicates_pair: { tenantId, candidateId, matchedCandidateId },
       },

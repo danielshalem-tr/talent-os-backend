@@ -140,40 +140,43 @@ export class IngestionProcessor extends WorkerHost {
       `Phase 4 complete for MessageID: ${payload.MessageID} — extracted: ${extraction.fullName}`,
     );
 
-    // Phase 6: Duplicate detection + minimal candidate shell INSERT/UPSERT
+    // Phase 6: Duplicate detection + minimal candidate shell INSERT/UPSERT (atomic)
+    // dedupService.check() runs OUTSIDE the transaction — read-only query, no benefit from holding lock
     const dedupResult: DedupResult | null = await this.dedupService.check(extraction, tenantId);
 
     let candidateId: string;
 
-    if (dedupResult && dedupResult.confidence === 1.0) {
-      // Exact email match (DEDUP-02): UPSERT existing candidate — update fullName + phone only
-      // source and sourceEmail are NEVER updated — first-submission ROI attribution (D-07)
-      await this.dedupService.upsertCandidate(dedupResult.match.id, extraction);
-      candidateId = dedupResult.match.id; // Use existing candidate ID (D-11)
-    } else if (dedupResult && dedupResult.confidence < 1.0) {
-      // Fuzzy name match (DEDUP-03): INSERT new candidate shell + create duplicate_flags for human review
-      // Never auto-merge — DEDUP-05, D-12
-      candidateId = await this.dedupService.insertCandidate(extraction, tenantId, payload.From);
-      await this.dedupService.createFlag(
-        candidateId,
-        dedupResult.match.id,
-        dedupResult.confidence,
-        tenantId,
-      );
-    } else {
-      // No match (DEDUP-04): INSERT new candidate shell
-      candidateId = await this.dedupService.insertCandidate(extraction, tenantId, payload.From);
-    }
+    await this.prisma.$transaction(async (tx) => {
+      if (dedupResult && dedupResult.confidence === 1.0) {
+        // Exact email match (DEDUP-02): UPSERT existing candidate — update fullName + phone only
+        // source and sourceEmail are NEVER updated — first-submission ROI attribution (D-07)
+        await this.dedupService.upsertCandidate(dedupResult.match.id, extraction, tx);
+        candidateId = dedupResult.match.id; // Use existing candidate ID (D-11)
+      } else if (dedupResult && dedupResult.confidence < 1.0) {
+        // Fuzzy name match (DEDUP-03): INSERT new candidate shell + create duplicate_flags for human review
+        // Never auto-merge — DEDUP-05, D-12
+        candidateId = await this.dedupService.insertCandidate(extraction, tenantId, payload.From, tx);
+        await this.dedupService.createFlag(
+          candidateId,
+          dedupResult.match.id,
+          dedupResult.confidence,
+          tenantId,
+          tx,
+        );
+      } else {
+        // No match (DEDUP-04): INSERT new candidate shell
+        candidateId = await this.dedupService.insertCandidate(extraction, tenantId, payload.From, tx);
+      }
 
-    // D-10: Set email_intake_log.candidate_id IMMEDIATELY — before any Phase 7 work
-    // If Phase 7 fails, the log is not orphaned
-    await this.prisma.emailIntakeLog.update({
-      where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-      data: { candidateId },
+      // D-10: Set email_intake_log.candidate_id atomically — if this fails, candidate INSERT rolls back too
+      await tx.emailIntakeLog.update({
+        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+        data: { candidateId: candidateId! },
+      });
     });
 
     // Pass candidateId to Phase 7 via context (D-16)
-    context.candidateId = candidateId;
+    context.candidateId = candidateId!;
 
     this.logger.log(
       `Phase 6 complete for MessageID: ${payload.MessageID} — candidateId: ${candidateId}`,

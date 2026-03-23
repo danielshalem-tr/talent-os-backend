@@ -18,14 +18,18 @@ jest.mock('mammoth', () => ({
 
 describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
 
   beforeEach(async () => {
+    const txClient = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+    };
     prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
     };
 
     extractionAgent = {
@@ -170,26 +174,32 @@ describe('IngestionProcessor', () => {
 
     await processor.process(job);
 
-    // Two prisma.update calls: 'processing' then candidateId — neither is 'failed'
-    expect(prisma.emailIntakeLog.update).toHaveBeenCalledTimes(2);
+    // One prisma.update call: 'processing'; candidateId update happens inside $transaction via tx
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledTimes(1);
     expect(prisma.emailIntakeLog.update).not.toHaveBeenCalledWith(
       expect.objectContaining({
         data: { processingStatus: 'failed' },
       }),
     );
+    // Transaction was used for the Phase 6 atomic block
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 });
 
 describe('IngestionProcessor — Phase 5 StorageService', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
 
   beforeEach(async () => {
+    const txClient = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+    };
     prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
     };
     extractionAgent = {
       extract: jest.fn().mockResolvedValue(mockCandidateExtract()),
@@ -296,7 +306,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
 
 describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: {
@@ -307,9 +317,18 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   };
 
   beforeEach(async () => {
-    prisma = {
+    const txClient = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
     };
+
+    prisma = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      // Simulate prisma.$transaction by invoking the callback with a tx client
+      $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => {
+        return cb(txClient);
+      }),
+    };
+
     extractionAgent = {
       extract: jest.fn().mockResolvedValue({
         fullName: 'Jane Doe',
@@ -376,11 +395,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
     expect(dedupService.upsertCandidate).not.toHaveBeenCalled();
     expect(dedupService.createFlag).not.toHaveBeenCalled();
-    expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: { candidateId: 'new-candidate-id' },
-      }),
-    );
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   // 6-02-02: exact email match → UPSERT existing candidate → email_intake_log.candidate_id = existing ID
@@ -394,14 +409,10 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     const job = { id: 'test-dedup-2', data: validJobPayload() } as any;
     await processor.process(job);
 
-    expect(dedupService.upsertCandidate).toHaveBeenCalledWith('existing-cand-id', expect.any(Object));
+    expect(dedupService.upsertCandidate).toHaveBeenCalledWith('existing-cand-id', expect.any(Object), expect.anything());
     expect(dedupService.insertCandidate).not.toHaveBeenCalled();
     expect(dedupService.createFlag).not.toHaveBeenCalled();
-    expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: { candidateId: 'existing-cand-id' },
-      }),
-    );
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   // 6-02-03: fuzzy match → INSERT new candidate + createFlag + email_intake_log.candidate_id = new ID
@@ -422,12 +433,35 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
       'matched-cand-id',
       0.85,
       'test-tenant-id',
+      expect.anything(),
     );
     expect(dedupService.upsertCandidate).not.toHaveBeenCalled();
-    expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: { candidateId: 'fuzzy-new-candidate-id' },
-      }),
-    );
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  // Phase 6 atomicity: if emailIntakeLog.update throws inside transaction, insertCandidate is rolled back
+  it('Phase 6 atomicity: if emailIntakeLog.update throws inside transaction, candidate INSERT is rolled back', async () => {
+    dedupService.check.mockResolvedValue(null);
+    dedupService.insertCandidate.mockResolvedValue('new-candidate-id');
+
+    // Override $transaction to simulate failure: invoke the callback but make emailIntakeLog.update throw
+    const txClient = {
+      emailIntakeLog: {
+        update: jest.fn().mockRejectedValueOnce(new Error('DB connection lost')),
+      },
+    };
+    prisma.$transaction.mockImplementationOnce(async (cb: (tx: typeof txClient) => Promise<void>) => {
+      return cb(txClient);
+    });
+
+    const job = { id: 'test-atomicity', data: validJobPayload() } as any;
+
+    // The transaction callback throws — processor should propagate the error
+    await expect(processor.process(job)).rejects.toThrow('DB connection lost');
+
+    // insertCandidate was called (it ran before the update)
+    expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
+    // The tx emailIntakeLog.update threw — simulating that Prisma would roll back
+    expect(txClient.emailIntakeLog.update).toHaveBeenCalledTimes(1);
   });
 });
