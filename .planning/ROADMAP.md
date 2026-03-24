@@ -225,11 +225,11 @@ Plans:
 **Goal:** Add POST /api/jobs endpoint with atomic nested creation of JobStage and ScreeningQuestion records; auto-seed 4 default hiring stages per job; additive schema migration only (no field removals).
 **Requirements:** D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08, D-09, D-10
 **Depends on:** Phase 9
-**Plans:** 1/4 plans executed
+**Plans:** 2/4 plans executed
 
 Plans:
 - [x] 10-00-PLAN.md — Wave 0: Create 3 test stub files (jobs.service.spec.ts, jobs.controller.spec.ts, jobs.integration.spec.ts) with it.todo stubs
-- [ ] 10-01-PLAN.md — Wave 1: Prisma schema migration — add JobStage + ScreeningQuestion models, extend Job + Application; run prisma migrate dev
+- [x] 10-01-PLAN.md — Wave 1: Prisma schema migration — add JobStage + ScreeningQuestion models, extend Job + Application; run prisma migrate dev
 - [ ] 10-02-PLAN.md — Wave 2: Create src/jobs/dto/create-job.dto.ts (Zod schemas); implement JobsService.createJob() with default stage seeding; 7 unit tests green
 - [ ] 10-03-PLAN.md — Wave 3: Add @Post() to JobsController with Zod validation; fill integration tests; human smoke test checkpoint
 
