@@ -80,6 +80,7 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 | 260323-jll | Developer onboarding: docker-compose.dev.yml, db:setup npm script, Israel timezone logging, ngrok helper, Getting Started README | 2026-03-23 | 15af143 | [260323-jll-developer-onboarding-docker-watch-script](./quick/260323-jll-developer-onboarding-docker-watch-script/) |
 | 260323-mai | Validate uncommitted changes; fix ngrok token parsing bug (cut -f2-); 4 atomic commits | 2026-03-23 | 8b4a1fc | [260323-mai-validate-uncommitted-changes-find-potent](./quick/260323-mai-validate-uncommitted-changes-find-potent/) |
 | 260324-agv | Replace Mock AI Extraction with OpenRouter MVP | 2026-03-24 | 1d93b1b | [260324-agv-replace-mock-ai-extraction-with-openrout](./quick/260324-agv-replace-mock-ai-extraction-with-openrout/) |
+| 260324-c3g | Clean up ExtractionAgentService: remove ENABLE_AI_EXTRACTION flag, isolate callAI(), add 2 seed candidates | 2026-03-24 | 80645f8 | [260324-c3g-clean-up-extraction-agent-service-ts-for](./quick/260324-c3g-clean-up-extraction-agent-service-ts-for/) |
 
 ### Todos
 
@@ -88,7 +89,7 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 ## Session Continuity
 
 **Last Session:** 2026-03-23T17:18:07.186Z
-Last activity: 2026-03-24 - Completed quick task 260324-agv: Replace Mock AI Extraction with OpenRouter MVP
+Last activity: 2026-03-24 - Completed quick task 260324-c3g: Clean up ExtractionAgentService, add seed candidates
 
 **What Happened:**
 
