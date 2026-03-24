@@ -13,12 +13,14 @@ model Tenant {
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations
-  jobs            Job[]
-  candidates      Candidate[]
-  applications    Application[]
-  scores          CandidateJobScore[]
-  duplicateFlags  DuplicateFlag[]
-  emailIntakeLogs EmailIntakeLog[]
+  jobs               Job[]
+  candidates         Candidate[]
+  applications       Application[]
+  scores             CandidateJobScore[]
+  duplicateFlags     DuplicateFlag[]
+  emailIntakeLogs    EmailIntakeLog[]
+  jobStages          JobStage[]
+  screeningQuestions ScreeningQuestion[]
 
   @@map("tenants")
 }
@@ -39,9 +41,20 @@ model Job {
   createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
+  roleSummary       String?  @map("role_summary") @db.Text
+  responsibilities  String?  @db.Text
+  whatWeOffer       String?  @map("what_we_offer") @db.Text
+  mustHaveSkills    String[] @default([]) @map("must_have_skills")
+  niceToHaveSkills  String[] @default([]) @map("nice_to_have_skills")
+  expYearsMin       Int?     @map("exp_years_min") @db.SmallInt
+  expYearsMax       Int?     @map("exp_years_max") @db.SmallInt
+  preferredOrgTypes String[] @default([]) @map("preferred_org_types")
+
   // Relations
-  tenant       Tenant        @relation(fields: [tenantId], references: [id])
-  applications Application[]
+  tenant             Tenant              @relation(fields: [tenantId], references: [id])
+  applications       Application[]
+  hiringStages       JobStage[]
+  screeningQuestions ScreeningQuestion[]
 
   @@index([tenantId, status], name: "idx_jobs_active")
   @@map("jobs")
@@ -86,6 +99,7 @@ model Application {
   candidateId String   @map("candidate_id") @db.Uuid
   jobId       String   @map("job_id") @db.Uuid
   stage       String   @default("new") @db.Text
+  jobStageId  String?  @map("job_stage_id") @db.Uuid
   notes       String?  @db.Text
   intakeLogId String?  @map("intake_log_id") @db.Uuid
   appliedAt   DateTime @default(now()) @map("applied_at") @db.Timestamptz
@@ -96,6 +110,7 @@ model Application {
   candidate Candidate           @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   job       Job                 @relation(fields: [jobId], references: [id], onDelete: Cascade)
   intakeLog EmailIntakeLog?     @relation(fields: [intakeLogId], references: [id])
+  jobStage  JobStage?           @relation(fields: [jobStageId], references: [id])
   scores    CandidateJobScore[]
 
   // DB-06: unique application per candidate per job per tenant
@@ -168,4 +183,46 @@ model EmailIntakeLog {
   // DB-08: unique message_id per tenant — primary idempotency guard
   @@unique([tenantId, messageId], name: "idx_intake_message_id")
   @@map("email_intake_log")
+}
+
+// ─── job_stages ───────────────────────────────────────────────────────────────
+model JobStage {
+  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId          String   @map("tenant_id") @db.Uuid
+  jobId             String   @map("job_id") @db.Uuid
+  name              String   @db.Text
+  order             Int      @db.SmallInt
+  responsibleUserId String?  @map("responsible_user_id") @db.Text
+  isCustom          Boolean  @default(false) @map("is_custom")
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  job          Job           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  applications Application[]
+
+  @@index([jobId, order], name: "idx_job_stages_job_order")
+  @@map("job_stages")
+}
+
+// ─── screening_questions ──────────────────────────────────────────────────────
+model ScreeningQuestion {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  jobId      String   @map("job_id") @db.Uuid
+  text       String   @db.Text
+  answerType String   @map("answer_type") @db.Text
+  required   Boolean  @default(false)
+  knockout   Boolean  @default(false)
+  order      Int      @db.SmallInt
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  // Relations
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  job    Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId], name: "idx_screening_questions_job")
+  @@map("screening_questions")
 }
