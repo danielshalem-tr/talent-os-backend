@@ -8,6 +8,7 @@ const TENANT_ID = '11111111-1111-1111-1111-111111111111';
 const mockPrismaService = {
   job: {
     findMany: jest.fn(),
+    create: jest.fn(),
   },
 };
 
@@ -33,13 +34,110 @@ describe('JobsService', () => {
   });
 
   describe('createJob()', () => {
-    it.todo('D-04: auto-seeds 4 default stages when hiringStages is omitted');
-    it.todo('D-04: default stages are Application Review, Screening, Interview, Offer in order');
-    it.todo('D-05: auto-seeded stages have isCustom=false');
-    it.todo('D-07: uses provided hiringStages when supplied in dto');
-    it.todo('D-06: creates screeningQuestions from dto.screeningQuestions');
-    it.todo('D-06: assigns tenantId from ConfigService to all nested creates');
-    it.todo('D-09: responsibleUserId on JobStage is free text string, not UUID-validated');
+    const mockCreatedJob = {
+      id: 'job-uuid',
+      tenantId: TENANT_ID,
+      title: 'Software Engineer',
+      hiringStages: [
+        { id: 's1', name: 'Application Review', order: 1, isCustom: false, tenantId: TENANT_ID },
+        { id: 's2', name: 'Screening', order: 2, isCustom: false, tenantId: TENANT_ID },
+        { id: 's3', name: 'Interview', order: 3, isCustom: false, tenantId: TENANT_ID },
+        { id: 's4', name: 'Offer', order: 4, isCustom: false, tenantId: TENANT_ID },
+      ],
+      screeningQuestions: [],
+    };
+
+    beforeEach(() => {
+      mockPrismaService.job.create.mockResolvedValue(mockCreatedJob);
+    });
+
+    it('D-04: auto-seeds 4 default stages when hiringStages is omitted', async () => {
+      await service.createJob({ title: 'Eng', requirements: [], mustHaveSkills: [], niceToHaveSkills: [], preferredOrgTypes: [], jobType: 'full_time', status: 'draft' });
+
+      const callArgs = mockPrismaService.job.create.mock.calls[0][0];
+      expect(callArgs.data.hiringStages.create).toHaveLength(4);
+    });
+
+    it('D-04: default stages are Application Review, Screening, Interview, Offer in order', async () => {
+      await service.createJob({ title: 'Eng', requirements: [], mustHaveSkills: [], niceToHaveSkills: [], preferredOrgTypes: [], jobType: 'full_time', status: 'draft' });
+
+      const callArgs = mockPrismaService.job.create.mock.calls[0][0];
+      const stages = callArgs.data.hiringStages.create;
+      expect(stages[0]).toMatchObject({ name: 'Application Review', order: 1 });
+      expect(stages[1]).toMatchObject({ name: 'Screening', order: 2 });
+      expect(stages[2]).toMatchObject({ name: 'Interview', order: 3 });
+      expect(stages[3]).toMatchObject({ name: 'Offer', order: 4 });
+    });
+
+    it('D-05: auto-seeded stages have isCustom=false', async () => {
+      await service.createJob({ title: 'Eng', requirements: [], mustHaveSkills: [], niceToHaveSkills: [], preferredOrgTypes: [], jobType: 'full_time', status: 'draft' });
+
+      const callArgs = mockPrismaService.job.create.mock.calls[0][0];
+      const stages = callArgs.data.hiringStages.create;
+      stages.forEach((stage: { isCustom: boolean }) => {
+        expect(stage.isCustom).toBe(false);
+      });
+    });
+
+    it('D-07: uses provided hiringStages when supplied in dto', async () => {
+      await service.createJob({
+        title: 'Eng',
+        requirements: [],
+        mustHaveSkills: [],
+        niceToHaveSkills: [],
+        preferredOrgTypes: [],
+        jobType: 'full_time',
+        status: 'draft',
+        hiringStages: [{ name: 'Custom', order: 1, isCustom: true }],
+      });
+
+      const callArgs = mockPrismaService.job.create.mock.calls[0][0];
+      expect(callArgs.data.hiringStages.create).toHaveLength(1);
+      expect(callArgs.data.hiringStages.create[0].name).toBe('Custom');
+    });
+
+    it('D-06: creates screeningQuestions from dto.screeningQuestions', async () => {
+      await service.createJob({
+        title: 'Eng',
+        requirements: [],
+        mustHaveSkills: [],
+        niceToHaveSkills: [],
+        preferredOrgTypes: [],
+        jobType: 'full_time',
+        status: 'draft',
+        screeningQuestions: [{ text: 'Q?', answerType: 'yes_no', required: false, knockout: false }],
+      });
+
+      const callArgs = mockPrismaService.job.create.mock.calls[0][0];
+      expect(callArgs.data.screeningQuestions.create).toHaveLength(1);
+      expect(callArgs.data.screeningQuestions.create[0].text).toBe('Q?');
+    });
+
+    it('D-06: assigns tenantId from ConfigService to all nested creates', async () => {
+      await service.createJob({ title: 'Eng', requirements: [], mustHaveSkills: [], niceToHaveSkills: [], preferredOrgTypes: [], jobType: 'full_time', status: 'draft' });
+
+      const callArgs = mockPrismaService.job.create.mock.calls[0][0];
+      const stages = callArgs.data.hiringStages.create;
+      stages.forEach((stage: { tenantId: string }) => {
+        expect(stage.tenantId).toBe(TENANT_ID);
+      });
+      expect(callArgs.data.tenantId).toBe(TENANT_ID);
+    });
+
+    it('D-09: responsibleUserId on JobStage is free text string, not UUID-validated', async () => {
+      await expect(
+        service.createJob({
+          title: 'Eng',
+          requirements: [],
+          mustHaveSkills: [],
+          niceToHaveSkills: [],
+          preferredOrgTypes: [],
+          jobType: 'full_time',
+          status: 'draft',
+          hiringStages: [{ name: 'Review', order: 1, responsibleUserId: 'John Smith (not a UUID)', isCustom: false }],
+        }),
+      ).resolves.not.toThrow();
+    });
   });
 
   describe('findAll', () => {
