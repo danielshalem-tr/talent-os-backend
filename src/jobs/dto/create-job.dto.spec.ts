@@ -81,7 +81,13 @@ describe('CreateJobSchema', () => {
 
 describe('HiringStageCreateSchema', () => {
   it('accepts name, order, color, is_enabled, is_custom', () => {
-    const result = HiringStageCreateSchema.parse({ name: 'Review', order: 1, color: 'bg-zinc-400', is_enabled: true, is_custom: false });
+    const result = HiringStageCreateSchema.parse({
+      name: 'Review',
+      order: 1,
+      color: 'bg-zinc-400',
+      is_enabled: true,
+      is_custom: false,
+    });
     expect(result.name).toBe('Review');
     expect(result.is_custom).toBe(false);
     expect(result.is_enabled).toBe(true);
@@ -94,7 +100,12 @@ describe('HiringStageCreateSchema', () => {
   });
 
   it('accepts free text string for interviewer (not UUID-validated)', () => {
-    const result = HiringStageCreateSchema.parse({ name: 'Review', order: 1, color: 'bg-zinc-400', interviewer: 'John Smith (not a UUID)' });
+    const result = HiringStageCreateSchema.parse({
+      name: 'Review',
+      order: 1,
+      color: 'bg-zinc-400',
+      interviewer: 'John Smith (not a UUID)',
+    });
     expect(result.interviewer).toBe('John Smith (not a UUID)');
   });
 
@@ -108,20 +119,20 @@ describe('HiringStageCreateSchema', () => {
 describe('ScreeningQuestionCreateSchema', () => {
   it('accepts valid type values: yes_no and text', () => {
     for (const type of ['yes_no', 'text']) {
-      expect(() =>
-        ScreeningQuestionCreateSchema.parse({ text: 'Q?', type }),
-      ).not.toThrow();
+      expect(() => ScreeningQuestionCreateSchema.parse({ text: 'Q?', type })).not.toThrow();
     }
   });
 
   it('rejects invalid type', () => {
-    expect(() =>
-      ScreeningQuestionCreateSchema.parse({ text: 'Q?', type: 'invalid' }),
-    ).toThrow();
+    expect(() => ScreeningQuestionCreateSchema.parse({ text: 'Q?', type: 'invalid' })).toThrow();
   });
 
   it('accepts optional expected_answer field', () => {
-    const result = ScreeningQuestionCreateSchema.parse({ text: 'React experience?', type: 'yes_no', expected_answer: 'yes' });
+    const result = ScreeningQuestionCreateSchema.parse({
+      text: 'React experience?',
+      type: 'yes_no',
+      expected_answer: 'yes',
+    });
     expect(result.expected_answer).toBe('yes');
   });
 

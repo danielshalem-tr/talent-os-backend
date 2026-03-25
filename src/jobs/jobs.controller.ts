@@ -10,6 +10,7 @@ import {
   NotFoundException,
   HttpCode,
 } from '@nestjs/common';
+import { ZodError } from 'zod';
 import { JobsService } from './jobs.service';
 import { CreateJobSchema } from './dto/create-job.dto';
 
@@ -26,11 +27,12 @@ export class JobsController {
   async create(@Body() body: unknown) {
     const result = CreateJobSchema.safeParse(body);
     if (!result.success) {
+      const fieldErrors = this.formatZodErrors(result.error);
       throw new BadRequestException({
         error: {
           code: 'VALIDATION_ERROR',
           message: 'Validation failed',
-          details: result.error.flatten().fieldErrors,
+          details: fieldErrors,
         },
       });
     }
@@ -41,11 +43,12 @@ export class JobsController {
   async update(@Param('id') id: string, @Body() body: unknown) {
     const result = CreateJobSchema.safeParse(body);
     if (!result.success) {
+      const fieldErrors = this.formatZodErrors(result.error);
       throw new BadRequestException({
         error: {
           code: 'VALIDATION_ERROR',
           message: 'Validation failed',
-          details: result.error.flatten().fieldErrors,
+          details: fieldErrors,
         },
       });
     }
@@ -81,5 +84,24 @@ export class JobsController {
       }
       throw error;
     }
+  }
+
+  /**
+   * Helper method to format Zod validation errors
+   * Converts ZodError.issues into field error structure
+   */
+  private formatZodErrors(error: ZodError): Record<string, string[]> {
+    const fieldErrors: Record<string, string[]> = {};
+
+    for (const issue of error.issues) {
+      const path = issue.path.length > 0 ? issue.path.join('.') : 'root';
+
+      if (!fieldErrors[path]) {
+        fieldErrors[path] = [];
+      }
+      fieldErrors[path].push(issue.message);
+    }
+
+    return fieldErrors;
   }
 }
