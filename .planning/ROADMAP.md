@@ -17,7 +17,7 @@
 - [x] **Phase 8: Phase 1 Verification** - Write VERIFICATION.md for Phase 1 foundation, close stale PROC-01/INFR-04/INFR-05 checkboxes (completed 2026-03-23)
 - [x] **Phase 9: Create client-facing REST API endpoints** - GET /api/candidates, /jobs, /applications endpoints (completed 2026-03-23)
 - [x] **Phase 10: Add job creation feature** - POST /api/jobs with atomic nested creation and default seeding (completed 2026-03-24)
-- [ ] **Phase 11: API Protocol MVP Implementation** - Complete job management endpoints with full validation and testing
+- [x] **Phase 11: API Protocol MVP Implementation** - Complete job management endpoints with full validation and testing (completed 2026-03-25)
 
 ## Phase Details
 
@@ -243,13 +243,13 @@ Plans:
 7. All endpoints enforce tenant isolation via ConfigService TENANT_ID
 8. All error responses use standard format with code, message, details
 9. Screening question responses use `type` field (not `answerType`), hide `required`/`knockout` fields
-10. Hiring stage responses include computed `color` field (client-computed from stage order, not stored)
+10. Hiring stage responses include `color` field (stored in DB for consistency with default stages)
 11. Integration tests pass covering all endpoints, validation scenarios, tenant isolation, and response formats
 
-**Plans:** 1/1 plans in progress
+**Plans:** 1/1 plans executed
 
 Plans:
-- [ ] 11-01-PLAN.md — Schema migrations, Config endpoint, Jobs endpoints (GET/POST/PUT/DELETE), validation, error handling, integration tests, human smoke test checkpoint
+- [x] 11-01-PLAN.md — Schema migrations (JobStage+ScreeningQuestion), GET /config endpoint, Jobs endpoints (GET/POST/PUT/DELETE), validation, error handling, 195 tests passing
 
 ## Progress
 
@@ -265,9 +265,9 @@ Plans:
 | 8. Phase 1 Verification | 1/1 | Complete | 2026-03-23 |
 | 9. Client-facing REST API | 3/3 | Complete | 2026-03-23 |
 | 10. Add job creation feature | 4/4 | Complete | 2026-03-24 |
-| 11. API Protocol MVP Implementation | 1/1 | In Progress | 2026-03-25 |
+| 11. API Protocol MVP Implementation | 1/1 | Complete | 2026-03-25 |
 
 ---
 
 *Roadmap created: 2026-03-22 by /gsd:new-roadmap*
-*Updated: 2026-03-25 by /gsd:plan-phase 11*
+*Updated: 2026-03-25 by execute-phase (Phase 11 completion)*

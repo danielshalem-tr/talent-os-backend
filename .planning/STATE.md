@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Milestone complete
-last_updated: "2026-03-25T07:30:40.616Z"
-last_activity: 2026-03-24
+status: All phases complete — project at v1.0 MVP ready
+last_updated: "2026-03-25T10:15:00.000Z"
+last_activity: 2026-03-25
 progress:
   total_phases: 11
-  completed_phases: 10
-  total_plans: 29
-  completed_plans: 29
+  completed_phases: 11
+  total_plans: 30
+  completed_plans: 30
 ---
 
 # State: Triolla Talent OS — Backend
@@ -22,14 +22,16 @@ progress:
 
 **Core Value:** Inbound CVs are automatically processed, de-duplicated, and scored against open jobs without any manual recruiter effort — end-to-end from email receipt to scored candidate record.
 
-**Current Focus:** Phase 10 — add-job-creation-feature
+**Current Focus:** Phase 11 — review-and-validate-api-protocol-mvp-spec-and-implementation-guide
 
 **Tech Stack (Locked):** TypeScript, NestJS 11, BullMQ + Redis, Prisma 7, PostgreSQL 16, Vercel AI SDK, Claude Haiku + Sonnet, Cloudflare R2, Postmark Inbound webhooks.
 
 ## Current Position
 
-Phase: 10
-Plan: Not started
+Phase: 11 (review-and-validate-api-protocol-mvp-spec-and-implementation-guide) — COMPLETE
+Plan: 1 of 1 — COMPLETE
+
+**STATUS: All planned phases and plans complete. Ready for deployment and Phase 2 planning.**
 
 ## Accumulated Context
 
@@ -92,10 +94,23 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 
 ## Session Continuity
 
-**Last Session:** 2026-03-25T07:30:40.612Z
-Last activity: 2026-03-24
+**Last Session:** 2026-03-25T10:15:00.000Z
+Last activity: 2026-03-25
 
-**What Happened:**
+**What Happened (Phase 11 Final):**
+
+11. Phase 11 (API Protocol MVP Implementation) — COMPLETE ✓
+    - 11-01: Full jobs API with GET /config, GET/POST/PUT/DELETE /jobs endpoints
+    - Schema extended: JobStage (interviewer, is_enabled, color), ScreeningQuestion (expected_answer)
+    - AppConfigModule with hardcoded 6 lookup tables and 4-stage template
+    - JobsService: findAll() with nested data, createJob() with default stage seeding, updateJob() atomic delete-recreate, deleteJob() soft-delete
+    - JobsController: all 5 endpoints with standard error format, validation, tenant isolation
+    - CreateJobDto: snake_case fields, cross-field validation (at least one stage enabled)
+    - 195 tests passing across 19 test suites (39 new integration tests)
+    - Verification: human checkpoint approved for API response format and behavior
+    - 1 deviation auto-fixed: color field added to schema (spec-required, not client-computed)
+
+**Full Phase Completion:**
 
 1. Phase 01 (Foundation) — all 3 plans complete ✓
    - 01-01: NestJS bootstrap + BullMQ worker entry point
@@ -138,8 +153,17 @@ Last activity: 2026-03-24
    - Added tx? param to DedupService.insertCandidate, upsertCandidate, createFlag — defaults to this.prisma
    - 86 tests passing (3 new: DEDUP-06, DEDUP-07, atomicity test), 12 suites, 0 failures
 
+8. Phases 07-11 (Parallel Implementation Waves)
+   - Phase 07 (Candidate Scoring): scoring_agent.service.ts, ScoringModule, 48 tests
+   - Phase 08 (Email Intake Log): intake_logs table, EnqueueHandler logging, 102 total tests
+   - Phase 09 (REST API): JobsController, GET /jobs, POST /jobs, validation, 145 total tests
+   - Phase 10 (Job Creation): POST /jobs enhancement, default stage seeding, 145 tests
+   - Phase 11 (API Protocol MVP): Full job management API, schema updates, 195 tests
+
 **Next Step:**
-Phase 07 — run `/gsd:plan-phase 7`.
+All Phase 1 MVP work complete. Ready for:
+- Deployment to Hetzner VPS
+- Phase 2 planning (recruiter auth, admin UI, outbound communications)
 
 ---
 
