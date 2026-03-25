@@ -4,13 +4,7 @@ import { Injectable } from '@nestjs/common';
 export class AppConfigService {
   getConfig() {
     return {
-      departments: [
-        'Engineering',
-        'Product',
-        'Design',
-        'Marketing',
-        'HR',
-      ],
+      departments: ['Engineering', 'Product', 'Design', 'Marketing', 'HR'],
       hiring_managers: [
         { id: 'mgr-1', name: 'Jane Smith' },
         { id: 'mgr-2', name: 'Admin Cohen' },
@@ -22,10 +16,8 @@ export class AppConfigService {
       ],
       organization_types: [
         { id: 'startup', label: 'Startup' },
-        { id: 'scale_up', label: 'Scale-up' },
         { id: 'enterprise', label: 'Enterprise' },
         { id: 'nonprofit', label: 'Nonprofit' },
-        { id: 'government', label: 'Government' },
       ],
       screening_question_types: [
         { id: 'yes_no', label: 'Yes / No' },
