@@ -246,7 +246,7 @@ Plans:
 10. Hiring stage responses include `color` field (stored in DB for consistency with default stages)
 11. Integration tests pass covering all endpoints, validation scenarios, tenant isolation, and response formats
 
-**Plans:** 1/1 plans executed
+**Plans:** 1/1 plans complete
 
 Plans:
 - [x] 11-01-PLAN.md — Schema migrations (JobStage+ScreeningQuestion), GET /config endpoint, Jobs endpoints (GET/POST/PUT/DELETE), validation, error handling, 195 tests passing
@@ -265,7 +265,7 @@ Plans:
 | 8. Phase 1 Verification | 1/1 | Complete | 2026-03-23 |
 | 9. Client-facing REST API | 3/3 | Complete | 2026-03-23 |
 | 10. Add job creation feature | 4/4 | Complete | 2026-03-24 |
-| 11. API Protocol MVP Implementation | 1/1 | Complete | 2026-03-25 |
+| 11. API Protocol MVP Implementation | 1/1 | Complete    | 2026-03-25 |
 
 ---
 
