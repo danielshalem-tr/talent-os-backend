@@ -24,34 +24,14 @@ export class AppConfigService {
         { id: 'text', label: 'Free Text' },
       ],
       hiring_stages_template: [
-        {
-          name: 'Application review',
-          is_enabled: true,
-          color: 'bg-zinc-400',
-          is_custom: false,
-          order: 1,
-        },
-        {
-          name: 'Screening',
-          is_enabled: true,
-          color: 'bg-blue-500',
-          is_custom: false,
-          order: 2,
-        },
-        {
-          name: 'Interview',
-          is_enabled: true,
-          color: 'bg-indigo-400',
-          is_custom: false,
-          order: 3,
-        },
-        {
-          name: 'Offer',
-          is_enabled: true,
-          color: 'bg-emerald-500',
-          is_custom: false,
-          order: 4,
-        },
+        { name: 'Application Review', is_enabled: true, color: 'bg-zinc-400', is_custom: false, order: 1 },
+        { name: 'Screening', is_enabled: true, color: 'bg-blue-500', is_custom: false, order: 2 },
+        { name: 'Interview', is_enabled: true, color: 'bg-indigo-400', is_custom: false, order: 3 },
+        { name: 'Offer', is_enabled: true, color: 'bg-emerald-500', is_custom: false, order: 4 },
+        { name: 'Hired', is_enabled: false, color: 'bg-green-600', is_custom: false, order: 5 },
+        { name: 'Rejected', is_enabled: false, color: 'bg-red-500', is_custom: false, order: 6 },
+        { name: 'Pending Decision', is_enabled: false, color: 'bg-yellow-400', is_custom: false, order: 7 },
+        { name: 'On Hold', is_enabled: false, color: 'bg-gray-500', is_custom: false, order: 8 },
       ],
     };
   }
