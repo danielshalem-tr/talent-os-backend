@@ -8,6 +8,10 @@ const DEFAULT_HIRING_STAGES = [
   { name: 'Screening', order: 2, isCustom: false, color: 'bg-blue-500', isEnabled: true },
   { name: 'Interview', order: 3, isCustom: false, color: 'bg-indigo-400', isEnabled: true },
   { name: 'Offer', order: 4, isCustom: false, color: 'bg-emerald-500', isEnabled: true },
+  { name: 'Hired', order: 5, isCustom: false, color: 'bg-green-600', isEnabled: false },
+  { name: 'Rejected', order: 6, isCustom: false, color: 'bg-red-500', isEnabled: false },
+  { name: 'Pending Decision', order: 7, isCustom: false, color: 'bg-yellow-400', isEnabled: false },
+  { name: 'On Hold', order: 8, isCustom: false, color: 'bg-gray-500', isEnabled: false },
 ];
 
 @Injectable()
