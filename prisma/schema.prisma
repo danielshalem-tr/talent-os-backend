@@ -187,15 +187,17 @@ model EmailIntakeLog {
 
 // ─── job_stages ───────────────────────────────────────────────────────────────
 model JobStage {
-  id                String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId          String   @map("tenant_id") @db.Uuid
-  jobId             String   @map("job_id") @db.Uuid
-  name              String   @db.Text
-  order             Int      @db.SmallInt
-  responsibleUserId String?  @map("responsible_user_id") @db.Text
-  isCustom          Boolean  @default(false) @map("is_custom")
-  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt         DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  jobId       String   @map("job_id") @db.Uuid
+  name        String   @db.Text
+  order       Int      @db.SmallInt
+  interviewer String?  @map("interviewer") @db.Text
+  isEnabled   Boolean  @default(true) @map("is_enabled")
+  color       String   @default("bg-zinc-400") @map("color") @db.Text
+  isCustom    Boolean  @default(false) @map("is_custom")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
@@ -208,16 +210,17 @@ model JobStage {
 
 // ─── screening_questions ──────────────────────────────────────────────────────
 model ScreeningQuestion {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId   String   @map("tenant_id") @db.Uuid
-  jobId      String   @map("job_id") @db.Uuid
-  text       String   @db.Text
-  answerType String   @map("answer_type") @db.Text
-  required   Boolean  @default(false)
-  knockout   Boolean  @default(false)
-  order      Int      @db.SmallInt
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  jobId          String   @map("job_id") @db.Uuid
+  text           String   @db.Text
+  answerType     String   @map("answer_type") @db.Text
+  expectedAnswer String?  @map("expected_answer") @db.Text
+  required       Boolean  @default(false)
+  knockout       Boolean  @default(false)
+  order          Int      @db.SmallInt
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   tenant Tenant @relation(fields: [tenantId], references: [id])
