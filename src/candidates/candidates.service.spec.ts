@@ -207,7 +207,7 @@ describe('CandidatesService', () => {
 const BASE_DTO = {
   full_name: 'Jane Doe',
   email: 'jane@example.com',
-  job_id: '00000000-0000-0000-0000-000000000001',
+  job_id: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11', // valid RFC 4122 v4 UUID
   source: 'linkedin' as const,
   skills: [],
 };
