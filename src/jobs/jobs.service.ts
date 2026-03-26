@@ -166,6 +166,28 @@ export class JobsService {
     });
   }
 
+  async getOpenJobs(): Promise<{ jobs: Array<{ id: string; title: string; department: string | null }> }> {
+    const tenantId = this.configService.get<string>('TENANT_ID')!;
+
+    const jobs = await this.prisma.job.findMany({
+      where: { tenantId, status: 'open' },
+      select: {
+        id: true,
+        title: true,
+        department: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    return {
+      jobs: jobs.map((j) => ({
+        id: j.id,
+        title: j.title,
+        department: j.department,
+      })),
+    };
+  }
+
   async deleteJob(id: string): Promise<void> {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
 
