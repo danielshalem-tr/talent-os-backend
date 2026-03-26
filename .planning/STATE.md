@@ -87,6 +87,7 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 | 260324-c3g | Clean up ExtractionAgentService: remove ENABLE_AI_EXTRACTION flag, isolate callAI(), add 2 seed candidates | 2026-03-24 | 80645f8 | [260324-c3g-clean-up-extraction-agent-service-ts-for](./quick/260324-c3g-clean-up-extraction-agent-service-ts-for/) |
 | 260324-cbs | Commit unstaged changes: @openrouter/sdk swap, CandidateExtract snake_case field rename, Zod v4 fix, PROTOCOL.md | 2026-03-24 | a5c32c7 | [260324-cbs-commit-all-unsaved-changes-into-atomic-c](./quick/260324-cbs-commit-all-unsaved-changes-into-atomic-c/) |
 | 260324-dvq | Fix hiringStages guard in 10-02-PLAN.md: empty array [] now falls through to default seeding | 2026-03-24 | bc1cc8a | [260324-dvq-fix-seeding-loophole-in-plan-10-02-hirin](./quick/260324-dvq-fix-seeding-loophole-in-plan-10-02-hirin/) |
+| 260326-dyi | Add optional status query param to GET /jobs endpoint | 2026-03-26 | 0b033fd | [260326-dyi-add-status-query-param-to-jobs-endpoint](./quick/260326-dyi-add-status-query-param-to-jobs-endpoint/) |
 
 ### Todos
 
@@ -94,8 +95,8 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 
 ## Session Continuity
 
-**Last Session:** 2026-03-25T10:15:00.000Z
-Last activity: 2026-03-25
+**Last Session:** 2026-03-26T10:00:00.000Z
+Last activity: 2026-03-26
 
 **What Happened (Phase 11 Final):**
 
