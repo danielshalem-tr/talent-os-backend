@@ -56,6 +56,7 @@ model Job {
   hiringStages       JobStage[]
   screeningQuestions ScreeningQuestion[]
 
+  @@unique([id, tenantId], name: "id_tenantId")
   @@index([tenantId, status], name: "idx_jobs_active")
   @@map("jobs")
 }

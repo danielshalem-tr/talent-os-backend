@@ -75,15 +75,15 @@ describe('GET /config', () => {
     expect(result).toHaveProperty('hiring_stages_template');
   });
 
-  it('hiring_stages_template has exactly 4 elements', () => {
+  it('hiring_stages_template has exactly 8 elements', () => {
     const result = configController.getConfig();
-    expect(result.hiring_stages_template).toHaveLength(4);
+    expect(result.hiring_stages_template).toHaveLength(8);
   });
 
-  it('hiring_stages_template first element is Application review with bg-zinc-400', () => {
+  it('hiring_stages_template first element is Application Review with bg-zinc-400', () => {
     const result = configController.getConfig();
     expect(result.hiring_stages_template[0]).toMatchObject({
-      name: 'Application review',
+      name: 'Application Review',
       is_enabled: true,
       color: 'bg-zinc-400',
       is_custom: false,
@@ -91,10 +91,19 @@ describe('GET /config', () => {
     });
   });
 
-  it('hiring_stages_template has correct colors for all 4 stages', () => {
+  it('hiring_stages_template has correct colors for all 8 stages', () => {
     const result = configController.getConfig();
     const colors = result.hiring_stages_template.map((s: any) => s.color);
-    expect(colors).toEqual(['bg-zinc-400', 'bg-blue-500', 'bg-indigo-400', 'bg-emerald-500']);
+    expect(colors).toEqual([
+      'bg-zinc-400',
+      'bg-blue-500',
+      'bg-indigo-400',
+      'bg-emerald-500',
+      'bg-green-600',
+      'bg-red-500',
+      'bg-yellow-400',
+      'bg-gray-500',
+    ]);
   });
 
   it('job_types has full_time, part_time, contract', () => {
@@ -248,14 +257,14 @@ describe('POST /jobs', () => {
     expect(createCall.data.hiringStages.create[0].name).toBe('Custom Stage');
   });
 
-  it('seeds 4 default stages if hiring_flow omitted', async () => {
+  it('seeds 8 default stages if hiring_flow omitted', async () => {
     const { prisma, mockTx } = makePostPrisma();
     const controller = makeJobsController(prisma);
 
     await controller.create({ title: 'Default Job', job_type: 'full_time', status: 'draft' });
 
     const createCall = mockTx.job.create.mock.calls[0][0];
-    expect(createCall.data.hiringStages.create).toHaveLength(4);
+    expect(createCall.data.hiringStages.create).toHaveLength(8);
     expect(createCall.data.hiringStages.create[0].name).toBe('Application Review');
     expect(createCall.data.hiringStages.create[3].name).toBe('Offer');
   });

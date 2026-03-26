@@ -4,9 +4,7 @@ export const CreateCandidateSchema = z.object({
   // Required fields
   full_name: z.string().min(1, 'Full name is required'),
   source: z.enum(['linkedin', 'website', 'agency', 'referral', 'direct'], {
-    errorMap: () => ({
-      message: 'Source must be one of: linkedin, website, agency, referral, direct',
-    }),
+    error: 'Source must be one of: linkedin, website, agency, referral, direct',
   }),
   job_id: z.string().uuid('job_id must be a valid UUID'),
 

@@ -75,7 +75,7 @@ describe('JobsService', () => {
       mockPrismaService.job.create.mockResolvedValue(mockCreatedJob);
     });
 
-    it('D-04: auto-seeds 4 default stages when hiring_flow is omitted', async () => {
+    it('D-04: auto-seeds 8 default stages when hiring_flow is omitted', async () => {
       await service.createJob({
         title: 'Eng',
         job_type: 'full_time',
@@ -86,7 +86,7 @@ describe('JobsService', () => {
       });
 
       const callArgs = mockPrismaService.job.create.mock.calls[0][0];
-      expect(callArgs.data.hiringStages.create).toHaveLength(4);
+      expect(callArgs.data.hiringStages.create).toHaveLength(8);
     });
 
     it('D-04: default stages are Application Review, Screening, Interview, Offer in order', async () => {

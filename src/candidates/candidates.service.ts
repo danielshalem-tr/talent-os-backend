@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from '../storage/storage.service';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
+import { Prisma } from '@prisma/client';
 
 export type CandidateFilter = 'all' | 'high-score' | 'available' | 'referred' | 'duplicates';
 
@@ -204,7 +205,7 @@ export class CandidatesService {
             sourceAgency: dto.source_agency ?? null,
             sourceEmail: null, // D-02: null for manual adds
             aiSummary: dto.ai_summary ?? null,
-            metadata: null, // D-02: null for manual adds
+            metadata: Prisma.JsonNull, // D-02: null for manual adds
           },
         });
 
