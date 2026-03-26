@@ -231,7 +231,7 @@ describe('CandidatesService.createCandidate()', () => {
   let service: CandidatesService;
   let mockStorageService: { uploadFromBuffer: jest.Mock };
   let mockPrisma: {
-    job: { findUnique: jest.Mock };
+    job: { findFirst: jest.Mock };
     candidate: { findFirst: jest.Mock; findMany: jest.Mock };
     application: { create: jest.Mock };
     $transaction: jest.Mock;
@@ -242,7 +242,7 @@ describe('CandidatesService.createCandidate()', () => {
     mockStorageService = { uploadFromBuffer: jest.fn().mockResolvedValue('cvs/tenant-123/cand-id.pdf') };
 
     mockPrisma = {
-      job: { findUnique: jest.fn().mockResolvedValue({ id: BASE_DTO.job_id }) },
+      job: { findFirst: jest.fn().mockResolvedValue({ id: BASE_DTO.job_id }) },
       candidate: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
       application: { create: jest.fn() },
       $transaction: jest.fn().mockImplementation(async (fn: any) => {
@@ -289,7 +289,7 @@ describe('CandidatesService.createCandidate()', () => {
     service = module.get<CandidatesService>(CandidatesService);
     jest.clearAllMocks();
     mockConfig.get.mockReturnValue('tenant-123');
-    mockPrisma.job.findUnique.mockResolvedValue({ id: BASE_DTO.job_id });
+    mockPrisma.job.findFirst.mockResolvedValue({ id: BASE_DTO.job_id });
     mockPrisma.candidate.findFirst.mockResolvedValue(null);
     mockStorageService.uploadFromBuffer.mockResolvedValue('cvs/tenant-123/cand-uuid.pdf');
     mockPrisma.$transaction.mockImplementation(async (fn: any) => {
@@ -389,15 +389,15 @@ describe('CandidatesService.createCandidate()', () => {
 
   // Tenant Isolation Test
 
-  it('should validate job using tenantId composite key', async () => {
+  it('should validate job exists in tenant', async () => {
     await service.createCandidate(BASE_DTO, undefined);
-    expect(mockPrisma.job.findUnique).toHaveBeenCalledWith({
-      where: { id_tenantId: { id: BASE_DTO.job_id, tenantId: 'tenant-123' } },
+    expect(mockPrisma.job.findFirst).toHaveBeenCalledWith({
+      where: { id: BASE_DTO.job_id, tenantId: 'tenant-123' },
     });
   });
 
   it('should throw NotFoundException if job does not exist', async () => {
-    mockPrisma.job.findUnique.mockResolvedValue(null);
+    mockPrisma.job.findFirst.mockResolvedValue(null);
     await expect(service.createCandidate(BASE_DTO, undefined)).rejects.toThrow(NotFoundException);
   });
 });

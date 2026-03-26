@@ -1,13 +1,5 @@
-import {
-  BadRequestException,
-  Body,
-  Controller,
-  Get,
-  Post,
-  Query,
-  UploadedFile,
-  UseInterceptors,
-} from '@nestjs/common';
+import 'multer';
+import { BadRequestException, Body, Controller, Get, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ZodError } from 'zod';
 import { CandidatesService } from './candidates.service';
@@ -19,19 +11,13 @@ export class CandidatesController {
   constructor(private readonly candidatesService: CandidatesService) {}
 
   @Get()
-  async findAll(
-    @Query('q') q?: string,
-    @Query('filter') filter?: CandidateFilter,
-  ) {
+  async findAll(@Query('q') q?: string, @Query('filter') filter?: CandidateFilter) {
     return this.candidatesService.findAll(q, filter);
   }
 
   @Post()
   @UseInterceptors(FileInterceptor('cv_file'))
-  async create(
-    @UploadedFile() file: Express.Multer.File | undefined,
-    @Body() body: unknown,
-  ) {
+  async create(@UploadedFile() file: Express.Multer.File | undefined, @Body() body: unknown) {
     const result = CreateCandidateSchema.safeParse(body);
     if (!result.success) {
       const fieldErrors = this.formatZodErrors(result.error);

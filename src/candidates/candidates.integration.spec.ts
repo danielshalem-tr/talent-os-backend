@@ -73,11 +73,11 @@ function makeTransactionMock(candidateOverrides: Record<string, any> = {}) {
 function makeBasePrisma(overrides: Record<string, any> = {}) {
   return {
     job: {
-      findUnique: jest.fn().mockResolvedValue({ id: JOB_ID }),
+      findFirst: jest.fn().mockResolvedValue({ id: JOB_ID }),
       findMany: jest.fn().mockResolvedValue([]),
       create: jest.fn(),
       update: jest.fn(),
-      findFirst: jest.fn(),
+      findUnique: jest.fn(),
       findFirstOrThrow: jest.fn(),
     },
     candidate: {
@@ -229,11 +229,11 @@ describe('POST /candidates', () => {
   it('404 — throws NotFoundException when job_id does not exist', async () => {
     const mockPrisma = makeBasePrisma({
       job: {
-        findUnique: jest.fn().mockResolvedValue(null),
+        findFirst: jest.fn().mockResolvedValue(null),
         findMany: jest.fn().mockResolvedValue([]),
         create: jest.fn(),
         update: jest.fn(),
-        findFirst: jest.fn(),
+        findUnique: jest.fn(),
         findFirstOrThrow: jest.fn(),
       },
     });
@@ -281,10 +281,10 @@ describe('GET /jobs/list', () => {
     const mockPrisma = makeBasePrisma({
       job: {
         findMany: jest.fn().mockResolvedValue([openJob]),
-        findUnique: jest.fn(),
+        findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
-        findFirst: jest.fn(),
+        findUnique: jest.fn(),
         findFirstOrThrow: jest.fn(),
       },
     });
@@ -304,10 +304,10 @@ describe('GET /jobs/list', () => {
     const mockPrisma = makeBasePrisma({
       job: {
         findMany: jest.fn().mockResolvedValue([]),
-        findUnique: jest.fn(),
+        findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
-        findFirst: jest.fn(),
+        findUnique: jest.fn(),
         findFirstOrThrow: jest.fn(),
       },
     });
@@ -324,10 +324,10 @@ describe('GET /jobs/list', () => {
     const mockPrisma = makeBasePrisma({
       job: {
         findMany: mockFindMany,
-        findUnique: jest.fn(),
+        findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
-        findFirst: jest.fn(),
+        findUnique: jest.fn(),
         findFirstOrThrow: jest.fn(),
       },
     });

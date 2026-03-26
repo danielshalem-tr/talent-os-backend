@@ -1,3 +1,4 @@
+import 'multer';
 import {
   ConflictException,
   Injectable,
@@ -36,10 +37,7 @@ export class CandidatesService {
     private readonly storageService: StorageService,
   ) {}
 
-  async findAll(
-    q?: string,
-    filter?: CandidateFilter,
-  ): Promise<{ candidates: CandidateResponse[]; total: number }> {
+  async findAll(q?: string, filter?: CandidateFilter): Promise<{ candidates: CandidateResponse[]; total: number }> {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
 
     // Build WHERE conditions
@@ -137,8 +135,8 @@ export class CandidatesService {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
 
     // Pre-validation 1: validate job exists in tenant
-    const job = await this.prisma.job.findUnique({
-      where: { id_tenantId: { id: dto.job_id, tenantId } },
+    const job = await this.prisma.job.findFirst({
+      where: { id: dto.job_id, tenantId },
     });
     if (!job) {
       throw new NotFoundException({
@@ -169,12 +167,7 @@ export class CandidatesService {
     let cvFileUrl: string | null = null;
     if (file) {
       try {
-        cvFileUrl = await this.storageService.uploadFromBuffer(
-          file.buffer,
-          file.mimetype,
-          tenantId,
-          candidateId,
-        );
+        cvFileUrl = await this.storageService.uploadFromBuffer(file.buffer, file.mimetype, tenantId, candidateId);
       } catch (err) {
         if (err instanceof BadRequestException) {
           throw err;
@@ -186,42 +179,40 @@ export class CandidatesService {
     }
 
     // Atomic transaction: create Candidate + Application
-    const { candidate, application } = await this.prisma.$transaction(
-      async (tx) => {
-        const candidate = await tx.candidate.create({
-          data: {
-            id: candidateId,
-            tenantId,
-            fullName: dto.full_name,
-            email: dto.email ?? null,
-            phone: dto.phone ?? null,
-            currentRole: dto.current_role ?? null,
-            location: dto.location ?? null,
-            yearsExperience: dto.years_experience ?? null,
-            skills: dto.skills ?? [],
-            cvText: null, // D-02: null for manual adds
-            cvFileUrl,
-            source: dto.source,
-            sourceAgency: dto.source_agency ?? null,
-            sourceEmail: null, // D-02: null for manual adds
-            aiSummary: dto.ai_summary ?? null,
-            metadata: Prisma.JsonNull, // D-02: null for manual adds
-          },
-        });
+    const { candidate, application } = await this.prisma.$transaction(async (tx) => {
+      const candidate = await tx.candidate.create({
+        data: {
+          id: candidateId,
+          tenantId,
+          fullName: dto.full_name,
+          email: dto.email ?? null,
+          phone: dto.phone ?? null,
+          currentRole: dto.current_role ?? null,
+          location: dto.location ?? null,
+          yearsExperience: dto.years_experience ?? null,
+          skills: dto.skills ?? [],
+          cvText: null, // D-02: null for manual adds
+          cvFileUrl,
+          source: dto.source,
+          sourceAgency: dto.source_agency ?? null,
+          sourceEmail: null, // D-02: null for manual adds
+          aiSummary: dto.ai_summary ?? null,
+          metadata: Prisma.JsonNull as unknown as Prisma.InputJsonValue, // D-02: null for manual adds
+        },
+      });
 
-        const application = await tx.application.create({
-          data: {
-            tenantId,
-            candidateId: candidate.id,
-            jobId: dto.job_id,
-            stage: 'new', // D-04
-            appliedAt: new Date(),
-          },
-        });
+      const application = await tx.application.create({
+        data: {
+          tenantId,
+          candidateId: candidate.id,
+          jobId: dto.job_id,
+          stage: 'new', // D-04
+          appliedAt: new Date(),
+        },
+      });
 
-        return { candidate, application };
-      },
-    );
+      return { candidate, application };
+    });
 
     // Map to snake_case response (D-03)
     return {
