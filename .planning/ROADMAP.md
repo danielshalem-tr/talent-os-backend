@@ -1,7 +1,7 @@
 # Roadmap: Triolla Talent OS — Backend (Phase 1)
 
 **Created:** 2026-03-22
-**Phases:** 11
+**Phases:** 13
 **Granularity:** Standard
 **Coverage:** 40/40 v1 requirements mapped
 
@@ -266,8 +266,42 @@ Plans:
 | 9. Client-facing REST API | 3/3 | Complete | 2026-03-23 |
 | 10. Add job creation feature | 4/4 | Complete | 2026-03-24 |
 | 11. API Protocol MVP Implementation | 1/1 | Complete    | 2026-03-25 |
+| 12. Support add candidate from the UI | 1/1 | Planned | 2026-03-26 |
+| 13. Implement Kanban board with candidate hiring stage tracking | 1/1 | Planned | 2026-03-26 |
+
+### Phase 12: Support add candidate from the UI
+
+**Goal:** Enable recruiters to add candidates directly via the UI (not just via email webhooks). Support full candidate creation flow with file attachments.
+
+**Depends on:** Phase 11
+
+**Plans:** 1 plan
+
+Plans:
+- [x] 12-01-PLAN.md — Full implementation (researched, context gathered, plan written)
+
+### Phase 13: Implement Kanban board with candidate hiring stage tracking
+
+**Goal:** Track candidates' current hiring stage directly on the Candidate entity, auto-assign the first stage when a candidate is created, and expose stage information in API responses for Kanban board UI rendering.
+
+**Depends on:** Phase 11
+
+**Requirements:** KANBAN-01, KANBAN-02, KANBAN-03, KANBAN-04, KANBAN-05
+
+**Success Criteria** (what must be TRUE):
+1. Candidate model has `hiring_stage_id` FK field pointing to JobStage
+2. CandidatesService.createCandidate() auto-assigns first JobStage (by position order) to new candidates
+3. GET /api/candidates response includes job_id, hiring_stage_id, hiring_stage_name for Kanban board rendering
+4. Existing candidates with job_id backfilled with first stage via Prisma migration
+5. Data integrity enforced: if job_id is NOT NULL, hiring_stage_id must also be NOT NULL
+6. All existing tests pass; zero breaking changes to API contract (additive fields only)
+
+**Plans:** 1/1 plan
+
+Plans:
+- [x] 13-01-PLAN.md — Wave 1: Schema update, migration with 3-step backfill, service logic, API response extension, tests
 
 ---
 
 *Roadmap created: 2026-03-22 by /gsd:new-roadmap*
-*Updated: 2026-03-25 by execute-phase (Phase 11 completion)*
+*Updated: 2026-03-26 by plan-phase (Phase 13 planning complete)*
