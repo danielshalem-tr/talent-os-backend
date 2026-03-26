@@ -1,6 +1,14 @@
-import { Injectable } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  InternalServerErrorException,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { StorageService } from '../storage/storage.service';
+import { CreateCandidateDto } from './dto/create-candidate.dto';
 
 export type CandidateFilter = 'all' | 'high-score' | 'available' | 'referred' | 'duplicates';
 
@@ -24,6 +32,7 @@ export class CandidatesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
+    private readonly storageService: StorageService,
   ) {}
 
   async findAll(
@@ -118,5 +127,122 @@ export class CandidatesService {
     }
 
     return { candidates: result, total: result.length };
+  }
+
+  async createCandidate(
+    dto: CreateCandidateDto,
+    file: Express.Multer.File | undefined,
+  ): Promise<Record<string, unknown>> {
+    const tenantId = this.configService.get<string>('TENANT_ID')!;
+
+    // Pre-validation 1: validate job exists in tenant
+    const job = await this.prisma.job.findUnique({
+      where: { id_tenantId: { id: dto.job_id, tenantId } },
+    });
+    if (!job) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Job not found' },
+      });
+    }
+
+    // Pre-validation 2: validate email uniqueness (only if email provided)
+    if (dto.email) {
+      const existing = await this.prisma.candidate.findFirst({
+        where: { tenantId, email: dto.email },
+        select: { id: true },
+      });
+      if (existing) {
+        throw new ConflictException({
+          error: {
+            code: 'EMAIL_EXISTS',
+            message: 'A candidate with this email already exists',
+          },
+        });
+      }
+    }
+
+    // Generate candidate ID before upload so R2 key matches the candidate record
+    const candidateId = crypto.randomUUID();
+
+    // File upload (before transaction — external service)
+    let cvFileUrl: string | null = null;
+    if (file) {
+      try {
+        cvFileUrl = await this.storageService.uploadFromBuffer(
+          file.buffer,
+          file.mimetype,
+          tenantId,
+          candidateId,
+        );
+      } catch (err) {
+        if (err instanceof BadRequestException) {
+          throw err;
+        }
+        throw new InternalServerErrorException({
+          error: { code: 'UPLOAD_FAILED', message: 'Failed to upload CV file' },
+        });
+      }
+    }
+
+    // Atomic transaction: create Candidate + Application
+    const { candidate, application } = await this.prisma.$transaction(
+      async (tx) => {
+        const candidate = await tx.candidate.create({
+          data: {
+            id: candidateId,
+            tenantId,
+            fullName: dto.full_name,
+            email: dto.email ?? null,
+            phone: dto.phone ?? null,
+            currentRole: dto.current_role ?? null,
+            location: dto.location ?? null,
+            yearsExperience: dto.years_experience ?? null,
+            skills: dto.skills ?? [],
+            cvText: null, // D-02: null for manual adds
+            cvFileUrl,
+            source: dto.source,
+            sourceAgency: dto.source_agency ?? null,
+            sourceEmail: null, // D-02: null for manual adds
+            aiSummary: dto.ai_summary ?? null,
+            metadata: null, // D-02: null for manual adds
+          },
+        });
+
+        const application = await tx.application.create({
+          data: {
+            tenantId,
+            candidateId: candidate.id,
+            jobId: dto.job_id,
+            stage: 'new', // D-04
+            appliedAt: new Date(),
+          },
+        });
+
+        return { candidate, application };
+      },
+    );
+
+    // Map to snake_case response (D-03)
+    return {
+      id: candidate.id,
+      tenant_id: candidate.tenantId,
+      full_name: candidate.fullName,
+      email: candidate.email,
+      phone: candidate.phone,
+      current_role: candidate.currentRole,
+      location: candidate.location,
+      years_experience: candidate.yearsExperience,
+      skills: candidate.skills,
+      cv_text: candidate.cvText,
+      cv_file_url: candidate.cvFileUrl,
+      source: candidate.source,
+      source_agency: candidate.sourceAgency,
+      source_email: candidate.sourceEmail,
+      ai_summary: candidate.aiSummary,
+      metadata: candidate.metadata,
+      created_at: candidate.createdAt,
+      updated_at: candidate.updatedAt,
+      application_id: application.id,
+    };
   }
 }
