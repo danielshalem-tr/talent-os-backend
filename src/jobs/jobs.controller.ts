@@ -23,6 +23,11 @@ export class JobsController {
     return this.jobsService.findAll();
   }
 
+  @Get('list')
+  async getOpenJobs() {
+    return this.jobsService.getOpenJobs();
+  }
+
   @Post()
   async create(@Body() body: unknown) {
     const result = CreateJobSchema.safeParse(body);
