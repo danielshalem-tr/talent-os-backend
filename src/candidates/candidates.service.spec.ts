@@ -238,6 +238,7 @@ describe('CandidatesService.createCandidate()', () => {
   let mockStorageService: { uploadFromBuffer: jest.Mock };
   let mockPrisma: {
     job: { findFirst: jest.Mock };
+    jobStage: { findFirst: jest.Mock };
     candidate: { findFirst: jest.Mock; findMany: jest.Mock };
     application: { create: jest.Mock };
     $transaction: jest.Mock;
@@ -408,5 +409,111 @@ describe('CandidatesService.createCandidate()', () => {
   it('should throw NotFoundException if job does not exist', async () => {
     mockPrisma.job.findFirst.mockResolvedValue(null);
     await expect(service.createCandidate(BASE_DTO, undefined)).rejects.toThrow(NotFoundException);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CandidatesService.deleteCandidate() unit tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CandidatesService.deleteCandidate()', () => {
+  const TENANT_ID = '11111111-1111-1111-1111-111111111111';
+  const CAND_ID = 'cand-uuid';
+
+  let service: CandidatesService;
+  let mockPrisma: {
+    candidate: { findFirst: jest.Mock };
+    $transaction: jest.Mock;
+  };
+
+  let txDuplicateFlag: { deleteMany: jest.Mock };
+  let txEmailIntakeLog: { updateMany: jest.Mock };
+  let txCandidate: { delete: jest.Mock };
+
+  beforeEach(async () => {
+    txDuplicateFlag = { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) };
+    txEmailIntakeLog = { updateMany: jest.fn().mockResolvedValue({ count: 0 }) };
+    txCandidate = { delete: jest.fn().mockResolvedValue({ id: CAND_ID }) };
+
+    mockPrisma = {
+      candidate: { findFirst: jest.fn().mockResolvedValue({ id: CAND_ID }) },
+      $transaction: jest.fn().mockImplementation(async (fn: any) =>
+        fn({
+          duplicateFlag: txDuplicateFlag,
+          emailIntakeLog: txEmailIntakeLog,
+          candidate: txCandidate,
+        }),
+      ),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        CandidatesService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(TENANT_ID) } },
+        { provide: StorageService, useValue: { uploadFromBuffer: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get<CandidatesService>(CandidatesService);
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('throws NotFoundException when candidate does not exist', async () => {
+    mockPrisma.candidate.findFirst.mockResolvedValue(null);
+    await expect(service.deleteCandidate('no-such-id')).rejects.toThrow(NotFoundException);
+    expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('scopes findFirst lookup to tenant', async () => {
+    await service.deleteCandidate(CAND_ID);
+    expect(mockPrisma.candidate.findFirst).toHaveBeenCalledWith({
+      where: { id: CAND_ID, tenantId: TENANT_ID },
+      select: { id: true },
+    });
+  });
+
+  it('runs inside a transaction', async () => {
+    await service.deleteCandidate(CAND_ID);
+    expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('deletes DuplicateFlags on both candidateId and matchedCandidateId sides', async () => {
+    await service.deleteCandidate(CAND_ID);
+    expect(txDuplicateFlag.deleteMany).toHaveBeenCalledWith({
+      where: {
+        OR: [{ candidateId: CAND_ID }, { matchedCandidateId: CAND_ID }],
+      },
+    });
+  });
+
+  it('nullifies EmailIntakeLog.candidateId before deleting candidate', async () => {
+    await service.deleteCandidate(CAND_ID);
+    expect(txEmailIntakeLog.updateMany).toHaveBeenCalledWith({
+      where: { candidateId: CAND_ID },
+      data: { candidateId: null },
+    });
+  });
+
+  it('deletes the candidate record inside the transaction', async () => {
+    await service.deleteCandidate(CAND_ID);
+    expect(txCandidate.delete).toHaveBeenCalledWith({ where: { id: CAND_ID } });
+  });
+
+  it('executes steps in order: DuplicateFlag → EmailIntakeLog → Candidate', async () => {
+    const order: string[] = [];
+    txDuplicateFlag.deleteMany.mockImplementation(async () => { order.push('duplicateFlag'); return { count: 0 }; });
+    txEmailIntakeLog.updateMany.mockImplementation(async () => { order.push('emailIntakeLog'); return { count: 0 }; });
+    txCandidate.delete.mockImplementation(async () => { order.push('candidate'); return { id: CAND_ID }; });
+
+    await service.deleteCandidate(CAND_ID);
+
+    expect(order).toEqual(['duplicateFlag', 'emailIntakeLog', 'candidate']);
+  });
+
+  it('propagates unexpected errors from the transaction', async () => {
+    mockPrisma.$transaction.mockRejectedValue(new Error('DB failure'));
+    await expect(service.deleteCandidate(CAND_ID)).rejects.toThrow('DB failure');
   });
 });

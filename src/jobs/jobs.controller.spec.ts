@@ -7,6 +7,7 @@ describe('JobsController', () => {
     createJob: jest.fn(),
     updateJob: jest.fn(),
     deleteJob: jest.fn(),
+    hardDeleteJob: jest.fn(),
   };
 
   let controller: JobsController;
@@ -154,4 +155,37 @@ describe('JobsController', () => {
       }
     });
   });
+
+  describe('DELETE /jobs/:id/hard', () => {
+    it('calls jobsService.hardDeleteJob with the correct id', async () => {
+      mockJobsService.hardDeleteJob.mockResolvedValue(undefined);
+      await controller.hardDelete('job-1');
+      expect(mockJobsService.hardDeleteJob).toHaveBeenCalledWith('job-1');
+    });
+
+    it('returns 404 NOT_FOUND when job not found', async () => {
+      mockJobsService.hardDeleteJob.mockRejectedValue(new NotFoundException());
+      try {
+        await controller.hardDelete('nonexistent');
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(NotFoundException);
+        const response = (err as NotFoundException).getResponse() as any;
+        expect(response.error.code).toBe('NOT_FOUND');
+        expect(response.error.message).toBe('Job not found');
+      }
+    });
+
+    it('does not call deleteJob (soft-delete) when hard-deleting', async () => {
+      mockJobsService.hardDeleteJob.mockResolvedValue(undefined);
+      await controller.hardDelete('job-1');
+      expect(mockJobsService.deleteJob).not.toHaveBeenCalled();
+    });
+
+    it('propagates unexpected errors without wrapping them', async () => {
+      mockJobsService.hardDeleteJob.mockRejectedValue(new Error('Unexpected DB error'));
+      await expect(controller.hardDelete('job-1')).rejects.toThrow('Unexpected DB error');
+    });
+  });
 });
+

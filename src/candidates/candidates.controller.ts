@@ -3,7 +3,10 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  NotFoundException,
   Param,
   Patch,
   Post,
@@ -84,6 +87,27 @@ export class CandidatesController {
     }
     await this.candidatesService.updateStage(id, result.data);
     return { success: true };
+  }
+
+  /**
+   * Hard-delete a candidate and all related data:
+   * - DuplicateFlag rows (both candidateId and matchedCandidateId sides)
+   * - EmailIntakeLog references (nullified)
+   * - Applications + CandidateJobScores (cascade)
+   */
+  @Delete(':id')
+  @HttpCode(204)
+  async delete(@Param('id') id: string): Promise<void> {
+    try {
+      await this.candidatesService.deleteCandidate(id);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Candidate not found' },
+        });
+      }
+      throw error;
+    }
   }
 
   private formatZodErrors(error: ZodError): Record<string, string[]> {

@@ -7,7 +7,9 @@ export const CreateCandidateSchema = z.object({
     ['linkedin', 'website', 'agency', 'referral', 'direct', 'manual'],
     'Source must be one of: linkedin, website, agency, referral, direct, manual',
   ),
-  job_id: z.string().uuid('job_id must be a valid UUID'),
+  job_id: z
+    .string()
+    .regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, 'hiring_stage_id must be a valid UUID'),
 
   // Optional fields
   email: z.email('Must be a valid email').nullable().optional(),

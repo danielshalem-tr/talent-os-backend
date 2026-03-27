@@ -263,6 +263,28 @@ export class JobsService {
     });
   }
 
+  async hardDeleteJob(id: string): Promise<void> {
+    const tenantId = this.configService.get<string>('TENANT_ID')!;
+
+    // Verify exists and belongs to this tenant
+    const job = await this.prisma.job.findFirst({
+      where: { id, tenantId },
+    });
+
+    if (!job) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Job not found' },
+      });
+    }
+
+    // Hard delete — Prisma/DB cascades handle the cleanup:
+    //   - JobStage       → onDelete: Cascade  ✓
+    //   - ScreeningQuestion → onDelete: Cascade  ✓
+    //   - Application    → onDelete: Cascade  ✓  (CandidateJobScore cascades from Application)
+    //   - Candidate.jobId / hiringStageId → onDelete: SetNull  ✓
+    await this.prisma.job.delete({ where: { id } });
+  }
+
   private _formatJobResponse(job: any) {
     return {
       id: job.id,

@@ -74,6 +74,7 @@ export class JobsController {
     }
   }
 
+  /** Soft-delete (status → closed) */
   @Delete(':id')
   @HttpCode(204)
   async delete(@Param('id') id: string) {
@@ -86,6 +87,26 @@ export class JobsController {
             code: 'NOT_FOUND',
             message: 'Job not found',
           },
+        });
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Hard-delete a job and all related data:
+   * - JobStages, ScreeningQuestions, Applications, CandidateJobScores (cascade)
+   * - Candidates linked to the job get jobId and hiringStageId set to null (SetNull)
+   */
+  @Delete(':id/hard')
+  @HttpCode(204)
+  async hardDelete(@Param('id') id: string) {
+    try {
+      await this.jobsService.hardDeleteJob(id);
+    } catch (error: any) {
+      if (error instanceof NotFoundException) {
+        throw new NotFoundException({
+          error: { code: 'NOT_FOUND', message: 'Job not found' },
         });
       }
       throw error;

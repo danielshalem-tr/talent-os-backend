@@ -201,6 +201,44 @@ export class CandidatesService {
     });
   }
 
+  async deleteCandidate(candidateId: string): Promise<void> {
+    const tenantId = this.configService.get<string>('TENANT_ID')!;
+
+    // Verify the candidate exists and belongs to this tenant
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { id: candidateId, tenantId },
+      select: { id: true },
+    });
+
+    if (!candidate) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Candidate not found' },
+      });
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // 1. Delete DuplicateFlag rows where this candidate appears on either side
+      //    (schema uses onDelete: Restrict — must remove manually)
+      await tx.duplicateFlag.deleteMany({
+        where: {
+          OR: [{ candidateId }, { matchedCandidateId: candidateId }],
+        },
+      });
+
+      // 2. Nullify EmailIntakeLog.candidateId (optional FK, no cascade defined)
+      await tx.emailIntakeLog.updateMany({
+        where: { candidateId },
+        data: { candidateId: null },
+      });
+
+      // 3. Delete the candidate — Application rows cascade (onDelete: Cascade)
+      //    and CandidateJobScore cascades from Application
+      await tx.candidate.delete({
+        where: { id: candidateId },
+      });
+    });
+  }
+
   async createCandidate(
     dto: CreateCandidateDto,
     file: Express.Multer.File | undefined,

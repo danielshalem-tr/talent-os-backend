@@ -66,7 +66,7 @@ describe('JobsService', () => {
         { id: 's4', name: 'Offer', order: 4, isCustom: false, isEnabled: true, color: 'bg-emerald-500', interviewer: null, tenantId: TENANT_ID },
       ],
       screeningQuestions: [],
-      _count: { applications: 0 },
+      _count: { candidates: 0 },
     };
 
     beforeEach(() => {
@@ -233,7 +233,7 @@ describe('JobsService', () => {
       screeningQuestions: [
         { id: 'q1', text: 'React exp?', answerType: 'yes_no', expectedAnswer: 'yes' },
       ],
-      _count: { applications: 5 },
+      _count: { candidates: 5 },
     };
 
     beforeEach(() => {
@@ -342,6 +342,45 @@ describe('JobsService', () => {
       mockPrismaService.job.findFirst.mockResolvedValue(null);
 
       await expect(service.deleteJob('nonexistent')).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('hardDeleteJob()', () => {
+    beforeEach(() => {
+      // Add job.delete to the mock (not present in the original top-level mock)
+      (mockPrismaService.job as any).delete = jest.fn().mockResolvedValue({ id: 'job-1' });
+    });
+
+    it('throws NotFoundException when job does not exist', async () => {
+      mockPrismaService.job.findFirst.mockResolvedValue(null);
+      await expect(service.hardDeleteJob('nonexistent')).rejects.toThrow(NotFoundException);
+    });
+
+    it('scopes existence check to tenant', async () => {
+      mockPrismaService.job.findFirst.mockResolvedValue({ id: 'job-1' });
+      await service.hardDeleteJob('job-1');
+      expect(mockPrismaService.job.findFirst).toHaveBeenCalledWith({
+        where: { id: 'job-1', tenantId: TENANT_ID },
+      });
+    });
+
+    it('calls prisma.job.delete (hard delete, not update)', async () => {
+      mockPrismaService.job.findFirst.mockResolvedValue({ id: 'job-1' });
+      await service.hardDeleteJob('job-1');
+      expect((mockPrismaService.job as any).delete).toHaveBeenCalledWith({ where: { id: 'job-1' } });
+      expect(mockPrismaService.job.update).not.toHaveBeenCalled();
+    });
+
+    it('does not call findFirst if job does not exist (throws before delete)', async () => {
+      mockPrismaService.job.findFirst.mockResolvedValue(null);
+      await expect(service.hardDeleteJob('job-1')).rejects.toThrow(NotFoundException);
+      expect((mockPrismaService.job as any).delete).not.toHaveBeenCalled();
+    });
+
+    it('propagates unexpected errors from prisma.job.delete', async () => {
+      mockPrismaService.job.findFirst.mockResolvedValue({ id: 'job-1' });
+      (mockPrismaService.job as any).delete.mockRejectedValue(new Error('DB error'));
+      await expect(service.hardDeleteJob('job-1')).rejects.toThrow('DB error');
     });
   });
 });
