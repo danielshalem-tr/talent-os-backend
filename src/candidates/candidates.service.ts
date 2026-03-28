@@ -35,7 +35,7 @@ export class CandidatesService {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
 
     // Build WHERE conditions
-    const where: Record<string, unknown> = { tenantId };
+    const where: Prisma.CandidateWhereInput = { tenantId };
 
     // ── NEW: filter by job ──────────────────────────────────────────────
     if (jobId) {
@@ -80,6 +80,7 @@ export class CandidatesService {
         location: true,
         cvFileUrl: true,
         source: true,
+        sourceAgency: true,
         createdAt: true,
         skills: true,
         jobId: true,
@@ -120,6 +121,7 @@ export class CandidatesService {
         location: c.location,
         cv_file_url: c.cvFileUrl,
         source: c.source,
+        source_agency: c.sourceAgency,
         created_at: c.createdAt,
         ai_score: aiScore,
         is_duplicate: c.duplicateFlags.length > 0,
@@ -141,7 +143,6 @@ export class CandidatesService {
     return { candidates: result, total: result.length };
   }
 
-  // ── NEW: Update candidate hiring stage (Kanban drag-and-drop) ─────────
   async updateStage(candidateId: string, dto: UpdateCandidateStageDto): Promise<void> {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
 
@@ -333,7 +334,6 @@ export class CandidatesService {
           sourceAgency: dto.source_agency ?? null,
           sourceEmail: null,
           aiSummary: dto.ai_summary ?? null,
-          metadata: Prisma.JsonNull as unknown as Prisma.InputJsonValue,
         },
       });
 
@@ -354,7 +354,6 @@ export class CandidatesService {
     // Map to snake_case response (D-03)
     return {
       id: candidate.id,
-      tenant_id: candidate.tenantId,
       job_id: candidate.jobId,
       hiring_stage_id: candidate.hiringStageId,
       full_name: candidate.fullName,
@@ -364,16 +363,37 @@ export class CandidatesService {
       location: candidate.location,
       years_experience: candidate.yearsExperience,
       skills: candidate.skills,
-      cv_text: candidate.cvText,
       cv_file_url: candidate.cvFileUrl,
       source: candidate.source,
       source_agency: candidate.sourceAgency,
-      source_email: candidate.sourceEmail,
       ai_summary: candidate.aiSummary,
-      metadata: candidate.metadata,
       created_at: candidate.createdAt,
       updated_at: candidate.updatedAt,
       application_id: application.id,
     };
+  }
+
+  async getCvPresignedUrl(candidateId: string): Promise<{ url: string }> {
+    const tenantId = this.configService.get<string>('TENANT_ID')!;
+
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { id: candidateId, tenantId },
+      select: { cvFileUrl: true },
+    });
+
+    if (!candidate) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Candidate not found' },
+      });
+    }
+
+    if (!candidate.cvFileUrl) {
+      throw new NotFoundException({
+        error: { code: 'NO_CV', message: 'No CV file found for this candidate' },
+      });
+    }
+
+    const url = await this.storageService.getPresignedUrl(candidate.cvFileUrl);
+    return { url };
   }
 }
