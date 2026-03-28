@@ -6,7 +6,6 @@ import {
   Delete,
   Get,
   HttpCode,
-  NotFoundException,
   Param,
   Patch,
   Post,
@@ -40,6 +39,11 @@ export class CandidatesController {
     @Query('job_id') jobId?: string,
   ): Promise<{ candidates: CandidateResponse[]; total: number }> {
     return this.candidatesService.findAll(q, filter, jobId);
+  }
+
+  @Get(':id/cv-url')
+  async getCvUrl(@Param('id') candidateId: string) {
+    return this.candidatesService.getCvPresignedUrl(candidateId);
   }
 
   /**
@@ -98,16 +102,7 @@ export class CandidatesController {
   @Delete(':id')
   @HttpCode(204)
   async delete(@Param('id') id: string): Promise<void> {
-    try {
-      await this.candidatesService.deleteCandidate(id);
-    } catch (error: any) {
-      if (error instanceof NotFoundException) {
-        throw new NotFoundException({
-          error: { code: 'NOT_FOUND', message: 'Candidate not found' },
-        });
-      }
-      throw error;
-    }
+    await this.candidatesService.deleteCandidate(id);
   }
 
   private formatZodErrors(error: ZodError): Record<string, string[]> {
