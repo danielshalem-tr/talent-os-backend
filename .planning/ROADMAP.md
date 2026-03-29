@@ -322,7 +322,7 @@ Plans:
 **Plans:** 1/3 plans executed
 
 Plans:
-- [ ] 14-01-PLAN.md — Wave 1A: Extend CandidateExtractSchema (9 fields), fix extract() error handling, update signatures, update test helpers
+- [x] 14-01-PLAN.md — Wave 1A: Extend CandidateExtractSchema (9 fields), fix extract() error handling, update signatures, update test helpers
 - [ ] 14-02-PLAN.md — Wave 1B: Replace mock ScoringAgentService with real OpenRouter call, add ConfigModule to ScoringModule
 - [x] 14-03-PLAN.md — Wave 2: Update processor (metadata, enrichment fields, deterministic fallback), DedupService source param, 5 new integration tests
 

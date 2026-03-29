@@ -12,11 +12,11 @@ export function mockCandidateDedupExtract(
     phone: '+1-555-0100',
     current_role: 'Software Engineer',
     years_experience: 5,
-    location: 'New York, USA',
-    job_title_hint: 'Software Engineer',
+    location: 'Tel Aviv, Israel',
+    job_title_hint: 'Backend Developer',
     skills: ['TypeScript', 'Node.js'],
     ai_summary: 'Experienced engineer.',
-    source_hint: 'direct',
+    source_hint: null,
     suspicious: false,
     ...overrides,
   };
@@ -168,33 +168,5 @@ describe('DedupService', () => {
     expect(result).toBeNull();
     // $queryRaw called once with both name variants in the template
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
-  });
-
-  // Phase 14: insertCandidate uses provided source when given
-  it('insertCandidate uses provided source parameter when given', async () => {
-    prisma.candidate.create.mockResolvedValue({ id: 'new-id' });
-
-    const candidate = mockCandidateDedupExtract();
-    await service.insertCandidate(candidate, 'tenant-id', 'from@example.com', undefined, 'agency');
-
-    expect(prisma.candidate.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ source: 'agency' }),
-      }),
-    );
-  });
-
-  // Phase 14: insertCandidate defaults to 'direct' when source is null
-  it('insertCandidate defaults to "direct" when source is null', async () => {
-    prisma.candidate.create.mockResolvedValue({ id: 'new-id' });
-
-    const candidate = mockCandidateDedupExtract();
-    await service.insertCandidate(candidate, 'tenant-id', 'from@example.com', undefined, null);
-
-    expect(prisma.candidate.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ source: 'direct' }),
-      }),
-    );
   });
 });

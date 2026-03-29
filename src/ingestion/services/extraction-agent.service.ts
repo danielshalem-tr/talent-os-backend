@@ -10,7 +10,7 @@ export const CandidateExtractSchema = z.object({
   current_role: z.string().nullable(),
   years_experience: z.number().int().min(0).max(50).nullable(),
   location: z.string().nullable(),
-  job_title_hint: z.string().nullable(), // NEW: job title extracted from CV/subject for job matching
+  job_title_hint: z.string().nullable(),
   skills: z.array(z.string()),
   ai_summary: z.string().nullable(),
   source_hint: z.enum(['linkedin', 'agency', 'referral', 'direct']).nullable(),
@@ -159,14 +159,18 @@ export class ExtractionAgentService {
       full_name: fullName,
       email,
       phone,
-      current_role: null, // deterministic cannot infer role
-      years_experience: null, // deterministic cannot infer years
-      location: null, // deterministic cannot infer location
-      job_title_hint: null, // deterministic cannot infer job title hint
+      current_role: null,        // deterministic cannot infer role
+      years_experience: null,    // deterministic cannot infer years
+      location: null,            // deterministic cannot infer location
+      job_title_hint: null,      // deterministic cannot infer job title hint
       skills,
       ai_summary: `Deterministic extraction: Found ${skills.length} skills. Name: ${fullName}`,
-      source_hint: null, // deterministic cannot infer source
+      source_hint: null,         // deterministic cannot infer source
     };
   }
-}
 
+  // FALLBACK is kept for potential use in processor deterministic fallback paths
+  getFallback(): Omit<CandidateExtract, 'suspicious'> {
+    return { ...FALLBACK };
+  }
+}
