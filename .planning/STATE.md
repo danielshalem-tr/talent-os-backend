@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: Milestone complete
 last_updated: "2026-03-29T12:54:13.946Z"
-last_activity: 2026-03-29 - Completed quick task 260329-n58: Fix ScoringAgentService test error + swap to @openrouter/sdk
+last_activity: 2026-03-29 - Completed quick task 260329-ndq: Wire JobTitleMatcherService into IngestionProcessor Phase 6.5 — replace Levenshtein with semantic matching
 progress:
   total_phases: 14
   completed_phases: 14
