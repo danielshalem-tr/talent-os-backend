@@ -12,7 +12,7 @@
     "start:dev": "nest start --watch",
     "db:migrate:local": "DATABASE_URL=\"postgresql://triolla:password@localhost:5432/triolla\" npx prisma migrate dev",
     "db:seed:local": "DATABASE_URL=\"postgresql://triolla:password@localhost:5432/triolla\" npx prisma db seed",
-    "db:setup:local": "DATABASE_URL=\"postgresql://triolla:password@localhost:5432/triolla\" npx ts-node prisma/seed.ts --tenant-only",
+    "db:setup:local": "DATABASE_URL=\"postgresql://triolla:password@localhost:5432/triolla\" npx ts-node prisma/seed.ts",
     "start:worker": "nest start --watch --entryFile worker",
     "start:worker:debug": "nest start --debug 9230 --watch --entryFile worker",
     "start:debug": "nest start --debug --watch",
