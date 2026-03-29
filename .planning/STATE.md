@@ -3,8 +3,8 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Milestone complete
-last_updated: "2026-03-29T07:29:10.955Z"
-last_activity: 2026-03-29
+last_updated: "2026-03-29T12:54:13.946Z"
+last_activity: 2026-03-29 - Completed quick task 260329-m36: Fix seed.ts with DEFAULT_HIRING_STAGES
 progress:
   total_phases: 14
   completed_phases: 14
@@ -93,6 +93,7 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 | 260329-dot | Atomic commit of 9 pending file changes — consolidate phase 14 planning artifacts and replace superseded spec files | 2026-03-29 | fa4667f | [260329-dot-make-atomic-commit-of-9-pending-file-cha](./quick/260329-dot-make-atomic-commit-of-9-pending-file-cha/) |
 | 260329-kxa | Refactor AI scoring to only execute on successful candidate-job match | 2026-03-29 | e001d89 | [260329-kxa-refactor-ai-scoring-to-only-execute-on-s](./quick/260329-kxa-refactor-ai-scoring-to-only-execute-on-s/) |
 | 260329-lpo | Simplify prisma/seed.ts with 3 jobs, 1 candidate, remove --tenant-only option | 2026-03-29 | a16eee9 | [260329-lpo-simplify-prisma-seed-ts-with-3-jobs-1-ca](./quick/260329-lpo-simplify-prisma-seed-ts-with-3-jobs-1-ca/) |
+| 260329-m36 | Fix seed.ts: add DEFAULT_HIRING_STAGES to jobs when creating them | 2026-03-29 | 96d66e1 | [260329-m36-fix-seed-ts-add-default-hiring-stages-to](./quick/260329-m36-fix-seed-ts-add-default-hiring-stages-to/) |
 
 ### Todos
 

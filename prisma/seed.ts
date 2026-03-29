@@ -212,7 +212,10 @@ async function main() {
   // ── 3. Candidate ──────────────────────────────────────────────────────
   await prisma.candidate.upsert({
     where: { id: C_YAEL },
-    update: {},
+    update: {
+      jobId: JOB_SE,
+      hiringStageId: FIRST_STAGE_SE,
+    },
     create: {
       id: C_YAEL,
       tenantId: TENANT_ID,
