@@ -508,7 +508,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
   let scoringService: { score: jest.Mock };
 
-  const activeJob = { id: 'job-id-1', title: 'Backend Engineer', description: 'Build APIs.', requirements: ['TypeScript'] };
+  const activeJob = { id: 'job-id-1', title: 'Senior Backend Developer', description: 'Build APIs.', requirements: ['TypeScript'], hiringStages: [{ id: 'stage-1' }] };
 
   beforeEach(async () => {
     const txClient = {
@@ -601,8 +601,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       expect.objectContaining({
         where: { id: 'new-candidate-id' },
         data: expect.objectContaining({
-          currentRole: null,
-          yearsExperience: null,
+          currentRole: 'Senior Software Engineer',
+          yearsExperience: 7,
           skills: ['TypeScript', 'Node.js'],
           cvText: expect.any(String),
           cvFileUrl: expect.any(String),
@@ -613,16 +613,17 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     );
   });
 
-  // 7-02-02: SCOR-01 — job.findMany called with active status filter
-  it('7-02-02: SCOR-01 — job.findMany called with tenantId and status=active', async () => {
+  it('7-02-02: SCOR-01 — job.findMany called with tenantId and status=open', async () => {
     const job = { id: 'test-p7-2', data: validJobPayload() } as any;
     await processor.process(job);
 
     expect(prisma.job.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { tenantId: 'test-tenant-id', status: 'active' },
+        where: { tenantId: 'test-tenant-id', status: 'open' },
       }),
     );
+    // Called once for Phase 6.5 (matching) and once for Phase 7 (scoring)
+    expect(prisma.job.findMany).toHaveBeenCalledTimes(2);
   });
 
   // 7-02-03: SCOR-02 + SCOR-04 — application upserted then score created per active job
@@ -659,6 +660,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     expect(prisma.application.upsert).not.toHaveBeenCalled();
     expect(scoringService.score).not.toHaveBeenCalled();
+    // findMany called once for matching, which finds [], so it skips scoring findMany
+    expect(prisma.job.findMany).toHaveBeenCalledTimes(1);
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { processingStatus: 'completed' } }),
     );
@@ -680,8 +683,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
   // 7-02-06: Issue Fix 2 — Scoring error for one job does not fail entire candidate
   it('7-02-06: Issue Fix 2 — scoring fails for one job; other jobs continue (error isolation)', async () => {
-    const job2 = { id: 'job-id-2', title: 'Frontend Engineer', description: 'Build UIs.', requirements: ['React'] };
-    prisma.job.findMany.mockResolvedValueOnce([activeJob, job2]);
+    const job2 = { id: 'job-id-2', title: 'Frontend Engineer', description: 'Build UIs.', requirements: ['React'], hiringStages: [{ id: 'stage-2' }] };
+    prisma.job.findMany.mockResolvedValue([activeJob, job2]);
 
     // First call succeeds, second fails
     scoringService.score
@@ -701,5 +704,73 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { processingStatus: 'completed' } }),
     );
+  });
+
+  describe('IngestionProcessor — Phase 6.5 Job Matching (Phase 14 Fix)', () => {
+    let processor: IngestionProcessor;
+    let prisma: any;
+    let extractionAgent: any;
+
+    const job1 = { id: 'job-1', title: 'Full Stack Engineer', status: 'active', hiringStages: [{ id: 'stage-1' }] };
+    const job2 = { id: 'job-2', title: 'Backend Developer', status: 'active', hiringStages: [{ id: 'stage-2' }] };
+
+    beforeEach(async () => {
+      const txClient = { emailIntakeLog: { update: jest.fn().mockResolvedValue({}) } };
+      prisma = {
+        emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+        $transaction: jest.fn().mockImplementation(async (cb) => cb(txClient)),
+        candidate: { update: jest.fn().mockResolvedValue({}) },
+        job: { findMany: jest.fn().mockResolvedValue([job1, job2]), findFirst: jest.fn() },
+        application: { upsert: jest.fn().mockResolvedValue({ id: 'app-1' }) },
+        candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+      };
+      extractionAgent = { extract: jest.fn().mockResolvedValue({ ...mockCandidateExtract(), job_title_hint: 'Full Stack Developer' }) };
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          IngestionProcessor,
+          SpamFilterService,
+          AttachmentExtractorService,
+          { provide: PrismaService, useValue: prisma },
+          { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-tenant-id') } },
+          { provide: ExtractionAgentService, useValue: extractionAgent },
+          { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key') } },
+          { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
+          { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, modelUsed: 'test' }) } },
+        ],
+      }).compile();
+      processor = module.get<IngestionProcessor>(IngestionProcessor);
+    });
+
+    it('matches the job with the highest similarity (Full Stack Developer matched to Full Stack Engineer)', async () => {
+      const job = { id: 'test-match-1', data: mockPostmarkPayload({ TextBody: 'a'.repeat(101) }) } as any;
+      await processor.process(job);
+
+      // Should pick job1 over job2 because "Full Stack Developer" is closer to "Full Stack Engineer"
+      expect(prisma.candidate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ jobId: 'job-1' }),
+        }),
+      );
+    });
+
+    it('proceeds with null jobId and skips scoring if no match meets threshold', async () => {
+      extractionAgent.extract.mockResolvedValueOnce({ ...mockCandidateExtract(), job_title_hint: 'Accountant' });
+      const job = { id: 'test-match-2', data: mockPostmarkPayload({ TextBody: 'a'.repeat(101) }) } as any;
+      await processor.process(job);
+
+      // Should not match "Accountant" to either engineer job
+      expect(prisma.candidate.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ jobId: null }),
+        }),
+      );
+      // Still completes
+      expect(prisma.emailIntakeLog.update).toHaveBeenLastCalledWith(
+        expect.objectContaining({ data: { processingStatus: 'completed' } }),
+      );
+      // Scoring skipped
+      expect(prisma.job.findMany).toHaveBeenCalledTimes(1); // Only once for matching
+    });
   });
 });

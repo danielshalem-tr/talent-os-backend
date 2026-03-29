@@ -79,7 +79,7 @@ export class ExtractionAgentService {
   }
 
   // AI_PROVIDER: swap this method to change provider (e.g. @ai-sdk/anthropic generateObject)
-  // Current: @openrouter/sdk — google/gemini-2.0-flash:free
+  // Current: @openrouter/sdk — openai/gpt-4o-mini
   private async callAI(
     fullText: string,
     metadata: { subject: string; fromEmail: string },
@@ -97,7 +97,7 @@ export class ExtractionAgentService {
     ].join('\n');
 
     const result = client.callModel({
-      model: 'google/gemini-2.0-flash:free',
+      model: 'openai/gpt-4o-mini',
       instructions: INSTRUCTIONS,
       input: userMessage,
     });
@@ -125,15 +125,26 @@ export class ExtractionAgentService {
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
 
-    // 1. Full Name: first line (best guess)
-    const fullName = lines[0] || '';
+    // Skip injected headers like "--- Email Body ---" or "--- Attachment ---"
+    const realLines = lines.filter(
+      (line) =>
+        !line.startsWith('--- Email Body ---') &&
+        !line.startsWith('--- Attachment') &&
+        !line.startsWith('--- Email Metadata ---') &&
+        !line.startsWith('Subject:') &&
+        !line.startsWith('From:'),
+    );
+    const realText = realLines.join('\n');
+
+    // 1. Full Name: first real line (best guess)
+    const fullName = realLines[0] || '';
 
     // 2. Email: simple regex
-    const emailMatch = fullText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    const emailMatch = realText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     const email = emailMatch ? emailMatch[0] : null;
 
     // 3. Phone: simple regex (supports + and numbers/dashes, flexible for international/Israeli formats)
-    const phoneMatch = fullText.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,3}\)?[-.\s]?\d{2,4}[-.\s]?\d{4}/);
+    const phoneMatch = realText.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,3}\)?[-.\s]?\d{2,4}[-.\s]?\d{4}/);
     const phone = phoneMatch ? phoneMatch[0] : null;
 
     // 4. Skills: keyword matching (example set)
@@ -153,7 +164,7 @@ export class ExtractionAgentService {
       'css',
       'git',
     ];
-    const skills = commonSkills.filter((skill) => new RegExp(`\\b${skill}\\b`, 'i').test(fullText));
+    const skills = commonSkills.filter((skill) => new RegExp(`\\b${skill}\\b`, 'i').test(realText));
 
     return {
       full_name: fullName,

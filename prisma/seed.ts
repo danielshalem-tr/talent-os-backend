@@ -134,7 +134,8 @@ function buildStages(jobId: string, stageIds: string[]) {
 // ─── Main ───────────────────────────────────────────────────────────────────
 
 async function main() {
-  console.log('🌱 Seeding database...\n');
+  const isTenantOnly = process.argv.includes('--tenant-only');
+  console.log(`🌱 Seeding database${isTenantOnly ? ' (Tenant only)' : ''}...\n`);
 
   // ── 1. Tenant ─────────────────────────────────────────────────────────
   await prisma.tenant.upsert({
@@ -143,6 +144,11 @@ async function main() {
     create: { id: TENANT_ID, name: 'Triolla' },
   });
   console.log('✓ Tenant');
+
+  if (isTenantOnly) {
+    console.log('\n✅ Initial setup complete!');
+    return;
+  }
 
   // ── 2. Jobs ───────────────────────────────────────────────────────────
   const jobs = [

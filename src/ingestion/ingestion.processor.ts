@@ -21,9 +21,9 @@ export interface ProcessingContext {
 }
 
 @Processor('ingest-email', {
-  lockDuration: 30000,    // 30s lock per job (Issue Fix 1: prevents timeout on long-running scoring loops)
-  lockRenewTime: 5000,    // renew lock every 5s
-  maxStalledCount: 2,     // retry if stalled 2x
+  lockDuration: 30000, // 30s lock per job (Issue Fix 1: prevents timeout on long-running scoring loops)
+  lockRenewTime: 5000, // renew lock every 5s
+  maxStalledCount: 2, // retry if stalled 2x
 })
 export class IngestionProcessor extends WorkerHost {
   private readonly logger = new Logger(IngestionProcessor.name);
@@ -98,11 +98,10 @@ export class IngestionProcessor extends WorkerHost {
     // Phase 4: AI extraction — passes metadata for context (Phase 14: metadata enables source_hint detection)
     let extraction: CandidateExtract;
     try {
-      extraction = await this.extractionAgent.extract(
-        context.fullText,
-        context.suspicious,
-        { subject: payload.Subject ?? '', fromEmail: payload.From },
-      );
+      extraction = await this.extractionAgent.extract(context.fullText, context.suspicious, {
+        subject: payload.Subject ?? '',
+        fromEmail: payload.From,
+      });
     } catch (err) {
       // Final attempt: try deterministic extraction as last resort before marking failed
       if (job.attemptsMade >= (job.opts?.attempts ?? 3) - 1) {
@@ -170,11 +169,23 @@ export class IngestionProcessor extends WorkerHost {
       } else if (dedupResult && dedupResult.confidence < 1.0) {
         // Fuzzy name match (DEDUP-03): INSERT new candidate shell + create duplicate_flags for human review
         // Never auto-merge — DEDUP-05, D-12
-        candidateId = await this.dedupService.insertCandidate(extraction!, tenantId, payload.From, tx, extraction!.source_hint);
+        candidateId = await this.dedupService.insertCandidate(
+          extraction!,
+          tenantId,
+          payload.From,
+          tx,
+          extraction!.source_hint,
+        );
         await this.dedupService.createFlag(candidateId, dedupResult.match.id, dedupResult.confidence, tenantId, tx);
       } else {
         // No match (DEDUP-04): INSERT new candidate shell
-        candidateId = await this.dedupService.insertCandidate(extraction!, tenantId, payload.From, tx, extraction!.source_hint);
+        candidateId = await this.dedupService.insertCandidate(
+          extraction!,
+          tenantId,
+          payload.From,
+          tx,
+          extraction!.source_hint,
+        );
       }
 
       // D-10: Set email_intake_log.candidate_id atomically — if this fails, candidate INSERT rolls back too
@@ -190,15 +201,16 @@ export class IngestionProcessor extends WorkerHost {
     this.logger.log(`Phase 6 complete for MessageID: ${payload.MessageID} — candidateId: ${candidateId}`);
 
     // Phase 6.5: Job matching by fuzzy title match (Phase 14 — required for job assignment)
-    // Reject email if no job found — email cannot be processed without a job assignment
+    // Find BEST matching active job (not just first one)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let matchedJob: any = null;
+    let bestSimilarity = 0;
+
     if (extraction!.job_title_hint) {
-      // Use pg_trgm similarity search to find matching job
-      matchedJob = await this.prisma.job.findFirst({
+      const activeJobs = await this.prisma.job.findMany({
         where: {
           tenantId,
-          status: 'active',
+          status: 'open',
         },
         select: {
           id: true,
@@ -211,35 +223,44 @@ export class IngestionProcessor extends WorkerHost {
         },
       });
 
-      // Fuzzy match: filter results server-side using Levenshtein-based similarity
-      if (matchedJob) {
-        const similarity = this.calculateSimilarity(extraction!.job_title_hint, matchedJob.title);
-        if (similarity < 0.7) {
-          matchedJob = null;
+      for (const job of activeJobs) {
+        const similarity = this.calculateSimilarity(extraction!.job_title_hint, job.title);
+        if (similarity > bestSimilarity) {
+          bestSimilarity = similarity;
+          matchedJob = job;
         }
+      }
+
+      // Only assign if similarity meets threshold
+      if (bestSimilarity < 0.7) {
+        this.logger.warn(
+          `Best matching job "${matchedJob?.title || 'none'}" similarity (${bestSimilarity.toFixed(2)}) below threshold for "${extraction!.job_title_hint}"`,
+        );
+        matchedJob = null;
       }
     }
 
-    // No match found — reject email
-    if (!matchedJob) {
-      await this.prisma.emailIntakeLog.update({
-        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-        data: { processingStatus: 'failed' },
-      });
-      this.logger.warn(
-        `No active job found matching title hint "${extraction!.job_title_hint}" for MessageID: ${payload.MessageID} — email rejected`,
+    // Determine final job/stage for enrichment
+    const jobId = matchedJob?.id ?? null;
+    const hiringStageId = matchedJob?.hiringStages[0]?.id ?? null;
+
+    if (matchedJob) {
+      this.logger.log(
+        `Phase 6.5 complete for MessageID: ${payload.MessageID} — matched job: ${matchedJob.title} (similarity: ${bestSimilarity.toFixed(2)})`,
       );
-      return;
+    } else {
+      this.logger.warn(
+        `No active job found matching title hint "${extraction!.job_title_hint}" for MessageID: ${payload.MessageID} — proceeding with unassigned candidate`,
+      );
     }
 
-    this.logger.log(`Phase 6.5 complete for MessageID: ${payload.MessageID} — matched job: ${matchedJob.title}`);
-
     // Phase 7: Candidate enrichment (CAND-01, D-01, D-02, D-03)
+    // ALWAYS enrich candidate fields, even if no job matched
     await this.prisma.candidate.update({
       where: { id: context.candidateId },
       data: {
-        jobId: matchedJob.id,
-        hiringStageId: matchedJob.hiringStages[0]?.id ?? null,
+        jobId,
+        hiringStageId,
         currentRole: extraction!.current_role ?? null,
         yearsExperience: extraction!.years_experience ?? null,
         location: extraction!.location ?? null,
@@ -247,15 +268,23 @@ export class IngestionProcessor extends WorkerHost {
         cvText: context.cvText,
         cvFileUrl: context.fileKey, // R2 object key used as URL placeholder in Phase 1 (D-02)
         aiSummary: extraction!.ai_summary ?? null,
-        metadata: Prisma.JsonNull,   // D-03: deferred to future phase (Prisma requires JsonNull not null)
+        metadata: Prisma.JsonNull, // D-03: deferred to future phase (Prisma requires JsonNull not null)
       },
     });
 
-    this.logger.log(`Phase 7 enrichment complete for MessageID: ${payload.MessageID}`);
+    // If no job was matched, skip scoring loop (requires a jobId link in candidate_job_scores)
+    if (!matchedJob) {
+      this.logger.log(`No job matched for MessageID: ${payload.MessageID} — skipping scoring`);
+      await this.prisma.emailIntakeLog.update({
+        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+        data: { processingStatus: 'completed' },
+      });
+      return;
+    }
 
     // Phase 7: Active jobs fetch (SCOR-01, D-11)
     const activeJobs = await this.prisma.job.findMany({
-      where: { tenantId, status: 'active' },
+      where: { tenantId, status: 'open' },
       select: { id: true, title: true, description: true, requirements: true },
     });
 
@@ -315,7 +344,9 @@ export class IngestionProcessor extends WorkerHost {
         },
       });
 
-      this.logger.log(`Phase 7 scored candidateId: ${context.candidateId} against jobId: ${activeJob.id} — score: ${scoreResult.score}`);
+      this.logger.log(
+        `Phase 7 scored candidateId: ${context.candidateId} against jobId: ${activeJob.id} — score: ${scoreResult.score}`,
+      );
     }
 
     // D-16: terminal status — set AFTER all Phase 7 work completes (only reached if no error thrown)
@@ -343,7 +374,9 @@ export class IngestionProcessor extends WorkerHost {
   private levenshteinDistance(a: string, b: string): number {
     const alen = a.length;
     const blen = b.length;
-    const d = Array(alen + 1).fill(0).map(() => Array(blen + 1).fill(0));
+    const d = Array(alen + 1)
+      .fill(0)
+      .map(() => Array(blen + 1).fill(0));
     for (let i = 0; i <= alen; i++) d[i][0] = i;
     for (let j = 0; j <= blen; j++) d[0][j] = j;
     for (let i = 1; i <= alen; i++) {

@@ -47,14 +47,14 @@ describe('ScoringAgentService', () => {
   });
 
   // SCOR-03: score() calls OpenRouter with correct model
-  it('SCOR-03: score() calls callModel with google/gemini-2.0-flash:free model', async () => {
+  it('SCOR-03: score() calls callModel with openai/gpt-4o-mini model', async () => {
     mockGetText.mockResolvedValueOnce(validScoreResponse);
 
     const service = makeService();
     await service.score(mockScoringInput());
 
     expect(mockCallModel).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'google/gemini-2.0-flash:free' }),
+      expect.objectContaining({ model: 'openai/gpt-4o-mini' }),
     );
   });
 
@@ -69,14 +69,14 @@ describe('ScoringAgentService', () => {
     expect(configService.get).toHaveBeenCalledWith('OPENROUTER_API_KEY');
   });
 
-  // SCOR-05: modelUsed is set to 'google/gemini-2.0-flash' (not claude-sonnet)
-  it('SCOR-05: score() returns modelUsed = "google/gemini-2.0-flash"', async () => {
+  // SCOR-05: modelUsed is set to 'openai/gpt-4o-mini'
+  it('SCOR-05: score() returns modelUsed = "openai/gpt-4o-mini"', async () => {
     mockGetText.mockResolvedValueOnce(validScoreResponse);
 
     const service = makeService();
     const result = await service.score(mockScoringInput());
 
-    expect(result.modelUsed).toBe('google/gemini-2.0-flash');
+    expect(result.modelUsed).toBe('openai/gpt-4o-mini');
   });
 
   // SCOR-03 shape: result passes ScoreSchema validation

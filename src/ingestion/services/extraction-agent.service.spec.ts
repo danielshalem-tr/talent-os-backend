@@ -253,9 +253,30 @@ describe('ExtractionAgentService', () => {
     );
     expect(mockCallModel).toHaveBeenCalledWith(
       expect.objectContaining({
+        model: 'openai/gpt-4o-mini',
         input: expect.stringContaining('From: dana@example.com'),
       }),
     );
+  });
+
+  // extractDeterministically() skips injected headers (Phase 14 fix)
+  it('extractDeterministically() skips injected headers to find correctly formatted name', () => {
+    const service = makeService();
+    const input = [
+      '--- Email Metadata ---',
+      'Subject: CV for Developer Role',
+      'From: sender@example.com',
+      '',
+      '--- Email Body ---',
+      'John Smith',
+      'john@example.com',
+      'I am a TypeScript developer',
+    ].join('\n');
+
+    const result = service.extractDeterministically(input);
+
+    expect(result.full_name).toBe('John Smith');
+    expect(result.email).toBe('john@example.com');
   });
 
   // extractDeterministically() is PUBLIC and returns all new fields as null

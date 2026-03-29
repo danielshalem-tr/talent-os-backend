@@ -78,7 +78,7 @@ export class ScoringAgentService {
     const userMessage = `${candidateSection}\n\n${jobSection}`;
 
     const result = client.callModel({
-      model: 'google/gemini-2.0-flash:free',
+      model: 'openai/gpt-4o-mini',
       instructions: SCORING_INSTRUCTIONS,
       input: userMessage,
     });
@@ -96,6 +96,6 @@ export class ScoringAgentService {
     }
 
     this.logger.log(`Scored candidate — score: ${parseResult.data.score}`);
-    return { ...parseResult.data, modelUsed: 'google/gemini-2.0-flash' };
+    return { ...parseResult.data, modelUsed: 'openai/gpt-4o-mini' };
   }
 }
