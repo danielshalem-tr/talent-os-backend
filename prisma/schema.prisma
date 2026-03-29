@@ -132,15 +132,16 @@ model Application {
 
 // ─── candidate_job_scores ─────────────────────────────────────────────────────
 model CandidateJobScore {
-  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId      String   @map("tenant_id") @db.Uuid
-  applicationId String   @map("application_id") @db.Uuid
-  score         Int      @db.SmallInt
-  reasoning     String?  @db.Text
-  strengths     String[] @default([])
-  gaps          String[] @default([])
-  modelUsed     String   @map("model_used") @db.Text
-  scoredAt      DateTime @default(now()) @map("scored_at") @db.Timestamptz
+  id                 String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId           String   @map("tenant_id") @db.Uuid
+  applicationId      String   @map("application_id") @db.Uuid
+  score              Int      @db.SmallInt
+  reasoning          String?  @db.Text
+  strengths          String[] @default([])
+  gaps               String[] @default([])
+  modelUsed          String   @map("model_used") @db.Text
+  matchConfidence    Decimal? @map("match_confidence") @db.Decimal(3, 2) // Phase 6.5: Track semantic job title match confidence
+  scoredAt           DateTime @default(now()) @map("scored_at") @db.Timestamptz
 
   // Relations
   tenant      Tenant      @relation(fields: [tenantId], references: [id])
