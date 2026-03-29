@@ -358,11 +358,13 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         full_name: 'Jane Doe',
         email: 'jane.doe@example.com',
         phone: '+1-555-0100',
-        
-        
+        current_role: 'Software Engineer',
+        years_experience: 5,
+        location: 'Tel Aviv, Israel',
+        job_title_hint: 'Backend Developer',
         skills: ['TypeScript'],
         ai_summary: 'Experienced engineer.',
-        
+        source_hint: 'direct',
         suspicious: false,
       }),
     };
@@ -527,11 +529,13 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         full_name: 'Jane Doe',
         email: 'jane.doe@example.com',
         phone: '+1-555-0100',
-        
-        
+        current_role: 'Senior Software Engineer',
+        years_experience: 7,
+        location: 'Tel Aviv, Israel',
+        job_title_hint: 'Senior Backend Developer',
         skills: ['TypeScript', 'Node.js'],
         ai_summary: 'Experienced engineer. Strong in distributed systems.',
-        
+        source_hint: 'direct',
         suspicious: false,
       }),
     };
