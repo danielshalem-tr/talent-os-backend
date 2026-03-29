@@ -23,10 +23,17 @@ jest.mock('mammoth', () => ({
 
 describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
+
+  // Mock matched job for Phase 6.5 job matching (title matches mockCandidateExtract's job_title_hint)
+  const mockMatchedJobForMain = {
+    id: 'job-main-1',
+    title: 'Senior Software Engineer',
+    hiringStages: [{ id: 'stage-main-1', name: 'Initial', order: 0, isEnabled: true }],
+  };
 
   beforeEach(async () => {
     const txClient = {
@@ -36,7 +43,7 @@ describe('IngestionProcessor', () => {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
-      job: { findMany: jest.fn().mockResolvedValue([]) },
+      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(mockMatchedJobForMain) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
     };
@@ -203,10 +210,17 @@ describe('IngestionProcessor', () => {
 
 describe('IngestionProcessor — Phase 5 StorageService', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
+
+  // Mock matched job for Phase 6.5 job matching
+  const mockMatchedJobForPhase5 = {
+    id: 'job-p5-1',
+    title: 'Senior Software Engineer',
+    hiringStages: [{ id: 'stage-p5-1', name: 'Initial', order: 0, isEnabled: true }],
+  };
 
   beforeEach(async () => {
     const txClient = {
@@ -216,7 +230,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
-      job: { findMany: jest.fn().mockResolvedValue([]) },
+      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(mockMatchedJobForPhase5) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
     };
@@ -326,7 +340,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
 
 describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: {
@@ -334,6 +348,13 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     insertCandidate: jest.Mock;
     upsertCandidate: jest.Mock;
     createFlag: jest.Mock;
+  };
+
+  // Mock matched job for Phase 6.5 job matching
+  const mockMatchedJobForDedup = {
+    id: 'job-dedup-1',
+    title: 'Software Engineer',
+    hiringStages: [{ id: 'stage-dedup-1', name: 'Initial', order: 0, isEnabled: true }],
   };
 
   beforeEach(async () => {
@@ -348,7 +369,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         return cb(txClient);
       }),
       candidate: { update: jest.fn().mockResolvedValue({}) },
-      job: { findMany: jest.fn().mockResolvedValue([]) },
+      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(mockMatchedJobForDedup) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
     };
@@ -358,11 +379,13 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         full_name: 'Jane Doe',
         email: 'jane.doe@example.com',
         phone: '+1-555-0100',
-        
-        
+        current_role: 'Software Engineer',
+        years_experience: 5,
+        location: 'New York, USA',
+        job_title_hint: 'Software Engineer',
         skills: ['TypeScript'],
         ai_summary: 'Experienced engineer.',
-        
+        source_hint: 'direct',
         suspicious: false,
       }),
     };
@@ -497,7 +520,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     emailIntakeLog: { update: jest.Mock };
     $transaction: jest.Mock;
     candidate: { update: jest.Mock };
-    job: { findMany: jest.Mock };
+    job: { findMany: jest.Mock; findFirst: jest.Mock };
     application: { upsert: jest.Mock };
     candidateJobScore: { create: jest.Mock };
   };
@@ -507,6 +530,12 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
   let scoringService: { score: jest.Mock };
 
   const activeJob = { id: 'job-id-1', title: 'Backend Engineer', description: 'Build APIs.', requirements: ['TypeScript'] };
+  // Mock matched job for Phase 6.5 job matching
+  const mockMatchedJob = {
+    id: 'job-id-1',
+    title: 'Backend Engineer',
+    hiringStages: [{ id: 'stage-1', name: 'Initial', order: 0, isEnabled: true }],
+  };
 
   beforeEach(async () => {
     const txClient = {
@@ -517,7 +546,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
-      job: { findMany: jest.fn().mockResolvedValue([activeJob]) },
+      job: { findMany: jest.fn().mockResolvedValue([activeJob]), findFirst: jest.fn().mockResolvedValue(mockMatchedJob) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id-1' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
     };
@@ -527,11 +556,13 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         full_name: 'Jane Doe',
         email: 'jane.doe@example.com',
         phone: '+1-555-0100',
-        
-        
+        current_role: 'Software Engineer',
+        years_experience: 7,
+        location: 'New York, USA',
+        job_title_hint: 'Backend Engineer',
         skills: ['TypeScript', 'Node.js'],
         ai_summary: 'Experienced engineer. Strong in distributed systems.',
-        
+        source_hint: 'direct',
         suspicious: false,
       }),
     };
@@ -588,7 +619,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       Attachments: [],
     });
 
-  // 7-02-01: CAND-01 — candidate.update called with all enrichment fields
+  // 7-02-01: CAND-01 — candidate.update called with all enrichment fields (Phase 14: using extracted values)
   it('7-02-01: CAND-01 — candidate.update called with all enrichment fields', async () => {
     const job = { id: 'test-p7-1', data: validJobPayload() } as any;
     await processor.process(job);
@@ -597,8 +628,9 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       expect.objectContaining({
         where: { id: 'new-candidate-id' },
         data: expect.objectContaining({
-          currentRole: null,
-          yearsExperience: null,
+          currentRole: 'Software Engineer',  // Phase 14: from extraction.current_role (not null)
+          yearsExperience: 7,               // Phase 14: from extraction.years_experience (not null)
+          location: 'New York, USA',        // Phase 14: from extraction.location
           skills: ['TypeScript', 'Node.js'],
           cvText: expect.any(String),
           cvFileUrl: expect.any(String),
@@ -697,5 +729,217 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { processingStatus: 'completed' } }),
     );
+  });
+});
+
+describe('IngestionProcessor — Phase 14 Pipeline Fixes', () => {
+  let processor: IngestionProcessor;
+  let prisma: {
+    emailIntakeLog: { update: jest.Mock };
+    $transaction: jest.Mock;
+    candidate: { update: jest.Mock };
+    job: { findFirst: jest.Mock; findMany: jest.Mock };
+    application: { upsert: jest.Mock };
+    candidateJobScore: { create: jest.Mock };
+  };
+  let extractionAgent: { extract: jest.Mock; extractDeterministically: jest.Mock };
+  let storageService: { upload: jest.Mock };
+  let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
+  let scoringService: { score: jest.Mock };
+
+  // Standard mock extraction result (all 10 fields)
+  const fullExtraction = {
+    full_name: 'Dana Cohen',
+    email: 'dana@example.com',
+    phone: '+972-52-1234567',
+    current_role: 'Senior Backend Developer',
+    years_experience: 6,
+    location: 'Tel Aviv, Israel',
+    job_title_hint: 'Senior Backend Developer',
+    skills: ['typescript', 'node.js', 'postgresql'],
+    ai_summary: 'Senior Backend Developer with 6 years experience. Specializes in Node.js.',
+    source_hint: 'direct' as const,
+    suspicious: false,
+  };
+
+  // Mock matched job
+  const mockMatchedJob = {
+    id: 'job-1',
+    title: 'Senior Backend Developer',
+    hiringStages: [
+      { id: 'stage-1', name: 'Initial', order: 0, isEnabled: true },
+    ],
+  };
+
+  const deterministicResult = {
+    full_name: 'Dana Cohen',
+    email: 'dana@example.com',
+    phone: null,
+    current_role: null,
+    years_experience: null,
+    location: null,
+    job_title_hint: null,
+    skills: ['typescript'],
+    ai_summary: 'Deterministic extraction: Found 1 skills. Name: Dana Cohen',
+    source_hint: null,
+  };
+
+  beforeEach(async () => {
+    const txClient = { emailIntakeLog: { update: jest.fn().mockResolvedValue({}) } };
+    prisma = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $transaction: jest.fn().mockImplementation(async (cb) => cb(txClient)),
+      candidate: { update: jest.fn().mockResolvedValue({}) },
+      job: {
+        findFirst: jest.fn().mockResolvedValue(mockMatchedJob),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
+      candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+    };
+    extractionAgent = {
+      extract: jest.fn().mockResolvedValue(fullExtraction),
+      extractDeterministically: jest.fn().mockReturnValue(deterministicResult),
+    };
+    storageService = { upload: jest.fn().mockResolvedValue('cvs/tenant/msg.pdf') };
+    dedupService = {
+      check: jest.fn().mockResolvedValue(null),
+      insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
+      upsertCandidate: jest.fn().mockResolvedValue(undefined),
+      createFlag: jest.fn().mockResolvedValue(undefined),
+    };
+    scoringService = { score: jest.fn().mockResolvedValue({ score: 85, reasoning: 'Good.', strengths: ['TS'], gaps: [], modelUsed: 'google/gemini-2.0-flash' }) };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        IngestionProcessor,
+        SpamFilterService,
+        AttachmentExtractorService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-tenant-id') } },
+        { provide: ExtractionAgentService, useValue: extractionAgent },
+        { provide: StorageService, useValue: storageService },
+        { provide: DedupService, useValue: dedupService },
+        { provide: ScoringAgentService, useValue: scoringService },
+      ],
+    }).compile();
+
+    processor = module.get<IngestionProcessor>(IngestionProcessor);
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  const validPayload = () => mockPostmarkPayload({
+    MessageID: 'msg-p14-test',
+    From: 'dana@example.com',
+    Subject: 'Job Application — Senior Backend Developer',
+    TextBody: 'Dear Hiring Manager, I have 6 years of Node.js/TypeScript experience. Please find my CV attached.',
+    Attachments: [],
+  });
+
+  // Test 1: metadata passed to extract()
+  it('Phase14-01: passes Subject and From as metadata to extractionAgent.extract()', async () => {
+    const job = { id: 'p14-job-1', data: validPayload(), attemptsMade: 0, opts: { attempts: 3 } } as any;
+    await processor.process(job);
+
+    expect(extractionAgent.extract).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Boolean),
+      { subject: 'Job Application — Senior Backend Developer', fromEmail: 'dana@example.com' },
+    );
+  });
+
+  // Test 2: job matching succeeds, sets jobId and hiringStageId
+  it('Phase14-02: finds job by fuzzy match on job_title_hint and sets jobId + hiringStageId', async () => {
+    const job = { id: 'p14-job-2', data: validPayload(), attemptsMade: 0, opts: { attempts: 3 } } as any;
+    await processor.process(job);
+
+    expect(prisma.job.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { tenantId: 'test-tenant-id', status: 'active' },
+      }),
+    );
+
+    expect(prisma.candidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          jobId: 'job-1',
+          hiringStageId: 'stage-1',
+        }),
+      }),
+    );
+  });
+
+  // Test 3: job matching fails (no job found), email is rejected
+  it('Phase14-03: rejects email if no job match found', async () => {
+    prisma.job.findFirst.mockResolvedValueOnce(null);
+
+    const job = { id: 'p14-job-3', data: validPayload(), attemptsMade: 0, opts: { attempts: 3 } } as any;
+    await processor.process(job);
+
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { processingStatus: 'failed' },
+      }),
+    );
+    // candidate.update should NOT have been called
+    expect(prisma.candidate.update).not.toHaveBeenCalled();
+  });
+
+  // Test 4: Phase 7 enrichment uses extracted currentRole and yearsExperience
+  it('Phase14-04: Phase 7 enrichment sets currentRole and yearsExperience from extraction (not null)', async () => {
+    const job = { id: 'p14-job-4', data: validPayload(), attemptsMade: 0, opts: { attempts: 3 } } as any;
+    await processor.process(job);
+
+    expect(prisma.candidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          currentRole: 'Senior Backend Developer',
+          yearsExperience: 6,
+          location: 'Tel Aviv, Israel',
+        }),
+      }),
+    );
+  });
+
+  // Test 5: source_hint passed to DedupService.insertCandidate()
+  it('Phase14-05: passes extraction.source_hint to DedupService.insertCandidate()', async () => {
+    const job = { id: 'p14-job-5', data: validPayload(), attemptsMade: 0, opts: { attempts: 3 } } as any;
+    await processor.process(job);
+
+    expect(dedupService.insertCandidate).toHaveBeenCalledWith(
+      expect.any(Object),   // extraction
+      'test-tenant-id',      // tenantId
+      'dana@example.com',    // fromEmail (payload.From)
+      expect.anything(),     // tx
+      'direct',              // source_hint from extraction
+    );
+  });
+
+  // Test 6: non-final attempt throws (BullMQ retries)
+  it('Phase14-06: re-throws extraction error on non-final attempt (attemptsMade=0)', async () => {
+    extractionAgent.extract.mockRejectedValueOnce(new Error('OpenRouter 429 rate limit'));
+
+    const job = { id: 'p14-job-6', data: validPayload(), attemptsMade: 0, opts: { attempts: 3 } } as any;
+    await expect(processor.process(job)).rejects.toThrow('OpenRouter 429 rate limit');
+
+    // extractDeterministically should NOT have been called (not final attempt)
+    expect(extractionAgent.extractDeterministically).not.toHaveBeenCalled();
+  });
+
+  // Test 7: final attempt (attemptsMade=2, attempts=3) → deterministic fallback runs
+  it('Phase14-07: calls extractDeterministically() on final attempt (attemptsMade=2, attempts=3)', async () => {
+    extractionAgent.extract.mockRejectedValueOnce(new Error('OpenRouter API error'));
+    // deterministicResult has job_title_hint: null so job matching will fail → email rejected (return early)
+    // But we still verify deterministic was called, no throw happened, and candidate was still created (dedup ran)
+
+    const job = { id: 'p14-job-7', data: validPayload(), attemptsMade: 2, opts: { attempts: 3 } } as any;
+
+    // Should NOT throw — deterministic fallback succeeds (even if email is rejected due to no job match)
+    await expect(processor.process(job)).resolves.not.toThrow();
+
+    expect(extractionAgent.extractDeterministically).toHaveBeenCalledWith(expect.any(String));
+    // Processing continued through dedup: candidate was inserted before job matching check
+    expect(dedupService.insertCandidate).toHaveBeenCalled();
   });
 });

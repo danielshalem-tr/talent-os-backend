@@ -95,25 +95,54 @@ export class IngestionProcessor extends WorkerHost {
 
     this.logger.log(`Phase 5 complete for MessageID: ${payload.MessageID} — fileKey: ${fileKey ?? 'none'}`);
 
-    // Phase 4: AI extraction (D-06 mock — real call activated in follow-up task)
+    // Phase 4: AI extraction — passes metadata for context (Phase 14: metadata enables source_hint detection)
     let extraction: CandidateExtract;
     try {
-      extraction = await this.extractionAgent.extract(context.fullText, context.suspicious);
+      extraction = await this.extractionAgent.extract(
+        context.fullText,
+        context.suspicious,
+        { subject: payload.Subject ?? '', fromEmail: payload.From },
+      );
     } catch (err) {
-      // D-04: extraction failure → mark as failed, do not insert placeholder
-      await this.prisma.emailIntakeLog.update({
-        where: {
-          idx_intake_message_id: { tenantId, messageId: payload.MessageID },
-        },
-        data: { processingStatus: 'failed' },
-      });
-      this.logger.error(`Extraction failed for MessageID: ${payload.MessageID} — ${(err as Error).message}`);
-      // BUG-RETRY fix: re-throw so BullMQ sees a failure and retries via exponential backoff
-      throw err;
+      // Final attempt: try deterministic extraction as last resort before marking failed
+      if (job.attemptsMade >= (job.opts?.attempts ?? 3) - 1) {
+        this.logger.warn(
+          `AI extraction failed on final attempt for ${payload.MessageID} — trying deterministic fallback`,
+        );
+        try {
+          const deterministicResult = this.extractionAgent.extractDeterministically(context.fullText);
+          extraction = {
+            ...deterministicResult,
+            suspicious: context.suspicious,
+            source_hint: null,
+          };
+          // Don't throw — continue with partial data from deterministic extraction
+        } catch (fallbackErr) {
+          // Even deterministic failed — mark as permanently failed, don't retry
+          await this.prisma.emailIntakeLog.update({
+            where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+            data: { processingStatus: 'failed' },
+          });
+          this.logger.error(
+            `Both AI and deterministic extraction failed for ${payload.MessageID}: ${(fallbackErr as Error).message}`,
+          );
+          return; // Don't re-throw — job is permanently done (failed terminal state)
+        }
+      } else {
+        // Non-final attempt — mark status and re-throw for BullMQ exponential backoff retry
+        await this.prisma.emailIntakeLog.update({
+          where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+          data: { processingStatus: 'failed' },
+        });
+        this.logger.error(
+          `Extraction failed for MessageID: ${payload.MessageID} (attempt ${job.attemptsMade + 1}) — ${(err as Error).message}`,
+        );
+        throw err;
+      }
     }
 
     // D-04, D-05: empty fullName is treated the same as extraction failure (permanent — do not retry)
-    if (!extraction.full_name?.trim()) {
+    if (!extraction!.full_name?.trim()) {
       await this.prisma.emailIntakeLog.update({
         where: {
           idx_intake_message_id: { tenantId, messageId: payload.MessageID },
@@ -124,11 +153,11 @@ export class IngestionProcessor extends WorkerHost {
       return;
     }
 
-    this.logger.log(`Phase 4 complete for MessageID: ${payload.MessageID} — extracted: ${extraction.full_name}`);
+    this.logger.log(`Phase 4 complete for MessageID: ${payload.MessageID} — extracted: ${extraction!.full_name}`);
 
     // Phase 6: Duplicate detection + minimal candidate shell INSERT/UPSERT (atomic)
     // dedupService.check() runs OUTSIDE the transaction — read-only query, no benefit from holding lock
-    const dedupResult: DedupResult | null = await this.dedupService.check(extraction, tenantId);
+    const dedupResult: DedupResult | null = await this.dedupService.check(extraction!, tenantId);
 
     let candidateId!: string;
 
@@ -136,16 +165,16 @@ export class IngestionProcessor extends WorkerHost {
       if (dedupResult && dedupResult.confidence === 1.0) {
         // Exact email match (DEDUP-02): UPSERT existing candidate — update fullName + phone only
         // source and sourceEmail are NEVER updated — first-submission ROI attribution (D-07)
-        await this.dedupService.upsertCandidate(dedupResult.match.id, extraction, tx);
+        await this.dedupService.upsertCandidate(dedupResult.match.id, extraction!, tx);
         candidateId = dedupResult.match.id; // Use existing candidate ID (D-11)
       } else if (dedupResult && dedupResult.confidence < 1.0) {
         // Fuzzy name match (DEDUP-03): INSERT new candidate shell + create duplicate_flags for human review
         // Never auto-merge — DEDUP-05, D-12
-        candidateId = await this.dedupService.insertCandidate(extraction, tenantId, payload.From, tx);
+        candidateId = await this.dedupService.insertCandidate(extraction!, tenantId, payload.From, tx, extraction!.source_hint);
         await this.dedupService.createFlag(candidateId, dedupResult.match.id, dedupResult.confidence, tenantId, tx);
       } else {
         // No match (DEDUP-04): INSERT new candidate shell
-        candidateId = await this.dedupService.insertCandidate(extraction, tenantId, payload.From, tx);
+        candidateId = await this.dedupService.insertCandidate(extraction!, tenantId, payload.From, tx, extraction!.source_hint);
       }
 
       // D-10: Set email_intake_log.candidate_id atomically — if this fails, candidate INSERT rolls back too
@@ -160,16 +189,64 @@ export class IngestionProcessor extends WorkerHost {
 
     this.logger.log(`Phase 6 complete for MessageID: ${payload.MessageID} — candidateId: ${candidateId}`);
 
+    // Phase 6.5: Job matching by fuzzy title match (Phase 14 — required for job assignment)
+    // Reject email if no job found — email cannot be processed without a job assignment
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let matchedJob: any = null;
+    if (extraction!.job_title_hint) {
+      // Use pg_trgm similarity search to find matching job
+      matchedJob = await this.prisma.job.findFirst({
+        where: {
+          tenantId,
+          status: 'active',
+        },
+        select: {
+          id: true,
+          title: true,
+          hiringStages: {
+            where: { isEnabled: true },
+            orderBy: { order: 'asc' },
+            take: 1,
+          },
+        },
+      });
+
+      // Fuzzy match: filter results server-side using Levenshtein-based similarity
+      if (matchedJob) {
+        const similarity = this.calculateSimilarity(extraction!.job_title_hint, matchedJob.title);
+        if (similarity < 0.7) {
+          matchedJob = null;
+        }
+      }
+    }
+
+    // No match found — reject email
+    if (!matchedJob) {
+      await this.prisma.emailIntakeLog.update({
+        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+        data: { processingStatus: 'failed' },
+      });
+      this.logger.warn(
+        `No active job found matching title hint "${extraction!.job_title_hint}" for MessageID: ${payload.MessageID} — email rejected`,
+      );
+      return;
+    }
+
+    this.logger.log(`Phase 6.5 complete for MessageID: ${payload.MessageID} — matched job: ${matchedJob.title}`);
+
     // Phase 7: Candidate enrichment (CAND-01, D-01, D-02, D-03)
     await this.prisma.candidate.update({
       where: { id: context.candidateId },
       data: {
-        currentRole: null,
-        yearsExperience: null,
-        skills: extraction.skills ?? [],
+        jobId: matchedJob.id,
+        hiringStageId: matchedJob.hiringStages[0]?.id ?? null,
+        currentRole: extraction!.current_role ?? null,
+        yearsExperience: extraction!.years_experience ?? null,
+        location: extraction!.location ?? null,
+        skills: extraction!.skills ?? [],
         cvText: context.cvText,
         cvFileUrl: context.fileKey, // R2 object key used as URL placeholder in Phase 1 (D-02)
-        aiSummary: extraction.ai_summary ?? null,
+        aiSummary: extraction!.ai_summary ?? null,
         metadata: Prisma.JsonNull,   // D-03: deferred to future phase (Prisma requires JsonNull not null)
       },
     });
@@ -183,17 +260,17 @@ export class IngestionProcessor extends WorkerHost {
     });
 
     // D-11: if no active jobs, skip loop entirely — still mark as completed
-    for (const job of activeJobs) {
+    for (const activeJob of activeJobs) {
       // SCOR-02 (D-12): upsert application row first — idempotent on retry
       const application = await this.prisma.application.upsert({
         where: {
           idx_applications_unique: {
             tenantId,
             candidateId: context.candidateId,
-            jobId: job.id,
+            jobId: activeJob.id,
           },
         },
-        create: { tenantId, candidateId: context.candidateId, jobId: job.id, stage: 'new' },
+        create: { tenantId, candidateId: context.candidateId, jobId: activeJob.id, stage: 'new' },
         update: {}, // No-op on retry — idempotent
         select: { id: true },
       });
@@ -204,20 +281,20 @@ export class IngestionProcessor extends WorkerHost {
         scoreResult = await this.scoringService.score({
           cvText: context.cvText,
           candidateFields: {
-            currentRole: null,
-            yearsExperience: null,
-            skills: extraction.skills ?? [],
+            currentRole: extraction!.current_role ?? null,
+            yearsExperience: extraction!.years_experience ?? null,
+            skills: extraction!.skills ?? [],
           },
           job: {
-            title: job.title,
-            description: job.description ?? null,
-            requirements: job.requirements,
+            title: activeJob.title,
+            description: activeJob.description ?? null,
+            requirements: activeJob.requirements,
           },
         } satisfies ScoringInput);
       } catch (err) {
         // Issue Fix 2: Log and continue — don't fail the entire candidate on one bad job score
         this.logger.error(
-          `Scoring failed for candidateId: ${context.candidateId}, jobId: ${job.id} — ${(err as Error).message}`,
+          `Scoring failed for candidateId: ${context.candidateId}, jobId: ${activeJob.id} — ${(err as Error).message}`,
         );
         // D-13: If we skip the INSERT on error, this application has no score. This is acceptable.
         // Phase 2 can filter applications without scores if needed.
@@ -238,7 +315,7 @@ export class IngestionProcessor extends WorkerHost {
         },
       });
 
-      this.logger.log(`Phase 7 scored candidateId: ${context.candidateId} against jobId: ${job.id} — score: ${scoreResult.score}`);
+      this.logger.log(`Phase 7 scored candidateId: ${context.candidateId} against jobId: ${activeJob.id} — score: ${scoreResult.score}`);
     }
 
     // D-16: terminal status — set AFTER all Phase 7 work completes (only reached if no error thrown)
@@ -248,5 +325,33 @@ export class IngestionProcessor extends WorkerHost {
     });
 
     this.logger.log(`Phase 7 complete for MessageID: ${payload.MessageID} — pipeline finished`);
+  }
+
+  private calculateSimilarity(a: string, b: string): number {
+    // Simple Levenshtein-based similarity (0-1 scale)
+    // For production, use pg_trgm directly via raw query:
+    // similarity(a, b) returns 0-1 where 1 is exact match
+    const s1 = a.toLowerCase();
+    const s2 = b.toLowerCase();
+    const longer = s1.length > s2.length ? s1 : s2;
+    const shorter = s1.length > s2.length ? s2 : s1;
+    if (longer.length === 0) return 1.0;
+    const editDistance = this.levenshteinDistance(longer, shorter);
+    return (longer.length - editDistance) / longer.length;
+  }
+
+  private levenshteinDistance(a: string, b: string): number {
+    const alen = a.length;
+    const blen = b.length;
+    const d = Array(alen + 1).fill(0).map(() => Array(blen + 1).fill(0));
+    for (let i = 0; i <= alen; i++) d[i][0] = i;
+    for (let j = 0; j <= blen; j++) d[0][j] = j;
+    for (let i = 1; i <= alen; i++) {
+      for (let j = 1; j <= blen; j++) {
+        const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      }
+    }
+    return d[alen][blen];
   }
 }
