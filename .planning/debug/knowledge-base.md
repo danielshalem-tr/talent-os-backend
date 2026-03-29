@@ -12,3 +12,11 @@ Resolved debug sessions. Used by `gsd-debugger` to surface known-pattern hypothe
 - **Files changed:** prisma/migrations/20260325090000_fix_job_status_constraint/migration.sql
 ---
 
+## candidate-persistence-silent-failure — Phase 6 transaction errors swallowed by catch block preventing BullMQ retries
+- **Date:** 2026-03-29
+- **Error patterns:** extracted candidate data, no persistence, job reprocessed 3x, silent failure, no error logged, phase 6 transaction, catch block
+- **Root cause:** Phase 6 transaction catch block at ingestion.processor.ts line 198-209 was catching database errors (constraint violations, connection losses, etc.) but returning early without re-throwing. This prevented BullMQ from detecting the failure and retrying. The job appeared successful to BullMQ even though candidate INSERT failed, so no automatic retry occurred through normal error propagation (though stalled job logic might have caused retries).
+- **Fix:** Changed line 208 from `return;` to `throw err;` to re-throw transaction errors. Updated comment to clarify that transaction errors may be transient and BullMQ should retry.
+- **Files changed:** src/ingestion/ingestion.processor.ts (line 208, re-throw transaction error; comment update)
+---
+
