@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 export interface JobTitleMatchResult {
   matched: boolean;
-  confidence: number; // 0-1 decimal, null if error
+  confidence: number; // 0-1 decimal
   reasoning?: string;
   error?: string;
 }
