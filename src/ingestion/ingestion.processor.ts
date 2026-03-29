@@ -200,12 +200,13 @@ export class IngestionProcessor extends WorkerHost {
         `Phase 6 transaction failed for MessageID: ${payload.MessageID} — ${(err as Error).message}`,
         (err as Error).stack,
       );
-      // Mark as permanently failed (don't retry) — transaction errors are usually validation issues
+      // Log failure in intake status — transaction errors may be transient (DB connection loss)
+      // or permanent (constraint violation). BullMQ will retry up to 3 attempts.
       await this.prisma.emailIntakeLog.update({
         where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
         data: { processingStatus: 'failed', errorMessage: (err as Error).message },
       });
-      return; // Stop processing
+      throw err; // Re-throw so BullMQ retries (attempt 1, 2, 3) for transient errors
     }
 
     // Pass candidateId to Phase 7 via context (D-16)
