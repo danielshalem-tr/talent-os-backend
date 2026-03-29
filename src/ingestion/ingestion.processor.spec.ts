@@ -833,7 +833,7 @@ describe('IngestionProcessor — Phase 14 Pipeline Fixes', () => {
     MessageID: 'msg-p14-test',
     From: 'dana@example.com',
     Subject: 'Job Application — Senior Backend Developer',
-    TextBody: 'Dear Hiring Manager, I have 6 years of Node.js/TypeScript experience. Please find my CV attached.',
+    TextBody: 'Dear Hiring Manager, I have 6 years of Node.js/TypeScript experience building scalable backend systems. I am very interested in this position. Please find my CV attached.',
     Attachments: [],
   });
 
