@@ -4,6 +4,7 @@ import { JobsController } from './jobs.controller';
 describe('JobsController', () => {
   const mockJobsService = {
     findAll: jest.fn(),
+    findOne: jest.fn(),
     createJob: jest.fn(),
     updateJob: jest.fn(),
     deleteJob: jest.fn(),
@@ -38,6 +39,26 @@ describe('JobsController', () => {
       mockJobsService.findAll.mockResolvedValue(mockResult);
       await controller.findAll(undefined);
       expect(mockJobsService.findAll).toHaveBeenCalledWith(undefined);
+    });
+  });
+
+  describe('GET /jobs/:id', () => {
+    it('calls jobsService.findOne and returns result', async () => {
+      const mockResult = { id: 'job-1', title: 'Senior Dev', hiring_flow: [], screening_questions: [] };
+      mockJobsService.findOne.mockResolvedValue(mockResult);
+
+      const result = await controller.findOne('job-1');
+
+      expect(mockJobsService.findOne).toHaveBeenCalledWith('job-1');
+      expect(result).toBe(mockResult);
+    });
+
+    it('propagates NotFoundException when service throws it', async () => {
+      mockJobsService.findOne.mockRejectedValue(
+        new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Job not found' } }),
+      );
+
+      await expect(controller.findOne('nonexistent')).rejects.toThrow(NotFoundException);
     });
   });
 

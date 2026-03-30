@@ -40,6 +40,27 @@ export class JobsService {
     };
   }
 
+  async findOne(id: string): Promise<any> {
+    const tenantId = this.configService.get<string>('TENANT_ID')!;
+
+    const job = await this.prisma.job.findFirst({
+      where: { id, tenantId },
+      include: {
+        hiringStages: { orderBy: { order: 'asc' } },
+        screeningQuestions: { orderBy: { order: 'asc' } },
+        _count: { select: { candidates: true } },
+      },
+    });
+
+    if (!job) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Job not found' },
+      });
+    }
+
+    return this._formatJobResponse(job);
+  }
+
   async createJob(dto: CreateJobDto): Promise<any> {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
 

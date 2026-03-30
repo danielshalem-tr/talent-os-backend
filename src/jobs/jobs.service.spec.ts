@@ -345,6 +345,86 @@ describe('JobsService', () => {
     });
   });
 
+  describe('findOne()', () => {
+    const mockJob = {
+      id: 'job-1',
+      tenantId: TENANT_ID,
+      title: 'Senior Frontend Developer',
+      department: 'Engineering',
+      location: 'Remote',
+      jobType: 'full_time',
+      status: 'open',
+      hiringManager: 'Jane Smith',
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      description: null,
+      responsibilities: null,
+      whatWeOffer: null,
+      salaryRange: null,
+      mustHaveSkills: [],
+      niceToHaveSkills: [],
+      expYearsMin: null,
+      expYearsMax: null,
+      preferredOrgTypes: [],
+      hiringStages: [
+        { id: 's1', name: 'Interview', order: 1, isCustom: false, isEnabled: true, color: 'bg-indigo-400', interviewer: null },
+      ],
+      screeningQuestions: [
+        { id: 'q1', text: 'React exp?', answerType: 'yes_no', expectedAnswer: 'yes' },
+      ],
+      _count: { candidates: 3 },
+    };
+
+    it('returns formatted job when found', async () => {
+      mockPrismaService.job.findFirst.mockResolvedValue(mockJob);
+
+      const result = await service.findOne('job-1');
+
+      expect(result).toHaveProperty('id', 'job-1');
+      expect(result).toHaveProperty('title', 'Senior Frontend Developer');
+      expect(result).toHaveProperty('job_type', 'full_time');
+      expect(result).toHaveProperty('candidate_count', 3);
+      expect(result).toHaveProperty('hiring_flow');
+      expect(Array.isArray(result.hiring_flow)).toBe(true);
+      expect(result.hiring_flow[0]).toHaveProperty('is_enabled', true);
+      expect(result).toHaveProperty('screening_questions');
+      expect(result.screening_questions[0]).toHaveProperty('type', 'yes_no');
+      expect(result.screening_questions[0]).toHaveProperty('expected_answer', 'yes');
+    });
+
+    it('calls findFirst with id and tenantId', async () => {
+      mockPrismaService.job.findFirst.mockResolvedValue(mockJob);
+
+      await service.findOne('job-1');
+
+      expect(mockPrismaService.job.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'job-1', tenantId: TENANT_ID },
+        }),
+      );
+    });
+
+    it('throws NotFoundException when findFirst returns null', async () => {
+      mockPrismaService.job.findFirst.mockResolvedValue(null);
+
+      await expect(service.findOne('nonexistent')).rejects.toThrow(NotFoundException);
+    });
+
+    it('NotFoundException has correct error shape', async () => {
+      mockPrismaService.job.findFirst.mockResolvedValue(null);
+
+      try {
+        await service.findOne('nonexistent');
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(NotFoundException);
+        const response = (err as NotFoundException).getResponse() as any;
+        expect(response.error.code).toBe('NOT_FOUND');
+        expect(response.error.message).toBe('Job not found');
+      }
+    });
+  });
+
   describe('hardDeleteJob()', () => {
     beforeEach(() => {
       // Add job.delete to the mock (not present in the original top-level mock)
