@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: Milestone complete
 last_updated: "2026-03-29T12:54:13.946Z"
-last_activity: 2026-03-29 - Completed quick task 260329-ndq: Wire JobTitleMatcherService into IngestionProcessor Phase 6.5 — replace Levenshtein with semantic matching
+last_activity: 2026-03-30 - Completed quick task 260330-idw: Add GET /jobs/:id endpoint to fetch single job
 progress:
   total_phases: 14
   completed_phases: 14
@@ -98,6 +98,7 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 | 260329-n58 | Fix ScoringAgentService test error + swap to @openrouter/sdk | 2026-03-29 | a655ab3 | [260329-n58-fix-scoringagentservice-test-error-swap-](./quick/260329-n58-fix-scoringagentservice-test-error-swap-openrouter-sdk/) |
 | 260329-ndq | Wire JobTitleMatcherService into IngestionProcessor Phase 6.5, replace Levenshtein with semantic matching | 2026-03-29 | 6d2e39a | [260329-ndq-wire-jobtitlematcherservice-into-ingesti](./quick/260329-ndq-wire-jobtitlematcherservice-into-ingesti/) |
 | 260330-gyd | Add GET /candidates/:id endpoint to fetch a single candidate by ID | 2026-03-30 | 13a8ec6 | [260330-gyd-add-get-candidates-id-endpoint-to-fetch-](./quick/260330-gyd-add-get-candidates-id-endpoint-to-fetch-/) |
+| 260330-idw | Add GET /jobs/:id endpoint to fetch single job with hiring_flow and screening_questions | 2026-03-30 | fcf3bae | [260330-idw-add-get-jobs-id-endpoint-to-fetch-single](./quick/260330-idw-add-get-jobs-id-endpoint-to-fetch-single/) |
 
 ### Todos
 
@@ -105,8 +106,8 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 
 ## Session Continuity
 
-**Last Session:** 2026-03-30T09:15:18Z
-Last activity: 2026-03-30 — Completed quick task 260330-gyd: Add GET /candidates/:id endpoint to fetch single candidate
+**Last Session:** 2026-03-30T10:17:53Z
+Last activity: 2026-03-30 — Completed quick task 260330-idw: Add GET /jobs/:id endpoint to fetch single job with findOne()
 
 **What Happened (Phase 11 Final):**
 
