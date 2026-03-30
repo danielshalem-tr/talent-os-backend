@@ -255,6 +255,63 @@ Fetch all job openings with hiring stages and screening questions.
 }
 ```
 
+### `GET /jobs/:id`
+
+Fetch a single job by ID, including full hiring flow and screening questions.
+
+**Path Parameters:**
+
+- `id`: Job UUID
+
+**Response:** `200 OK` (same shape as a single item from `GET /jobs`)
+
+```json
+{
+  "id": "uuid",
+  "title": "Senior Frontend Developer",
+  "department": "Engineering",
+  "location": "Remote",
+  "job_type": "full_time",
+  "status": "open",
+  "hiring_manager": "Jane Smith",
+  "candidate_count": 12,
+  "created_at": "ISO8601",
+  "updated_at": "ISO8601",
+  "description": "...",
+  "responsibilities": "...",
+  "what_we_offer": "...",
+  "salary_range": "80K-120K",
+  "must_have_skills": ["React", "TypeScript"],
+  "nice_to_have_skills": ["Node.js"],
+  "min_experience": 3,
+  "max_experience": 8,
+  "selected_org_types": ["startup", "enterprise"],
+  "hiring_flow": [
+    {
+      "id": "uuid",
+      "name": "Application review",
+      "is_enabled": true,
+      "color": "bg-zinc-400",
+      "is_custom": false,
+      "order": 1,
+      "interviewer": null
+    }
+  ],
+  "screening_questions": [
+    {
+      "id": "uuid",
+      "text": "Do you have React experience?",
+      "type": "yes_no",
+      "expected_answer": null
+    }
+  ]
+}
+```
+
+**Errors:**
+
+- `404 Not Found` — job not found or does not belong to tenant
+
 ### `POST /jobs`
 
 Create a new job opening.
