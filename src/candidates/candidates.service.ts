@@ -143,6 +143,75 @@ export class CandidatesService {
     return { candidates: result, total: result.length };
   }
 
+  async findOne(candidateId: string): Promise<CandidateResponse> {
+    const tenantId = this.configService.get<string>('TENANT_ID')!;
+
+    const c = await this.prisma.candidate.findFirst({
+      where: { id: candidateId, tenantId },
+      select: {
+        id: true,
+        fullName: true,
+        email: true,
+        phone: true,
+        currentRole: true,
+        location: true,
+        cvFileUrl: true,
+        source: true,
+        sourceAgency: true,
+        createdAt: true,
+        skills: true,
+        jobId: true,
+        hiringStageId: true,
+        hiringStage: {
+          select: { name: true },
+        },
+        job: {
+          select: { title: true },
+        },
+        applications: {
+          select: {
+            scores: {
+              select: { score: true },
+            },
+          },
+        },
+        duplicateFlags: {
+          where: { reviewed: false },
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!c) {
+      throw new NotFoundException({
+        error: { code: 'NOT_FOUND', message: 'Candidate not found' },
+      });
+    }
+
+    const allScores = c.applications.flatMap((a) => a.scores.map((s) => s.score));
+    const aiScore = allScores.length > 0 ? Math.max(...allScores) : null;
+
+    return {
+      id: c.id,
+      full_name: c.fullName,
+      email: c.email,
+      phone: c.phone,
+      current_role: c.currentRole,
+      location: c.location,
+      cv_file_url: c.cvFileUrl,
+      source: c.source,
+      source_agency: c.sourceAgency,
+      created_at: c.createdAt,
+      ai_score: aiScore,
+      is_duplicate: c.duplicateFlags.length > 0,
+      skills: c.skills,
+      job_id: c.jobId,
+      hiring_stage_id: c.hiringStageId,
+      hiring_stage_name: c.hiringStage?.name ?? null,
+      job_title: c.job?.title ?? null,
+    };
+  }
+
   async updateStage(candidateId: string, dto: UpdateCandidateStageDto): Promise<void> {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
 

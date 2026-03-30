@@ -41,6 +41,11 @@ export class CandidatesController {
     return this.candidatesService.findAll(q, filter, jobId);
   }
 
+  @Get(':id')
+  async findOne(@Param('id') id: string): Promise<CandidateResponse> {
+    return this.candidatesService.findOne(id);
+  }
+
   @Get(':id/cv-url')
   async getCvUrl(@Param('id') candidateId: string) {
     return this.candidatesService.getCvPresignedUrl(candidateId);
