@@ -57,6 +57,42 @@ Fetch candidates with optional search and filtering.
 }
 ```
 
+### `GET /candidates/:id`
+
+Fetch a single candidate by ID.
+
+**Path Parameters:**
+
+- `id`: Candidate UUID
+
+**Response:** `200 OK`
+
+```json
+{
+  "id": "uuid",
+  "full_name": "John Doe",
+  "email": "john@example.com",
+  "phone": "+1 555-0100",
+  "current_role": "Software Engineer",
+  "location": "Tel Aviv",
+  "cv_file_url": "https://...",
+  "source": "linkedin",
+  "source_agency": null,
+  "created_at": "ISO8601",
+  "ai_score": 85,
+  "is_duplicate": false,
+  "skills": ["React", "TypeScript"],
+  "job_id": "uuid",
+  "hiring_stage_id": "uuid",
+  "hiring_stage_name": "Screening",
+  "job_title": "Senior Frontend Developer"
+}
+```
+
+**Errors:**
+
+- `404 Not Found` — candidate not found or does not belong to tenant
+
 ### `POST /candidates`
 
 Create a new candidate profile, optionally with a CV file upload.
