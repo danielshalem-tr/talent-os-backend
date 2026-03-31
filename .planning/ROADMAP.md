@@ -314,6 +314,16 @@ Plans:
 | 14. Wire OpenRouter extraction pipeline | 1/3 | Complete    | 2026-03-29 |
 | 15. Migrate email ingestion to deterministic Job ID routing | 1/1 | Complete    | 2026-03-31 |
 
+### Phase 16: Backend Support for Manual Routing & UI Parity
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 15
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd:plan-phase 16 to break down)
+
 ---
 
 *Roadmap created: 2026-03-22 by /gsd:new-roadmap*

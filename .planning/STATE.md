@@ -67,6 +67,7 @@ Plan: Not started
 - Phase 13 added: Implement Kanban board with candidate hiring stage tracking
 - Phase 14 added: Wire OpenRouter extraction pipeline: email→LLM→dedup→scoring→UI
 - Phase 15 added: Migrate email ingestion to deterministic Job ID routing and remove semantic matching
+- Phase 16 added: Backend Support for Manual Routing & UI Parity
 
 ### Blockers
 
