@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PORT=${PORT:-3000}
-WEBHOOK_PATH="/webhooks/email"
+WEBHOOK_PATH="/api/webhooks/email"
 
 echo "Starting ngrok tunnel on port $PORT..."
 echo "Webhook path: $WEBHOOK_PATH"
