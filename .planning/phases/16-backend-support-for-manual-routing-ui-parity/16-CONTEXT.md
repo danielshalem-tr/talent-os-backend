@@ -37,20 +37,22 @@ Enable recruiters to manually assign candidates to jobs—both for unmatched can
 ### Scope & API Surface
 - **D-10:** API only: single-candidate reassignment via PATCH /candidates/:id. No bulk assignment endpoint (left to frontend).
 - **D-11:** No audit trail required. Rely on existing updatedAt timestamp on Application + CandidateJobScore records for historical reference.
-- **D-12:** Response format: PATCH /candidates/:id returns CandidateResponse with updated jobId, hiringStageId, and nested Application/scores reflecting the new state.
+- **D-12:** Response format: PATCH /candidates/:id returns CandidateResponse with updated jobId, hiringStageId. **CRITICAL: CandidateResponse DTO remains flattened—NO nested `applications` array. Returns only `ai_score` (calculated via Math.max of candidate_job_scores for current job).**
+- **D-13:** GET /candidates endpoint supports native `unassigned` filter mapping to `{ jobId: null }`. Recruiters can retrieve unmatched candidates from Phase 15 via ?unassigned=true query param.
+- **D-14:** Jobs endpoints expose `shortId` field in responses (used by Phase 15 email subject parsing; recruiters see this identifier). Candidates endpoints expose `sourceAgency` field (sourcing channel metadata).
 
 ### Validation & Error Handling
-- **D-13:** When reassigning, validate that the target job exists and belongs to the same tenant (existing FK constraint).
-- **D-14:** Validate that the target job has at least one enabled stage. If not, return 400 with code "NO_STAGES".
-- **D-15:** If the job_id provided matches the existing jobId, treat as no-op for the job_id field (same as current behavior). Other profile fields still update if provided.
+- **D-15:** When reassigning, validate that the target job exists and belongs to the same tenant (existing FK constraint).
+- **D-16:** Validate that the target job has at least one enabled stage. If not, return 400 with code "NO_STAGES".
+- **D-17:** If the job_id provided matches the existing jobId, treat as no-op for the job_id field (same as current behavior). Other profile fields still update if provided.
 
 ### Profile Updates + Reassignment
-- **D-16:** PATCH /candidates/:id can atomically update profile fields (full_name, email, etc.) AND reassign job in one call. Handle both in single transaction.
-- **D-17:** If job reassignment fails (e.g., validation error), the entire request fails and no profile updates are applied.
+- **D-18:** PATCH /candidates/:id can atomically update profile fields (full_name, email, etc.) AND reassign job in one call. Handle both in single transaction.
+- **D-19:** If job reassignment fails (e.g., validation error), the entire request fails and no profile updates are applied.
 
 ### Scoring & ScoringAgentService Integration
-- **D-18:** Reassignment always triggers a fresh score call to ScoringAgentService.score() against the new job. Do not reuse old scores.
-- **D-19:** Scoring failure does not block reassignment (log warning, continue). Candidate is assigned but score insertion fails gracefully (existing error handling from Phase 7).
+- **D-20:** Reassignment always triggers a fresh score call to ScoringAgentService.score() against the new job. Do not reuse old scores.
+- **D-21:** Scoring failure does not block reassignment (log warning, continue). Candidate is assigned but score insertion fails gracefully (existing error handling from Phase 7).
 
 ## Claude's Discretion
 
@@ -67,7 +69,9 @@ Enable recruiters to manually assign candidates to jobs—both for unmatched can
 
 ### Existing Services to Modify
 - `src/candidates/candidates.service.ts:updateCandidate()` — Remove ALREADY_ASSIGNED error. Add reassignment flow: job validation, new Application creation, ScoringAgentService call.
+- `src/candidates/candidates.service.ts:findAll()` — Add native support for `unassigned` filter query param, mapping to { jobId: null } in Prisma where clause.
 - `src/candidates/candidates.controller.ts:updateCandidate()` — No changes (Zod validation already handles job_id).
+- `src/candidates/candidates.controller.ts:findAll()` — Add query param parsing for `unassigned` boolean.
 
 ### Existing Patterns to Follow
 - **Application creation:** Phase 7 (Candidate Storage & Scoring) shows `createApplication()` pattern
@@ -77,7 +81,8 @@ Enable recruiters to manually assign candidates to jobs—both for unmatched can
 
 ### Files to Reference
 - `src/candidates/dto/update-candidate.dto.ts` — UpdateCandidateSchema (no changes needed)
-- `src/candidates/dto/candidate-response.dto.ts` — Response format
+- `src/candidates/dto/candidate-response.dto.ts` — Response format **MUST be flattened, NO applications array. Add sourceAgency field.**
+- `src/jobs/dto/job-response.dto.ts` — **Add shortId field to expose in GET /jobs and GET /jobs/:id responses.**
 - `prisma/schema.prisma` — Application, Candidate, CandidateJobScore models (no schema changes)
 - `src/scoring/scoring-agent.service.ts` — ScoringAgentService.score() signature and error handling
 
@@ -153,26 +158,15 @@ Response 200 OK:
   "hiring_stage_id": "first-stage-uuid",
   "full_name": "Jane Doe",
   "email": "jane@example.com",
+  "source_agency": "LinkedIn",
   "is_duplicate": false,
   "is_rejected": false,
-  "applications": [
-    {
-      "id": "old-app-uuid",
-      "job_id": "old-job-uuid",
-      "stage": "phone_screen",
-      "created_at": "2026-03-31T06:00:00Z"
-    },
-    {
-      "id": "new-app-uuid",
-      "job_id": "660e8400-e29b-41d4-a716-446655440001",
-      "stage": "new_first_stage",
-      "created_at": "2026-03-31T07:00:00Z"
-    }
-  ],
   "ai_score": 78,
   ...
 }
 ```
+
+**Note:** CandidateResponse DTO is **flattened** — does NOT include `applications` array. The `ai_score` field is calculated via `Math.max(candidate_job_scores[*].score)` for the current job at response time.
 
 ### Testing Checklist (Phase 16 acceptance criteria)
 - [ ] PATCH /candidates/:id with job_id removes ALREADY_ASSIGNED error
@@ -183,11 +177,14 @@ Response 200 OK:
 - [ ] Validation: new job has at least one enabled stage (400 if not)
 - [ ] Validation: new job exists and belongs to tenant (404 if not)
 - [ ] Atomic transaction: all updates succeed or all fail
-- [ ] Response format: CandidateResponse includes both old + new Applications
+- [ ] **Response format: CandidateResponse is FLATTENED (NO nested applications array). Only ai_score returned, calculated via Math.max**
 - [ ] Profile updates + job reassignment work atomically in single call
 - [ ] Unmatched candidate (jobId = null) → can be assigned to any job
 - [ ] Already-assigned candidate → can be reassigned to different job
 - [ ] Same-job reassignment → no-op for job_id, other fields still update
+- [ ] **GET /candidates?unassigned=true returns candidates with jobId = null**
+- [ ] **Jobs endpoints expose shortId field in responses (e.g., GET /jobs, GET /jobs/:id)**
+- [ ] **Candidates endpoints expose sourceAgency field in responses (e.g., GET /candidates, GET /candidates/:id)**
 
 </specifics>
 
