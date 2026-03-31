@@ -39,8 +39,10 @@ export class CandidatesController {
     @Query('q') q?: string,
     @Query('filter') filter?: CandidateFilter,
     @Query('job_id') jobId?: string,
+    @Query('unassigned') unassigned?: string,
   ): Promise<{ candidates: CandidateResponse[]; total: number }> {
-    return this.candidatesService.findAll(q, filter, jobId);
+    const unassignedBool = unassigned === 'true';
+    return this.candidatesService.findAll(q, filter, jobId, unassignedBool);
   }
 
   @Get(':id')

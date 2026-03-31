@@ -17,6 +17,7 @@ import { StageSummaryDto } from './dto/stage-summary.dto';
 import { CandidateResponse } from './dto/candidate-response.dto';
 import { Prisma } from '@prisma/client';
 import { CandidateAiService } from './candidate-ai.service';
+import { ScoringAgentService } from '../scoring/scoring.service';
 
 export type CandidateFilter = 'all' | 'high-score' | 'available' | 'referred' | 'duplicates';
 
@@ -29,12 +30,14 @@ export class CandidatesService {
     private readonly configService: ConfigService,
     private readonly storageService: StorageService,
     private readonly candidateAiService: CandidateAiService,
+    private readonly scoringAgent: ScoringAgentService,
   ) {}
 
   async findAll(
     q?: string,
     filter?: CandidateFilter,
     jobId?: string,
+    unassigned?: boolean,
   ): Promise<{ candidates: CandidateResponse[]; total: number }> {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
 
@@ -42,7 +45,9 @@ export class CandidatesService {
     const where: Prisma.CandidateWhereInput = { tenantId };
 
     // ── filter by job ──────────────────────────────────────────────
-    if (jobId) {
+    if (unassigned) {
+      where.jobId = null;
+    } else if (jobId) {
       where.jobId = jobId;
     }
 
@@ -276,13 +281,94 @@ export class CandidatesService {
     // Handle atomic job assignment flow
     if (dto.job_id) {
       if (candidate.jobId === dto.job_id) {
+        // Same-job no-op: if no profile fields changed, return early
         if (Object.keys(updateData).length === 0) return this.findOne(candidateId);
       } else if (candidate.jobId) {
-        throw new BadRequestException({
-          error: { code: 'ALREADY_ASSIGNED', message: 'Candidate is already assigned to another job' },
+        // REASSIGNMENT: jobId=X → jobId=Y
+        const firstStage = await this.prisma.jobStage.findFirst({
+          where: { jobId: dto.job_id, tenantId, isEnabled: true },
+          orderBy: { order: 'asc' },
+          select: { id: true },
         });
+
+        if (!firstStage) {
+          throw new BadRequestException({ error: { code: 'NO_STAGES', message: 'Job has no enabled stages' } });
+        }
+
+        const job = await this.prisma.job.findFirst({
+          where: { id: dto.job_id, tenantId },
+          select: { id: true, title: true, description: true, mustHaveSkills: true },
+        });
+
+        if (!job) {
+          throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Job not found' } });
+        }
+
+        await this.prisma.$transaction(async (tx) => {
+          // 1. Create new Application
+          await tx.application.create({
+            data: {
+              tenantId,
+              candidateId,
+              jobId: dto.job_id!,
+              stage: 'new',
+              jobStageId: firstStage.id,
+            },
+          });
+
+          // 2. Update Candidate
+          await tx.candidate.update({
+            where: { id: candidateId },
+            data: {
+              ...updateData,
+              jobId: dto.job_id,
+              hiringStageId: firstStage.id,
+            },
+          });
+
+          // 3. Score (non-blocking per D-21)
+          try {
+            const scoreResult = await this.scoringAgent.score({
+              cvText: candidate.cvText || '',
+              candidateFields: {
+                currentRole: dto.current_role ?? candidate.currentRole,
+                yearsExperience: dto.years_experience ?? candidate.yearsExperience,
+                skills: candidate.skills,
+              },
+              job: {
+                title: job.title,
+                description: job.description || '',
+                requirements: job.mustHaveSkills || [],
+              },
+            });
+
+            // Get the application we just created to attach scores
+            const newApp = await tx.application.findFirst({
+              where: { candidateId, jobId: dto.job_id, tenantId },
+            });
+
+            if (newApp) {
+              await tx.candidateJobScore.create({
+                data: {
+                  tenantId,
+                  applicationId: newApp.id,
+                  score: scoreResult.score,
+                  reasoning: scoreResult.reasoning,
+                  strengths: scoreResult.strengths,
+                  gaps: scoreResult.gaps,
+                  modelUsed: scoreResult.modelUsed,
+                },
+              });
+            }
+          } catch (err) {
+            this.logger.warn(`Scoring failed during reassignment: ${err.message}`);
+            // Continue — do not block reassignment
+          }
+        });
+
+        return this.findOne(candidateId);
       } else {
-        // Run assignment atomic transaction
+        // INITIAL ASSIGNMENT: jobId=null → jobId=X
         const firstStage = await this.prisma.jobStage.findFirst({
           where: { jobId: dto.job_id, tenantId, isEnabled: true },
           orderBy: { order: 'asc' },

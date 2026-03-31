@@ -95,11 +95,13 @@ function makeCandidatesController(
 ) {
   const mockConfig = { get: jest.fn().mockReturnValue(TENANT_ID) };
   const mockCandidateAiService = { generateSummary: jest.fn().mockResolvedValue('Mocked AI summary') };
+  const mockScoringAgentService = { score: jest.fn().mockResolvedValue({ score: 75, reasoning: 'Good fit', strengths: [], gaps: [], modelUsed: 'gpt-4o-mini' }) };
   const service = new CandidatesService(
     mockPrisma as any,
     mockConfig as any,
     mockStorageService as any,
     mockCandidateAiService as any,
+    mockScoringAgentService as any,
   );
   return new CandidatesController(service);
 }
