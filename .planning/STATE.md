@@ -28,10 +28,10 @@ progress:
 
 ## Current Position
 
-Phase: 15
+Phase: 16
 Plan: Not started
 
-**STATUS: Phase 13 (Kanban board) added to roadmap. Ready for planning.**
+**STATUS: Phase 16 context gathered (discuss mode). Ready for planning.**
 
 ## Accumulated Context
 
@@ -108,10 +108,19 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 
 ## Session Continuity
 
-**Last Session:** 2026-03-31T06:37:36.085Z
+**Last Session:** 2026-03-31T07:35:00.000Z
 Last activity: 2026-03-31
 
-**What Happened (Phase 11 Final):**
+**What Happened (Phase 16 Context Gathering):**
+
+16. Phase 16 (Backend Support for Manual Routing & UI Parity) — Context gathered ✓
+    - Gray areas identified: Application handling on reassignment, stage reset policy, scope (API vs bulk), audit trail, endpoint design, validation
+    - User decisions: Keep old Application + rescore on reassignment, always reset stage, API only (no bulk), no audit trail, extend PATCH /candidates/:id, reject if no stages
+    - CONTEXT.md created with 19 locked decisions (D-01 to D-19)
+    - No corrections made — all assumptions validated
+    - Ready for planning
+
+**Previous Session (Phase 15):**
 
 11. Phase 11 (API Protocol MVP Implementation) — COMPLETE ✓
     - 11-01: Full jobs API with GET /config, GET/POST/PUT/DELETE /jobs endpoints
