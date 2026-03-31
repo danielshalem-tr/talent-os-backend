@@ -63,10 +63,7 @@ describe('ScoringAgentService', () => {
     mockGetText.mockResolvedValueOnce(validScoreResponse);
 
     const configService = { get: jest.fn().mockReturnValue('test-key') } as unknown as ConfigService;
-    const jobTitleMatcher = {
-      matchJobTitles: jest.fn().mockResolvedValue({ matched: true, confidence: 0.95 }),
-    } as unknown as JobTitleMatcherService;
-    const service = new ScoringAgentService(configService, jobTitleMatcher);
+    const service = new ScoringAgentService(configService);
     await service.score(mockScoringInput());
 
     expect(configService.get).toHaveBeenCalledWith('OPENROUTER_API_KEY');

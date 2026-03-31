@@ -10,7 +10,6 @@ import { mockCandidateExtract } from './services/extraction-agent.service.test-h
 import { StorageService } from '../storage/storage.service';
 import { DedupService } from '../dedup/dedup.service';
 import { ScoringAgentService } from '../scoring/scoring.service';
-import { JobTitleMatcherService } from '../scoring/job-title-matcher.service';
 import { Prisma } from '@prisma/client';
 
 // Mock @openrouter/sdk to prevent ESM parse errors (ExtractionAgentService is provided as a mock anyway)
@@ -24,7 +23,7 @@ jest.mock('mammoth', () => ({
 
 describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
@@ -37,7 +36,7 @@ describe('IngestionProcessor', () => {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
-      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null) },
+      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
     };
@@ -71,7 +70,6 @@ describe('IngestionProcessor', () => {
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
-        { provide: JobTitleMatcherService, useValue: { matchJobTitles: jest.fn().mockResolvedValue({ matched: false, confidence: 0 }) } },
       ],
     }).compile();
 
@@ -205,7 +203,7 @@ describe('IngestionProcessor', () => {
 
 describe('IngestionProcessor — Phase 5 StorageService', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
@@ -218,7 +216,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
-      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null) },
+      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
     };
@@ -249,7 +247,6 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
-        { provide: JobTitleMatcherService, useValue: { matchJobTitles: jest.fn().mockResolvedValue({ matched: false, confidence: 0 }) } },
       ],
     }).compile();
 
@@ -329,7 +326,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
 
 describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: {
@@ -351,7 +348,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         return cb(txClient);
       }),
       candidate: { update: jest.fn().mockResolvedValue({}) },
-      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null) },
+      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
     };
@@ -395,7 +392,6 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
-        { provide: JobTitleMatcherService, useValue: { matchJobTitles: jest.fn().mockResolvedValue({ matched: false, confidence: 0 }) } },
       ],
     }).compile();
 
@@ -408,7 +404,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     mockPostmarkPayload({
       MessageID: 'msg-dedup-test',
       From: 'sender@example.com',
-      Subject: 'Job Application from Jane Doe',
+      Subject: '[Job ID: job-id-1] Job Application from Jane Doe',
       TextBody:
         'Dear Hiring Manager, I have 5 years of experience in software engineering. Please find my CV attached.',
       Attachments: [],
@@ -503,7 +499,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     emailIntakeLog: { update: jest.Mock };
     $transaction: jest.Mock;
     candidate: { update: jest.Mock };
-    job: { findMany: jest.Mock; findFirst: jest.Mock };
+    job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
     application: { upsert: jest.Mock };
     candidateJobScore: { create: jest.Mock };
   };
@@ -523,7 +519,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
-      job: { findMany: jest.fn().mockResolvedValue([activeJob]), findFirst: jest.fn().mockResolvedValue(null) },
+      job: { findMany: jest.fn().mockResolvedValue([activeJob]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(activeJob) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id-1' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
     };
@@ -536,7 +532,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         current_role: 'Senior Software Engineer',
         years_experience: 7,
         location: 'Tel Aviv, Israel',
-        job_title_hint: 'Senior Backend Developer',
+        source_agency: null,
         skills: ['TypeScript', 'Node.js'],
         ai_summary: 'Experienced engineer. Strong in distributed systems.',
         source_hint: 'direct',
@@ -576,7 +572,6 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: scoringService },
-        { provide: JobTitleMatcherService, useValue: { matchJobTitles: jest.fn().mockResolvedValue({ matched: true, confidence: 0.95, reasoning: 'exact match' }) } },
       ],
     }).compile();
 
@@ -589,7 +584,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     mockPostmarkPayload({
       MessageID: 'msg-phase7-test',
       From: 'sender@example.com',
-      Subject: 'Job Application from Jane Doe',
+      Subject: '[Job ID: job-id-1] Job Application from Jane Doe',
       TextBody:
         'Dear Hiring Manager, I have 7 years of TypeScript and Node.js experience building backend systems. ' +
         'I am very interested in this position and would love to discuss my background further. ' +
@@ -618,17 +613,25 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     );
   });
 
-  it('7-02-02: SCOR-01 — job.findMany called once for Phase 6.5 matching only (no Phase 7 loop)', async () => {
-    const job = { id: 'test-p7-2', data: validJobPayload() } as any;
+  it('7-02-02: SCOR-01 — Phase 15: job.findUnique called once for deterministic Job ID extraction', async () => {
+    // Phase 15: Add Job ID to subject for deterministic matching
+    const jobPayloadWithId = mockPostmarkPayload({
+      MessageID: 'msg-p15-test',
+      From: 'sender@example.com',
+      Subject: '[Job ID: job-id-1] Job Application from Jane Doe',
+      TextBody:
+        'Dear Hiring Manager, I have 5 years of experience in software engineering. Please find my CV attached.',
+      Attachments: [],
+    });
+    const job = { id: 'test-p7-2', data: jobPayloadWithId } as any;
     await processor.process(job);
 
-    expect(prisma.job.findMany).toHaveBeenCalledWith(
+    // Phase 15: job.findUnique called with shortId from email subject
+    expect(prisma.job.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { tenantId: 'test-tenant-id', status: 'open' },
+        where: expect.objectContaining({ idx_job_short_id_tenant: expect.anything() }),
       }),
     );
-    // Called once for Phase 6.5 (matching) — Phase 7 uses matched job directly, no second fetch
-    expect(prisma.job.findMany).toHaveBeenCalledTimes(1);
   });
 
   // 7-02-03: SCOR-02 + SCOR-04 — application upserted then score created per active job
@@ -656,17 +659,20 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     );
   });
 
-  // 7-02-04: SCOR-01 no active jobs — scoring loop skipped, status still completed
-  it('7-02-04: SCOR-01 — no active jobs: scoring loop skipped, processingStatus still set to completed', async () => {
-    prisma.job.findMany.mockResolvedValueOnce([]);
+  // 7-02-04: SCOR-01 job not found — scoring loop skipped, status still completed
+  it('7-02-04: SCOR-01 — Phase 15: job ID not found: scoring loop skipped, processingStatus still completed', async () => {
+    // Mock findUnique to return null (job not found for this shortId)
+    prisma.job.findUnique.mockResolvedValueOnce(null);
 
     const job = { id: 'test-p7-4', data: validJobPayload() } as any;
     await processor.process(job);
 
+    // When no job is found, no application is created and scoring is skipped
     expect(prisma.application.upsert).not.toHaveBeenCalled();
     expect(scoringService.score).not.toHaveBeenCalled();
-    // findMany called once for matching, which finds [], so it skips scoring findMany
-    expect(prisma.job.findMany).toHaveBeenCalledTimes(1);
+    // Job lookup was performed via findUnique
+    expect(prisma.job.findUnique).toHaveBeenCalled();
+    // Status is still completed even without a matched job
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { processingStatus: 'completed' } }),
     );
@@ -741,7 +747,6 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key') } },
           { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
           { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, modelUsed: 'test' }) } },
-          { provide: JobTitleMatcherService, useValue: { matchJobTitles: jest.fn() } },
         ],
       }).compile();
       processor = module.get<IngestionProcessor>(IngestionProcessor);
