@@ -3,10 +3,10 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: Milestone complete
-last_updated: "2026-03-29T12:54:13.946Z"
-last_activity: 2026-03-30 - Completed quick task 260330-idw: Add GET /jobs/:id endpoint to fetch single job
+last_updated: "2026-03-31T06:37:36.089Z"
+last_activity: "2026-03-30 — Completed quick task 260330-idw: Add GET /jobs/:id endpoint to fetch single job with findOne()"
 progress:
-  total_phases: 14
+  total_phases: 15
   completed_phases: 14
   total_plans: 35
   completed_plans: 35
@@ -66,6 +66,7 @@ Plan: Not started
 - Phase 12 discovered: Support add candidate from the UI (already planned)
 - Phase 13 added: Implement Kanban board with candidate hiring stage tracking
 - Phase 14 added: Wire OpenRouter extraction pipeline: email→LLM→dedup→scoring→UI
+- Phase 15 added: Migrate email ingestion to deterministic Job ID routing and remove semantic matching
 
 ### Blockers
 
@@ -106,7 +107,7 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 
 ## Session Continuity
 
-**Last Session:** 2026-03-30T10:17:53Z
+**Last Session:** 2026-03-31T06:37:36.085Z
 Last activity: 2026-03-30 — Completed quick task 260330-idw: Add GET /jobs/:id endpoint to fetch single job with findOne()
 
 **What Happened (Phase 11 Final):**
