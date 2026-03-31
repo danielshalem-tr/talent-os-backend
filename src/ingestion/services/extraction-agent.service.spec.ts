@@ -30,8 +30,8 @@ describe('ExtractionAgentService', () => {
     mockCallModel.mockReturnValue({ getText: mockGetText });
   });
 
-  // CandidateExtractSchema: all 9 fields (no suspicious) parse correctly
-  it('CandidateExtractSchema parses full object with all 9 fields without throwing', () => {
+  // CandidateExtractSchema: all 10 fields (no suspicious) parse correctly
+  it('CandidateExtractSchema parses full object with all 10 fields without throwing', () => {
     expect(() =>
       CandidateExtractSchema.parse({
         full_name: 'X',
@@ -40,10 +40,10 @@ describe('ExtractionAgentService', () => {
         current_role: null,
         years_experience: null,
         location: null,
-        job_title_hint: null,
         skills: [],
         ai_summary: null,
         source_hint: null,
+        source_agency: null,
       }),
     ).not.toThrow();
   });
@@ -57,10 +57,10 @@ describe('ExtractionAgentService', () => {
       current_role: null,
       years_experience: 6,
       location: null,
-      job_title_hint: null,
       skills: [],
       ai_summary: null,
       source_hint: null,
+      source_agency: null,
     });
     expect(parsed.years_experience).toBe(6);
   });
@@ -74,10 +74,10 @@ describe('ExtractionAgentService', () => {
       current_role: null,
       years_experience: null,
       location: null,
-      job_title_hint: null,
       skills: [],
       ai_summary: null,
       source_hint: 'linkedin',
+      source_agency: null,
     });
     expect(parsed.source_hint).toBe('linkedin');
   });
@@ -92,10 +92,10 @@ describe('ExtractionAgentService', () => {
         current_role: null,
         years_experience: null,
         location: null,
-        job_title_hint: null,
         skills: [],
         ai_summary: null,
         source_hint: 'invalid',
+        source_agency: null,
       }),
     ).toThrow();
   });
@@ -109,10 +109,10 @@ describe('ExtractionAgentService', () => {
       current_role: null,
       years_experience: null,
       location: null,
-      job_title_hint: null,
       skills: [],
       ai_summary: null,
       source_hint: null,
+      source_agency: null,
     };
     expect(() => CandidateExtractSchema.parse(partial)).not.toThrow();
   });
@@ -126,10 +126,10 @@ describe('ExtractionAgentService', () => {
       current_role: null,
       years_experience: null,
       location: null,
-      job_title_hint: null,
       skills: [],
       ai_summary: null,
       source_hint: null,
+      source_agency: null,
     });
     expect(parsed.skills).toEqual([]);
   });
@@ -143,10 +143,10 @@ describe('ExtractionAgentService', () => {
       current_role: 'Product Manager',
       years_experience: 5,
       location: 'London, UK',
-      job_title_hint: 'Senior Product Manager',
       skills: ['Strategy', 'Roadmapping'],
       ai_summary: 'PM with 5 years experience. Skilled in roadmapping and stakeholder management.',
       source_hint: 'direct',
+      source_agency: null,
     };
 
     mockGetText.mockResolvedValueOnce(JSON.stringify(aiResult));
@@ -168,10 +168,10 @@ describe('ExtractionAgentService', () => {
       current_role: null,
       years_experience: null,
       location: null,
-      job_title_hint: null,
       skills: [],
       ai_summary: null,
       source_hint: null,
+      source_agency: null,
     }));
 
     const service = makeService();
@@ -196,10 +196,10 @@ describe('ExtractionAgentService', () => {
       current_role: 'Data Scientist',
       years_experience: 3,
       location: 'Berlin, Germany',
-      job_title_hint: 'Data Scientist',
       skills: ['Python'],
       ai_summary: 'Data scientist. Specialises in ML pipelines.',
       source_hint: null,
+      source_agency: null,
     };
 
     mockGetText.mockResolvedValueOnce('```json\n' + JSON.stringify(aiResult) + '\n```');
@@ -231,10 +231,10 @@ describe('ExtractionAgentService', () => {
       current_role: 'Backend Developer',
       years_experience: 6,
       location: 'Tel Aviv, Israel',
-      job_title_hint: 'Senior Backend Developer',
       skills: ['TypeScript'],
       ai_summary: 'Backend developer. Strong in TypeScript.',
       source_hint: 'direct',
+      source_agency: null,
     };
     mockGetText.mockResolvedValueOnce(JSON.stringify(aiResult));
 
@@ -280,7 +280,7 @@ describe('ExtractionAgentService', () => {
   });
 
   // extractDeterministically() is PUBLIC and returns all new fields as null
-  it('extractDeterministically() is public and returns current_role, years_experience, location, source_hint as null', () => {
+  it('extractDeterministically() is public and returns current_role, years_experience, location, source_hint, source_agency as null', () => {
     const service = makeService();
     const result = service.extractDeterministically('John Smith\njohn@example.com\nTypeScript developer');
 
@@ -288,7 +288,7 @@ describe('ExtractionAgentService', () => {
     expect(result).toHaveProperty('years_experience', null);
     expect(result).toHaveProperty('location', null);
     expect(result).toHaveProperty('source_hint', null);
-    expect(result).toHaveProperty('job_title_hint', null);
+    expect(result).toHaveProperty('source_agency', null);
     expect(result).toHaveProperty('full_name');
     expect(result).toHaveProperty('skills');
   });

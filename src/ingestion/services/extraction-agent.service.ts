@@ -10,10 +10,10 @@ export const CandidateExtractSchema = z.object({
   current_role: z.string().nullable(),
   years_experience: z.number().int().min(0).max(50).nullable(),
   location: z.string().nullable(),
-  job_title_hint: z.string().nullable(),
   skills: z.array(z.string()),
   ai_summary: z.string().nullable(),
   source_hint: z.enum(['linkedin', 'agency', 'referral', 'direct']).nullable(),
+  source_agency: z.string().nullable(),
 });
 
 export type CandidateExtract = z.infer<typeof CandidateExtractSchema> & {
@@ -27,10 +27,10 @@ const FALLBACK: Omit<CandidateExtract, 'suspicious'> = {
   current_role: null,
   years_experience: null,
   location: null,
-  job_title_hint: null,
   skills: [],
   ai_summary: null,
   source_hint: null,
+  source_agency: null,
 };
 
 const INSTRUCTIONS = `You are a CV data extraction assistant.
@@ -42,12 +42,12 @@ The JSON must contain exactly these keys:
 - current_role: candidate's current or most recent job title (string or null)
 - years_experience: total years of professional experience as a SINGLE INTEGER — convert ranges like "5-7 years" to the midpoint (integer or null)
 - location: candidate's location as "City, Country" format (string or null)
-- job_title_hint: inferred job title or role the candidate would be a good fit for, based on CV content (string or null) — e.g., if CV shows Node.js/TypeScript expertise, extract "Backend Developer" or "Full Stack Developer"
 - skills: list of technical and professional skills — 5 to 15 short tags, lowercase preferred (array of strings)
 - ai_summary: exactly 2 sentences — sentence 1 is role/experience level, sentence 2 highlights top skills or a notable achievement (string or null)
 - source_hint: how this CV was received — use email metadata to infer: "linkedin" if subject/from mentions LinkedIn or Recruiter; "agency" if from a recruiting agency domain or subject says "presenting candidate"; "referral" if body mentions referred by someone; "direct" if sent directly by the candidate; null if unclear
+- source_agency: If source_hint is 'agency', extract the name of the recruiting agency from the email metadata (From name/domain or Subject). If it's not an agency or the name cannot be determined, return null (string or null).
 
-Use the From and Subject fields as signals for source_hint detection. If a field cannot be determined, use null.
+Use the From and Subject fields as signals for source_hint and source_agency detection. If a field cannot be determined, use null.
 
 Example output:
 {
@@ -57,10 +57,10 @@ Example output:
   "current_role": "Senior Backend Developer",
   "years_experience": 6,
   "location": "Tel Aviv, Israel",
-  "job_title_hint": "Senior Backend Developer",
   "skills": ["node.js", "typescript", "postgresql", "docker", "aws", "system design"],
   "ai_summary": "Senior Backend Developer with 6 years of experience in server-side development. Specializes in Node.js and cloud infrastructure with a track record of leading microservices migrations.",
-  "source_hint": "direct"
+  "source_hint": "direct",
+  "source_agency": null
 }`;
 
 @Injectable()
@@ -173,10 +173,10 @@ export class ExtractionAgentService {
       current_role: null,        // deterministic cannot infer role
       years_experience: null,    // deterministic cannot infer years
       location: null,            // deterministic cannot infer location
-      job_title_hint: null,      // deterministic cannot infer job title hint
       skills,
       ai_summary: `Deterministic extraction: Found ${skills.length} skills. Name: ${fullName}`,
       source_hint: null,         // deterministic cannot infer source
+      source_agency: null,       // deterministic cannot infer agency
     };
   }
 
