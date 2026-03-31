@@ -305,6 +305,8 @@ describe('CandidatesService.createCandidate()', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ConfigService, useValue: mockConfig },
         { provide: StorageService, useValue: mockStorageService },
+        { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' }) } },
+        { provide: CandidateAiService, useValue: { generateSummary: jest.fn().mockResolvedValue('Test summary') } },
       ],
     }).compile();
 
@@ -464,6 +466,8 @@ describe('CandidatesService.deleteCandidate()', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(TENANT_ID) } },
         { provide: StorageService, useValue: { uploadFromBuffer: jest.fn() } },
+        { provide: ScoringAgentService, useValue: { score: jest.fn() } },
+        { provide: CandidateAiService, useValue: { generateSummary: jest.fn() } },
       ],
     }).compile();
 
@@ -527,5 +531,348 @@ describe('CandidatesService.deleteCandidate()', () => {
   it('propagates unexpected errors from the transaction', async () => {
     mockPrisma.$transaction.mockRejectedValue(new Error('DB failure'));
     await expect(service.deleteCandidate(CAND_ID)).rejects.toThrow('DB failure');
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CandidatesService.updateCandidate() - Reassignment Error Validation Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CandidatesService.updateCandidate() - Error Handling', () => {
+  let service: CandidatesService;
+  let mockPrisma: { candidate: { findFirst: jest.Mock }; job: { findFirst: jest.Mock }; jobStage: { findFirst: jest.Mock } };
+  let mockConfig: { get: jest.Mock };
+
+  const TENANT_ID = '11111111-1111-1111-1111-111111111111';
+  const CAND_ID = 'cand-uuid';
+  const JOB_ID = 'job-uuid';
+
+  beforeEach(async () => {
+    mockConfig = { get: jest.fn().mockReturnValue(TENANT_ID) };
+    mockPrisma = {
+      candidate: { findFirst: jest.fn(), update: jest.fn() },
+      job: { findFirst: jest.fn() },
+      jobStage: { findFirst: jest.fn() },
+      application: { create: jest.fn(), findFirst: jest.fn() },
+      candidateJobScore: { create: jest.fn() },
+      $transaction: jest.fn().mockImplementation(async (fn: any) => fn(mockPrisma)),
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        CandidatesService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: ConfigService, useValue: mockConfig },
+        { provide: StorageService, useValue: {} },
+        { provide: ScoringAgentService, useValue: { score: jest.fn() } },
+        { provide: CandidateAiService, useValue: { generateSummary: jest.fn() } },
+      ],
+    }).compile();
+
+    service = module.get<CandidatesService>(CandidatesService);
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('throws NotFoundException when candidate not found', async () => {
+    mockPrisma.candidate.findFirst.mockResolvedValue(null);
+
+    await expect(service.updateCandidate(CAND_ID, { job_id: JOB_ID })).rejects.toThrow(NotFoundException);
+  });
+
+  it('throws NotFoundException when job not found during reassignment', async () => {
+    // Reassignment scenario: jobId=X → jobId=Y
+    mockPrisma.candidate.findFirst.mockResolvedValue({
+      id: CAND_ID,
+      jobId: 'old-job-id', // Already assigned to a job
+      fullName: 'Test',
+      cvText: '',
+      skills: [],
+      currentRole: null,
+      yearsExperience: null,
+    });
+    mockPrisma.jobStage.findFirst.mockResolvedValue({ id: 'stage-id' });
+    mockPrisma.job.findFirst.mockResolvedValue(null); // Job not found
+
+    await expect(service.updateCandidate(CAND_ID, { job_id: JOB_ID })).rejects.toThrow(NotFoundException);
+  });
+
+  it('throws BadRequestException when job has no enabled stages', async () => {
+    mockPrisma.candidate.findFirst.mockResolvedValue({
+      id: CAND_ID,
+      jobId: null,
+      fullName: 'Test',
+      cvText: '',
+      skills: [],
+      currentRole: null,
+      yearsExperience: null,
+    });
+    mockPrisma.jobStage.findFirst.mockResolvedValue(null);
+
+    await expect(service.updateCandidate(CAND_ID, { job_id: JOB_ID })).rejects.toThrow(BadRequestException);
+  });
+
+  it('throws BadRequestException with code NO_STAGES when no enabled stages exist', async () => {
+    mockPrisma.candidate.findFirst.mockResolvedValue({
+      id: CAND_ID,
+      jobId: null,
+      fullName: 'Test',
+      cvText: '',
+      skills: [],
+      currentRole: null,
+      yearsExperience: null,
+    });
+    mockPrisma.jobStage.findFirst.mockResolvedValue(null);
+
+    try {
+      await service.updateCandidate(CAND_ID, { job_id: JOB_ID });
+      fail('Should have thrown BadRequestException');
+    } catch (err) {
+      expect(err).toBeInstanceOf(BadRequestException);
+      expect(err.getResponse()).toMatchObject({
+        error: { code: 'NO_STAGES' },
+      });
+    }
+  });
+
+  it('scopes candidate lookup to tenantId', async () => {
+    mockPrisma.candidate.findFirst.mockResolvedValue(null);
+
+    try {
+      await service.updateCandidate(CAND_ID, { job_id: JOB_ID });
+    } catch (e) {
+      // Expected
+    }
+
+    expect(mockPrisma.candidate.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: CAND_ID, tenantId: TENANT_ID }),
+      }),
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CandidatesService.findAll() - Unassigned Filter Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CandidatesService.findAll() - Unassigned Filter', () => {
+  let service: CandidatesService;
+  let mockPrisma: { candidate: { findMany: jest.Mock } };
+  let mockConfig: { get: jest.Mock };
+
+  const TENANT_ID = '11111111-1111-1111-1111-111111111111';
+
+  beforeEach(async () => {
+    mockConfig = { get: jest.fn().mockReturnValue(TENANT_ID) };
+
+    mockPrisma = {
+      candidate: { findMany: jest.fn() },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        CandidatesService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: ConfigService, useValue: mockConfig },
+        { provide: StorageService, useValue: {} },
+        { provide: ScoringAgentService, useValue: {} },
+        { provide: CandidateAiService, useValue: {} },
+      ],
+    }).compile();
+
+    service = module.get<CandidatesService>(CandidatesService);
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('returns only jobId=null candidates when unassigned=true', async () => {
+    mockPrisma.candidate.findMany.mockResolvedValue([
+      {
+        id: 'cand-1',
+        jobId: null,
+        fullName: 'Unassigned One',
+        email: 'uno@example.com',
+        applications: [],
+        duplicateFlags: [],
+        candidateStageSummaries: [],
+      },
+    ]);
+
+    const result = await service.findAll(undefined, undefined, undefined, true);
+
+    expect(mockPrisma.candidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: TENANT_ID,
+          jobId: null,
+        }),
+      }),
+    );
+    expect(result.candidates).toHaveLength(1);
+    expect(result.candidates[0].job_id).toBeNull();
+  });
+
+  it('returns all candidates when unassigned=false', async () => {
+    mockPrisma.candidate.findMany.mockResolvedValue([
+      { id: 'cand-1', jobId: null, fullName: 'Unassigned', applications: [], duplicateFlags: [], candidateStageSummaries: [] },
+      { id: 'cand-2', jobId: 'job-uuid', fullName: 'Assigned', applications: [], duplicateFlags: [], candidateStageSummaries: [] },
+    ]);
+
+    const result = await service.findAll(undefined, undefined, undefined, false);
+
+    expect(result.candidates).toHaveLength(2);
+  });
+
+  it('combines unassigned filter with search query', async () => {
+    mockPrisma.candidate.findMany.mockResolvedValue([
+      { id: 'cand-1', jobId: null, fullName: 'John', applications: [], duplicateFlags: [], candidateStageSummaries: [] },
+    ]);
+
+    await service.findAll('john', undefined, undefined, true);
+
+    expect(mockPrisma.candidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          jobId: null,
+          OR: expect.any(Array),
+        }),
+      }),
+    );
+  });
+
+  it('combines unassigned filter with duplicates filter', async () => {
+    mockPrisma.candidate.findMany.mockResolvedValue([
+      { id: 'cand-1', jobId: null, duplicateFlags: [{ id: 'dup-1', reviewed: false }], applications: [], candidateStageSummaries: [] },
+    ]);
+
+    await service.findAll(undefined, 'duplicates', undefined, true);
+
+    expect(mockPrisma.candidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          jobId: null,
+          duplicateFlags: { some: { reviewed: false } },
+        }),
+      }),
+    );
+  });
+
+  it('takes precedence over jobId param when both provided', async () => {
+    mockPrisma.candidate.findMany.mockResolvedValue([]);
+
+    await service.findAll(undefined, undefined, 'some-job-id', true);
+
+    // unassigned=true should override jobId filter
+    expect(mockPrisma.candidate.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          jobId: null,
+        }),
+      }),
+    );
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Response Format Compliance Tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('CandidatesService - Response Format Compliance', () => {
+  let service: CandidatesService;
+  let mockPrisma: { candidate: { findMany: jest.Mock; findFirst: jest.Mock } };
+  let mockConfig: { get: jest.Mock };
+
+  const TENANT_ID = '11111111-1111-1111-1111-111111111111';
+
+  beforeEach(async () => {
+    mockConfig = { get: jest.fn().mockReturnValue(TENANT_ID) };
+
+    mockPrisma = {
+      candidate: {
+        findMany: jest.fn(),
+        findFirst: jest.fn(),
+      },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        CandidatesService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: ConfigService, useValue: mockConfig },
+        { provide: StorageService, useValue: {} },
+        { provide: ScoringAgentService, useValue: {} },
+        { provide: CandidateAiService, useValue: {} },
+      ],
+    }).compile();
+
+    service = module.get<CandidatesService>(CandidatesService);
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('returns flattened response with no applications array', async () => {
+    mockPrisma.candidate.findMany.mockResolvedValue([
+      {
+        id: 'cand-1',
+        fullName: 'Test',
+        email: 'test@example.com',
+        applications: [{ scores: [] }],
+        jobId: 'job-1',
+        hiringStageId: 'stage-1',
+        hiringStage: { name: 'New' },
+        duplicateFlags: [],
+        candidateStageSummaries: [],
+        source: 'linkedin',
+        sourceAgency: 'LinkedIn',
+        createdAt: new Date(),
+        skills: [],
+        status: 'active',
+        aiSummary: null,
+      },
+    ]);
+
+    const result = await service.findAll();
+
+    // Verify response has sourceAgency field
+    expect(result.candidates[0].source_agency).toBe('LinkedIn');
+
+    // Verify NO applications array in response
+    expect(result.candidates[0]).not.toHaveProperty('applications');
+  });
+
+  it('calculates ai_score as Math.max of application scores', async () => {
+    mockPrisma.candidate.findMany.mockResolvedValue([
+      {
+        id: 'cand-1',
+        applications: [
+          { scores: [{ score: 50 }] },
+          { scores: [{ score: 80 }] },
+        ],
+        duplicateFlags: [],
+        candidateStageSummaries: [],
+      },
+    ]);
+
+    const result = await service.findAll();
+
+    expect(result.candidates[0].ai_score).toBe(80);
+  });
+
+  it('includes sourceAgency in response', async () => {
+    mockPrisma.candidate.findMany.mockResolvedValue([
+      {
+        id: 'cand-1',
+        fullName: 'Test',
+        sourceAgency: 'LinkedIn',
+        applications: [],
+        duplicateFlags: [],
+        candidateStageSummaries: [],
+      },
+    ]);
+
+    const result = await service.findAll();
+
+    expect(result.candidates[0].source_agency).toBe('LinkedIn');
   });
 });
