@@ -35,6 +35,7 @@ model Job {
   location      String?  @db.Text
   jobType       String   @default("full_time") @map("job_type") @db.Text
   status        String   @default("draft") @db.Text
+  shortId       String   @map("short_id") @db.Text
   description   String?  @db.Text
   requirements  String[] @default([])
   salaryRange   String?  @map("salary_range") @db.Text
@@ -59,7 +60,9 @@ model Job {
   screeningQuestions ScreeningQuestion[]
 
   @@unique([id, tenantId], name: "id_tenantId")
+  @@unique([tenantId, shortId], name: "idx_job_short_id_tenant")
   @@index([tenantId, status], name: "idx_jobs_active")
+  @@index([tenantId, shortId], name: "idx_job_lookup_by_short_id")
   @@map("jobs")
 }
 
