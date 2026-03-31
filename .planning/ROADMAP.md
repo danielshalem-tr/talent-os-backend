@@ -1,7 +1,7 @@
 # Roadmap: Triolla Talent OS — Backend (Phase 1)
 
 **Created:** 2026-03-22
-**Phases:** 16
+**Phases:** 17
 **Granularity:** Standard
 **Coverage:** 40/40 v1 requirements mapped
 
@@ -23,6 +23,7 @@
 - [x] **Phase 14: Wire OpenRouter extraction pipeline** - Replace mock extraction with real LLM calls (completed 2026-03-29)
 - [x] **Phase 15: Migrate email ingestion to deterministic Job ID routing** - Regex + shortId lookup, remove semantic matching (completed 2026-03-31)
 - [ ] **Phase 16: Backend Support for Manual Routing & UI Parity** - Manual job assignment API, expose shortId/sourceAgency in responses (planned 2026-03-31)
+- [ ] **Phase 17: Production Deployment Readiness** - Fix tests, health endpoint, security hardening, Nginx/SSL, Makefile, CI/CD pipeline
 
 ## Phase Details
 
@@ -310,6 +311,23 @@ Plans:
 - [ ] 16-02-PLAN.md — Wave 1: Implement updateCandidate() reassignment logic + findAll() unassigned filter, remove ALREADY_ASSIGNED error
 - [ ] 16-03-PLAN.md — Wave 2: Comprehensive integration tests (80+ tests), manual smoke test checkpoint for reassignment workflow
 
+### Phase 17: Production Deployment Readiness: Fix Tests, Add Sanity Checks, and Prepare CI/CD for Hetzner/Jenkins
+
+**Goal:** Close out the v1.0 milestone by hardening the codebase for production: fix all 6 failing tests (Phase 16 regressions), add GET /health endpoint (DB + Redis probes), configure structured JSON logging (nestjs-pino), apply security middleware (helmet, throttler, CORS deny-all), audit all API endpoints against PROTOCOL.md, add Nginx + Let's Encrypt reverse proxy to docker-compose, set container resource limits for Hetzner CX21, create Makefile with 11 developer workflow targets, write Jenkinsfile with parameterized CI pipeline, and rewrite README.md as complete developer onboarding documentation.
+
+**Depends on:** Phase 16
+
+**Requirements:** D-01 to D-38 (from 17-CONTEXT.md)
+
+**Plans:** 5 plans
+
+Plans:
+- [ ] 17-01-PLAN.md — Wave 1: Fix 6 failing unit tests (jobs.integration.spec.ts + ingestion.processor.spec.ts)
+- [ ] 17-02-PLAN.md — Wave 1: Health endpoint (GET /health), E2E smoke test, nestjs-pino structured logging, BullMQ lifecycle logs
+- [ ] 17-03-PLAN.md — Wave 2: Security hardening (helmet, throttler, CORS deny-all) + API endpoint review vs PROTOCOL.md
+- [ ] 17-04-PLAN.md — Wave 2: Nginx reverse proxy + Let's Encrypt certbot + docker-compose resource limits + healthcheck
+- [ ] 17-05-PLAN.md — Wave 3: Makefile (11 targets) + Jenkinsfile (parameterized build) + deploy.sh + README rewrite
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -330,8 +348,9 @@ Plans:
 | 14. Wire OpenRouter extraction pipeline | 1/1 | Complete | 2026-03-29 |
 | 15. Migrate email ingestion to deterministic Job ID routing | 1/1 | Complete | 2026-03-31 |
 | 16. Backend Support for Manual Routing & UI Parity | 0/3 | Planned | TBD |
+| 17. Production Deployment Readiness | 0/5 | Planned | TBD |
 
 ---
 
 *Roadmap created: 2026-03-22 by /gsd:new-roadmap*
-*Updated: 2026-03-31 by plan-phase (Phase 16 planning complete)*
+*Updated: 2026-03-31 by plan-phase (Phase 17 planning complete)*
