@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: Milestone complete
-last_updated: "2026-03-31T07:35:40.900Z"
+status: Executing Phase 16
+last_updated: "2026-03-31T09:40:12.024Z"
 last_activity: 2026-03-31
 progress:
-  total_phases: 12
+  total_phases: 13
   completed_phases: 11
-  total_plans: 30
+  total_plans: 31
   completed_plans: 30
 ---
 
@@ -22,14 +22,14 @@ progress:
 
 **Core Value:** Inbound CVs are automatically processed, de-duplicated, and scored against open jobs without any manual recruiter effort — end-to-end from email receipt to scored candidate record.
 
-**Current Focus:** Phase 15 — migrate-email-ingestion-to-deterministic-job-id-routing-and-remove-semantic-matching
+**Current Focus:** Phase 16 — backend-support-for-manual-routing-ui-parity
 
 **Tech Stack (Locked):** TypeScript, NestJS 11, BullMQ + Redis, Prisma 7, PostgreSQL 16, Vercel AI SDK, Claude Haiku + Sonnet, Cloudflare R2, Postmark Inbound webhooks.
 
 ## Current Position
 
-Phase: 16
-Plan: Not started
+Phase: 16 (backend-support-for-manual-routing-ui-parity) — EXECUTING
+Plan: 1 of 1
 
 **STATUS: Phase 16 context gathered (discuss mode). Ready for planning.**
 

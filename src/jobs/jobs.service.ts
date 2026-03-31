@@ -319,6 +319,7 @@ export class JobsService {
   private _formatJobResponse(job: any) {
     return {
       id: job.id,
+      short_id: job.shortId,
       title: job.title,
       department: job.department,
       location: job.location,
