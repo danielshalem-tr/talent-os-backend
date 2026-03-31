@@ -31,7 +31,7 @@ describe('CandidatesController (Integration Tests)', () => {
     hiring_stage_id: 'stage-uuid',
     hiring_stage_name: 'Application Review',
     job_title: 'Senior Engineer',
-    stage_summaries: [],
+    stage_summaries: {},
     years_experience: 5,
   };
 
@@ -71,7 +71,7 @@ describe('CandidatesController (Integration Tests)', () => {
       it('returns 200 with updated candidate when reassignment succeeds', async () => {
         jest.spyOn(candidatesService, 'updateCandidate').mockResolvedValue({
           ...mockCandidateResponse,
-          job_id: 'new-job-id',
+          job_id: '11111111-2222-3333-4444-555555555555',
           hiring_stage_id: 'new-stage-uuid',
           hiring_stage_name: 'New',
           ai_score: 80,
@@ -79,12 +79,12 @@ describe('CandidatesController (Integration Tests)', () => {
 
         const response = await request(app.getHttpServer())
           .patch(patchUrl)
-          .send({ job_id: 'new-job-id' })
+          .send({ job_id: '11111111-2222-3333-4444-555555555555' })
           .expect(200);
 
         expect(response.body).toMatchObject({
           id: candidateId,
-          job_id: 'new-job-id',
+          job_id: '11111111-2222-3333-4444-555555555555',
           hiring_stage_id: 'new-stage-uuid',
           hiring_stage_name: 'New',
           ai_score: 80,
@@ -116,7 +116,7 @@ describe('CandidatesController (Integration Tests)', () => {
 
         const response = await request(app.getHttpServer())
           .patch(patchUrl)
-          .send({ job_id: 'new-job-id' })
+          .send({ job_id: '11111111-2222-3333-4444-555555555555' })
           .expect(200);
 
         expect(response.body).not.toHaveProperty('applications');
@@ -126,16 +126,16 @@ describe('CandidatesController (Integration Tests)', () => {
         jest.spyOn(candidatesService, 'updateCandidate').mockResolvedValue({
           ...mockCandidateResponse,
           full_name: 'New Name',
-          job_id: 'new-job-id',
+          job_id: '11111111-2222-3333-4444-555555555555',
         });
 
         const response = await request(app.getHttpServer())
           .patch(patchUrl)
-          .send({ full_name: 'New Name', job_id: 'new-job-id' })
+          .send({ full_name: 'New Name', job_id: '11111111-2222-3333-4444-555555555555' })
           .expect(200);
 
         expect(response.body.full_name).toBe('New Name');
-        expect(response.body.job_id).toBe('new-job-id');
+        expect(response.body.job_id).toBe('11111111-2222-3333-4444-555555555555');
       });
     });
 
@@ -176,7 +176,7 @@ describe('CandidatesController (Integration Tests)', () => {
 
         const response = await request(app.getHttpServer())
           .patch(patchUrl)
-          .send({ job_id: 'job-no-stages' })
+          .send({ job_id: '22222222-3333-4444-5555-666666666666' })
           .expect(400);
 
         expect(response.body.error.code).toBe('NO_STAGES');
@@ -188,7 +188,7 @@ describe('CandidatesController (Integration Tests)', () => {
 
         await request(app.getHttpServer())
           .patch(patchUrl)
-          .send({ job_id: 'new-job-id' })
+          .send({ job_id: '11111111-2222-3333-4444-555555555555' })
           .expect(500); // Service throws, controller doesn't handle
       });
 
@@ -198,7 +198,7 @@ describe('CandidatesController (Integration Tests)', () => {
 
         await request(app.getHttpServer())
           .patch(patchUrl)
-          .send({ job_id: 'nonexistent-job' })
+          .send({ job_id: '33333333-4444-5555-6666-777777777777' })
           .expect(500); // Service throws
       });
     });
@@ -207,17 +207,17 @@ describe('CandidatesController (Integration Tests)', () => {
       it('allows reassignment from jobId=A to jobId=B without error', async () => {
         jest.spyOn(candidatesService, 'updateCandidate').mockResolvedValue({
           ...mockCandidateResponse,
-          job_id: 'job-b',
+          job_id: '44444444-5555-6666-7777-888888888888',
           hiring_stage_id: 'stage-b',
         });
 
         // Candidate is reassigned from old job to new job
         const response = await request(app.getHttpServer())
           .patch(patchUrl)
-          .send({ job_id: 'job-b' })
+          .send({ job_id: '44444444-5555-6666-7777-888888888888' })
           .expect(200);
 
-        expect(response.body.job_id).toBe('job-b');
+        expect(response.body.job_id).toBe('44444444-5555-6666-7777-888888888888');
       });
     });
   });
@@ -295,9 +295,9 @@ describe('CandidatesController (Integration Tests)', () => {
 
         expect(response.body.candidates).toHaveLength(1);
         expect(candidatesService.findAll).toHaveBeenCalledWith(
-          expect.stringContaining('john'),
-          expect.anything(),
-          expect.anything(),
+          'john',
+          undefined,
+          undefined,
           true
         );
       });
@@ -316,9 +316,9 @@ describe('CandidatesController (Integration Tests)', () => {
 
         expect(response.body.candidates).toHaveLength(1);
         expect(candidatesService.findAll).toHaveBeenCalledWith(
-          expect.anything(),
+          undefined,
           'duplicates',
-          expect.anything(),
+          undefined,
           true
         );
       });
@@ -336,9 +336,9 @@ describe('CandidatesController (Integration Tests)', () => {
           .expect(200);
 
         expect(candidatesService.findAll).toHaveBeenCalledWith(
-          expect.anything(),
-          expect.anything(),
-          expect.anything(),
+          undefined,
+          undefined,
+          'some-job',
           true // unassigned=true should be passed
         );
       });
@@ -426,16 +426,16 @@ describe('CandidatesController (Integration Tests)', () => {
       jest.spyOn(candidatesService, 'updateCandidate').mockResolvedValue({
         ...mockCandidateResponse,
         id: candidateId,
-        job_id: 'job-new',
+        job_id: '55555555-6666-7777-8888-999999999999',
         hiring_stage_id: 'stage-new',
       });
 
       const patchResponse = await request(app.getHttpServer())
-        .patch(`/api/candidates/${candidateId}`)
-        .send({ job_id: 'job-new' })
+        .patch(`/candidates/${candidateId}`)
+        .send({ job_id: '55555555-6666-7777-8888-999999999999' })
         .expect(200);
 
-      expect(patchResponse.body.job_id).toBe('job-new');
+      expect(patchResponse.body.job_id).toBe('55555555-6666-7777-8888-999999999999');
 
       // Step 2: GET unassigned should NOT include this candidate anymore
       jest.spyOn(candidatesService, 'findAll').mockResolvedValue({

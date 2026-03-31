@@ -540,7 +540,7 @@ describe('CandidatesService.deleteCandidate()', () => {
 
 describe('CandidatesService.updateCandidate() - Error Handling', () => {
   let service: CandidatesService;
-  let mockPrisma: { candidate: { findFirst: jest.Mock }; job: { findFirst: jest.Mock }; jobStage: { findFirst: jest.Mock } };
+  let mockPrisma: any;
   let mockConfig: { get: jest.Mock };
 
   const TENANT_ID = '11111111-1111-1111-1111-111111111111';
