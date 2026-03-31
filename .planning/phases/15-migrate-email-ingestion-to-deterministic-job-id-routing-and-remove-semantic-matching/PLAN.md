@@ -15,7 +15,7 @@ files_modified:
   - src/scoring/job-title-matcher.service.spec.ts
   - prisma/seed.ts
 autonomous: true
-requirements: []
+requirements: [CAND-01, CAND-02, CAND-03, SCOR-01, SCOR-02, SCOR-03, SCOR-04, SCOR-05]
 must_haves:
   truths:
     - "Job model has shortId field with unique constraint per tenant"
@@ -73,6 +73,10 @@ Output:
 - Updated extraction instructions
 - Deterministic routing logic
 - Seed data updated with shortId values
+
+**Out of Scope (Phase 16+):**
+- UI display of shortId on job cards (D-06) — requires recruiter UI updates in Phase 16
+- Admin UI for shortId management — deferred to future phases
 </objective>
 
 <execution_context>
@@ -215,8 +219,14 @@ In `src/ingestion/ingestion.processor.ts`:
    }
    ```
 
-2. **Replace Phase 6.5 semantic matching block (current lines 219-269):**
-   Replace the entire `if (extraction!.job_title_hint) { ... }` block with:
+2. **D-02: Extract Job ID BEFORE LLM extraction (IngestionProcessor.process() line ~46):**
+   ```typescript
+   // Extract deterministic Job ID from email subject BEFORE enrichment pipeline
+   const jobIdFromSubject = this.extractJobIdFromSubject(payload.Subject); // Insert BEFORE line 219
+   ```
+
+3. **Replace Phase 6.5 semantic matching block (current lines 219-269):**
+   The new deterministic block replaces the entire Phase 6.5 block (`if (extraction!.job_title_hint) { ... }`), eliminating the LLM-based job title matching logic entirely. Replace the entire block with:
    ```typescript
    // Phase 15: Deterministic Job ID extraction + lookup (replaces Phase 6.5 semantic matching)
    const jobIdFromSubject = this.extractJobIdFromSubject(payload.Subject);
@@ -264,11 +274,11 @@ In `src/ingestion/ingestion.processor.ts`:
    }
    ```
 
-3. **Remove JobTitleMatcherService from constructor (line 41):**
+4. **Remove JobTitleMatcherService from constructor (line 41):**
    - Remove: `private readonly jobTitleMatcher: JobTitleMatcherService,`
    - This will be cleaned up fully in Task 6
 
-4. **Keep Phase 7 enrichment and scoring logic unchanged** — already handles jobId=null correctly
+5. **Keep Phase 7 enrichment and scoring logic unchanged** — already handles jobId=null correctly
   </action>
   <verify>
     <automated>
@@ -420,6 +430,53 @@ Seed data updated with shortId values. Seeding completes successfully with new J
 </task>
 
 <task type="auto">
+  <name>Task 9: Add source_agency field to CandidateExtractSchema for future agency integrations</name>
+  <files>src/ingestion/services/extraction-agent.service.ts, src/ingestion/ingestion.processor.ts, prisma/schema.prisma</files>
+  <action>
+**Proactive preparation for Phase 16+ agency integrations.** Add `source_agency` field to extraction schema and pass through to database.
+
+In `src/ingestion/services/extraction-agent.service.ts`:
+
+1. **Update CandidateExtractSchema (line 6-17):**
+   - ADD: `source_agency: z.string().nullable(),`
+   - Schema now has 10 fields: full_name, email, phone, current_role, years_experience, location, skills, ai_summary, source_hint, source_agency
+
+2. **Update FALLBACK object (line 23-34):**
+   - ADD: `source_agency: null,`
+
+3. **Update INSTRUCTIONS constant (line 36-64):**
+   - ADD instruction line: "source_agency: If source_hint is 'agency', extract the name of the recruiting agency from the email metadata (From name/domain or Subject). If it's not an agency or the name cannot be determined, return null."
+   - ADD example field in JSON example: `"source_agency": "Smith & Associates Recruiting"` (or `null` for non-agency)
+
+4. **Update extractDeterministically() method (line 122-181):**
+   - ADD: `source_agency: null,` (since this is deterministic extraction without LLM, agency detection requires LLM context)
+
+In `src/ingestion/ingestion.processor.ts`:
+
+5. **Update candidate creation/upsert to include source_agency:**
+   - When creating/upserting candidate in the database, pass `source_agency: extraction.source_agency`
+   - This allows recruiters to see source agency information in Phase 16+ UI
+
+In `prisma/schema.prisma`:
+
+6. **Optional: Add source_agency column to Candidate model (lines ~80-110):**
+   - ADD field: `sourceAgency String? @map("source_agency") @db.Text`
+   - This prepares the schema for Phase 16 without requiring a migration
+   - If schema is not yet updated, note in context for Phase 16
+
+**Note:** This task prepares the extraction infrastructure for agency data without requiring UI changes. Phase 16 will add the Candidate model column and display in recruiter dashboard.
+  </action>
+  <verify>
+    <automated>
+npm test -- src/ingestion/services/extraction-agent.service.spec.ts 2>&1 | grep -E "Tests:|PASS|FAIL"
+    </automated>
+  </verify>
+  <done>
+CandidateExtractSchema has 10 fields including source_agency. FALLBACK and INSTRUCTIONS updated. extractDeterministically() returns source_agency: null. IngestionProcessor passes extraction.source_agency to database. Candidate model optionally updated with sourceAgency column (or deferred to Phase 16).
+  </done>
+</task>
+
+<task type="auto">
   <name>Task 8: Run full test suite and verify Phase 15 acceptance criteria</name>
   <files>src/ingestion/ingestion.processor.spec.ts, src/ingestion/services/extraction-agent.service.spec.ts</files>
   <action>
@@ -526,6 +583,7 @@ Full test suite passing. All Phase 15 acceptance criteria verified:
 
 1. **Database Schema:**
    - `prisma/schema.prisma` has Job.shortId field
+   - `prisma/schema.prisma` has optional Candidate.sourceAgency field (or deferred to Phase 16)
    - Migration file exists with backfill logic
    - `npx prisma migrate deploy` succeeds
    - Existing jobs have shortId values (e.g., "BD-1", "SBD-1")
@@ -537,9 +595,10 @@ Full test suite passing. All Phase 15 acceptance criteria verified:
    - Unmatched candidates (jobId=null) bypass scoring entirely
 
 3. **Extraction Schema:**
-   - CandidateExtractSchema has 9 fields (job_title_hint removed)
-   - FALLBACK and INSTRUCTIONS updated
-   - extractDeterministically() returns 9 fields
+   - CandidateExtractSchema has 10 fields (job_title_hint removed, source_agency added)
+   - FALLBACK and INSTRUCTIONS updated for source_agency extraction
+   - extractDeterministically() returns 10 fields with source_agency: null
+   - IngestionProcessor passes extraction.source_agency to database
 
 4. **Service Removal:**
    - JobTitleMatcherService files deleted from src/scoring/
@@ -574,14 +633,15 @@ Full test suite passing. All Phase 15 acceptance criteria verified:
 <output>
 After completion, create `.planning/phases/15-migrate-email-ingestion-to-deterministic-job-id-routing-and-remove-semantic-matching/15-PLAN-SUMMARY.md` with:
 - **Phase Goal:** ✓ Replaced semantic job title matching with deterministic Job ID extraction
-- **Tasks Completed:** 8/8
+- **Tasks Completed:** 9/9
 - **Files Modified:** 9 (schema, processor, extraction service, modules, tests, seed)
 - **Key Changes:**
   - Job model: +shortId field with UNIQUE(tenantId, shortId) constraint
   - IngestionProcessor: regex Job ID extraction, deterministic shortId lookup, skip scoring for jobId=null
-  - CandidateExtractSchema: -job_title_hint field (9 fields instead of 10)
+  - CandidateExtractSchema: -job_title_hint field, +source_agency field (10 fields instead of 9)
   - JobTitleMatcherService: deleted entirely
+  - source_agency extraction: prepared for future agency integrations
 - **Cost/Performance Impact:** $0/month saved (was ~$6/month for semantic matching), 500ms → 2ms routing latency
 - **Tests Passing:** All acceptance criteria verified, full test suite passing
-- **Ready for:** Phase 16 (Recruiter UI with shortId display and manual candidate assignment)
+- **Ready for:** Phase 16 (Recruiter UI with shortId display and manual candidate assignment; agency data ready for display)
 </output>
