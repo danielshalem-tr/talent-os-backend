@@ -319,11 +319,11 @@ Plans:
 
 **Requirements:** D-01 to D-38 (from 17-CONTEXT.md)
 
-**Plans:** 1/5 plans executed
+**Plans:** 2/5 plans executed
 
 Plans:
 - [x] 17-01-PLAN.md — Wave 1: Fix 6 failing unit tests (jobs.integration.spec.ts + ingestion.processor.spec.ts)
-- [ ] 17-02-PLAN.md — Wave 1: Health endpoint (GET /health), E2E smoke test, nestjs-pino structured logging, BullMQ lifecycle logs
+- [x] 17-02-PLAN.md — Wave 1: Health endpoint (GET /health), E2E smoke test, nestjs-pino structured logging, BullMQ lifecycle logs
 - [ ] 17-03-PLAN.md — Wave 2: Security hardening (helmet, throttler, CORS deny-all) + API endpoint review vs PROTOCOL.md
 - [ ] 17-04-PLAN.md — Wave 2: Nginx reverse proxy + Let's Encrypt certbot + docker-compose resource limits + healthcheck
 - [ ] 17-05-PLAN.md — Wave 3: Makefile (11 targets) + Jenkinsfile (parameterized build) + deploy.sh + README rewrite
@@ -348,7 +348,7 @@ Plans:
 | 14. Wire OpenRouter extraction pipeline | 1/1 | Complete | 2026-03-29 |
 | 15. Migrate email ingestion to deterministic Job ID routing | 1/1 | Complete | 2026-03-31 |
 | 16. Backend Support for Manual Routing & UI Parity | 0/3 | Planned | TBD |
-| 17. Production Deployment Readiness | 1/5 | In Progress|  |
+| 17. Production Deployment Readiness | 2/5 | In Progress|  |
 
 ---
 
