@@ -2,7 +2,7 @@
 # Usage: make <target>
 # Requires: Docker, Docker Compose
 
-.PHONY: up down reset seed logs test backup restore ngrok migrate-prod ssl-setup help
+.PHONY: up down reset seed logs test backup restore ngrok help
 
 # Default target — show help
 help:
@@ -17,8 +17,6 @@ help:
 	@echo "  make backup                Dump DB to ./backups/YYYY-MM-DD_HH-MM.sql.gz"
 	@echo "  make restore BACKUP=path   Restore DB from a dump file"
 	@echo "  make ngrok                 Start ngrok tunnel for Postmark webhook testing"
-	@echo "  make migrate-prod          Run prisma migrate deploy on production server"
-	@echo "  make ssl-setup DOMAIN=x EMAIL=y  Provision Let's Encrypt certificate"
 	@echo ""
 
 # D-01: Start dev environment, wait for DB healthy, run migrations
@@ -75,21 +73,3 @@ endif
 ngrok:
 	./scripts/ngrok-webhook.sh
 
-# D-07: Run prisma migrate deploy on production server
-# Requires PROD_HOST environment variable (or edit this target)
-migrate-prod:
-ifndef PROD_HOST
-	$(error PROD_HOST is required. Usage: PROD_HOST=user@server.ip make migrate-prod)
-endif
-	ssh $(PROD_HOST) "cd ~/triolla && docker compose -f docker-compose.yml exec api npx prisma migrate deploy"
-
-# D-38: Provision Let's Encrypt certificate
-# Usage: make ssl-setup DOMAIN=api.yourdomain.com EMAIL=admin@yourdomain.com
-ssl-setup:
-ifndef DOMAIN
-	$(error DOMAIN is required. Usage: make ssl-setup DOMAIN=api.yourdomain.com EMAIL=admin@yourdomain.com)
-endif
-ifndef EMAIL
-	$(error EMAIL is required. Usage: make ssl-setup DOMAIN=api.yourdomain.com EMAIL=admin@yourdomain.com)
-endif
-	./scripts/setup-ssl.sh $(DOMAIN) $(EMAIL)
