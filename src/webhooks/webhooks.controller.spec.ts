@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { WebhooksController } from './webhooks.controller';
 import { WebhooksService } from './webhooks.service';
 import { PostmarkPayloadDto } from './dto/postmark-payload.dto';
@@ -22,6 +23,7 @@ describe('WebhooksController', () => {
     };
 
     const module: TestingModule = await Test.createTestingModule({
+      imports: [ThrottlerModule.forRoot([{ ttl: 60000, limit: 100 }])],
       controllers: [WebhooksController],
       providers: [
         {
