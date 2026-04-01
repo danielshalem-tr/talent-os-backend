@@ -1,4 +1,20 @@
 #!/usr/bin/env bash
+# ngrok-webhook.sh — Start ngrok tunnel for local Postmark webhook testing
+#
+# Usage:
+#   ./scripts/ngrok-webhook.sh
+#   make ngrok
+#
+# Prerequisites:
+#   - ngrok installed and authenticated (ngrok config add-authtoken <token>)
+#   - Local API running on port 3000 (run 'make up' first)
+#   - POSTMARK_WEBHOOK_TOKEN in .env (used by PostmarkAuthGuard)
+#
+# What this does:
+#   Opens an HTTPS tunnel to localhost:3000, prints the public URL.
+#   Configure Postmark Inbound Webhook to point to: <ngrok-url>/api/webhooks/email
+#
+# NOTE: ngrok URL changes on each restart. Update Postmark webhook URL each session.
 set -euo pipefail
 
 PORT=${PORT:-3000}
