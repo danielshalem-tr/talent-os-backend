@@ -348,7 +348,7 @@ Plans:
 | 14. Wire OpenRouter extraction pipeline | 1/1 | Complete | 2026-03-29 |
 | 15. Migrate email ingestion to deterministic Job ID routing | 1/1 | Complete | 2026-03-31 |
 | 16. Backend Support for Manual Routing & UI Parity | 0/3 | Planned | TBD |
-| 17. Production Deployment Readiness | 5/5 | Complete   | 2026-04-01 |
+| 17. Production Deployment Readiness | 5/5 | Complete    | 2026-04-01 |
 
 ---
 
