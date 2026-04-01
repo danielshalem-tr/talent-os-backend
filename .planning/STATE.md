@@ -103,6 +103,7 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 | 260330-gyd | Add GET /candidates/:id endpoint to fetch a single candidate by ID | 2026-03-30 | 13a8ec6 | [260330-gyd-add-get-candidates-id-endpoint-to-fetch-](./quick/260330-gyd-add-get-candidates-id-endpoint-to-fetch-/) |
 | 260330-idw | Add GET /jobs/:id endpoint to fetch single job with hiring_flow and screening_questions | 2026-03-30 | fcf3bae | [260330-idw-add-get-jobs-id-endpoint-to-fetch-single](./quick/260330-idw-add-get-jobs-id-endpoint-to-fetch-single/) |
 | 260401-c3k | Remove Jenkins, add GitHub Actions CI, strip nginx/certbot from docker-compose | 2026-04-01 | 212186d | [260401-c3k-remove-jenkins-add-github-actions-ci-upd](./quick/260401-c3k-remove-jenkins-add-github-actions-ci-upd/) |
+| 260401-ccr | Clean up Coolify migration leftovers: delete nginx.conf, deploy.sh, setup-ssl.sh; remove Makefile targets; fix CI node-version to 22 | 2026-04-01 | a0ca032 | [260401-ccr-clean-up-coolify-migration-leftovers-del](./quick/260401-ccr-clean-up-coolify-migration-leftovers-del/) |
 
 ### Todos
 
@@ -110,8 +111,8 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 
 ## Session Continuity
 
-**Last Session:** 2026-04-01T05:42:40.116Z
-Last activity: 2026-04-01 - Completed quick task 260401-c3k: Remove Jenkins, add GitHub Actions CI, update docker-compose for Coolify
+**Last Session:** 2026-04-01T05:55:25Z
+Last activity: 2026-04-01 - Completed quick task 260401-ccr: Clean up Coolify migration leftovers (delete nginx.conf, deploy.sh, setup-ssl.sh; clean Makefile; fix CI node-version to 22)
 
 **What Happened (Phase 16 Context Gathering):**
 
