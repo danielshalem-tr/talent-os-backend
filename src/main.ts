@@ -26,7 +26,10 @@ async function bootstrap() {
   // Production Phase 1: deny-all (webhooks only, no browser clients)
   // Development: Allow local React UI
   const isDev = process.env.NODE_ENV === 'development';
-  app.enableCors({ origin: isDev ? 'http://localhost:5173' : false });
+
+  app.enableCors({
+    origin: isDev ? 'http://localhost:5173' : 'https://talentos.triolla.io',
+  });
 
   // Global /api prefix — must be set BEFORE app.listen()
   app.setGlobalPrefix('api');
