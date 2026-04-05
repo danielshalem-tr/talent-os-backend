@@ -18,7 +18,7 @@ WORKDIR /app
 
 # Install production deps only (smaller image)
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm ci --omit=dev --ignore-scripts
 
 # Copy compiled output from builder stage
 COPY --from=builder /app/dist ./dist
