@@ -16,12 +16,21 @@ CREATE TABLE "jobs" (
     "location" TEXT,
     "job_type" TEXT NOT NULL DEFAULT 'full_time',
     "status" TEXT NOT NULL DEFAULT 'draft',
+    "short_id" TEXT NOT NULL,
     "description" TEXT,
     "requirements" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "salary_range" TEXT,
     "hiring_manager" TEXT,
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ NOT NULL,
+    "role_summary" TEXT,
+    "responsibilities" TEXT,
+    "what_we_offer" TEXT,
+    "must_have_skills" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "nice_to_have_skills" TEXT[] DEFAULT ARRAY[]::TEXT[],
+    "exp_years_min" SMALLINT,
+    "exp_years_max" SMALLINT,
+    "preferred_org_types" TEXT[] DEFAULT ARRAY[]::TEXT[],
 
     CONSTRAINT "jobs_pkey" PRIMARY KEY ("id")
 );
@@ -30,6 +39,8 @@ CREATE TABLE "jobs" (
 CREATE TABLE "candidates" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "tenant_id" UUID NOT NULL,
+    "job_id" UUID,
+    "hiring_stage_id" UUID,
     "email" TEXT,
     "full_name" TEXT NOT NULL,
     "phone" TEXT,
@@ -42,7 +53,9 @@ CREATE TABLE "candidates" (
     "source" TEXT NOT NULL,
     "source_agency" TEXT,
     "source_email" TEXT,
+    "ai_summary" TEXT,
     "metadata" JSONB,
+    "status" TEXT NOT NULL DEFAULT 'active',
     "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updated_at" TIMESTAMPTZ NOT NULL,
 
@@ -56,6 +69,7 @@ CREATE TABLE "applications" (
     "candidate_id" UUID NOT NULL,
     "job_id" UUID NOT NULL,
     "stage" TEXT NOT NULL DEFAULT 'new',
+    "job_stage_id" UUID,
     "notes" TEXT,
     "intake_log_id" UUID,
     "applied_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -74,6 +88,7 @@ CREATE TABLE "candidate_job_scores" (
     "strengths" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "gaps" TEXT[] DEFAULT ARRAY[]::TEXT[],
     "model_used" TEXT NOT NULL,
+    "match_confidence" DECIMAL(3,2),
     "scored_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "candidate_job_scores_pkey" PRIMARY KEY ("id")
@@ -110,8 +125,70 @@ CREATE TABLE "email_intake_log" (
     CONSTRAINT "email_intake_log_pkey" PRIMARY KEY ("id")
 );
 
+-- CreateTable
+CREATE TABLE "job_stages" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "tenant_id" UUID NOT NULL,
+    "job_id" UUID NOT NULL,
+    "name" TEXT NOT NULL,
+    "order" SMALLINT NOT NULL,
+    "interviewer" TEXT,
+    "is_enabled" BOOLEAN NOT NULL DEFAULT true,
+    "color" TEXT NOT NULL DEFAULT 'bg-zinc-400',
+    "is_custom" BOOLEAN NOT NULL DEFAULT false,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "job_stages_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "screening_questions" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "tenant_id" UUID NOT NULL,
+    "job_id" UUID NOT NULL,
+    "text" TEXT NOT NULL,
+    "answer_type" TEXT NOT NULL,
+    "expected_answer" TEXT,
+    "required" BOOLEAN NOT NULL DEFAULT false,
+    "knockout" BOOLEAN NOT NULL DEFAULT false,
+    "order" SMALLINT NOT NULL,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "screening_questions_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "candidate_stage_summaries" (
+    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "tenant_id" UUID NOT NULL,
+    "candidate_id" UUID NOT NULL,
+    "job_stage_id" UUID NOT NULL,
+    "summary" TEXT NOT NULL,
+    "created_at" TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updated_at" TIMESTAMPTZ NOT NULL,
+
+    CONSTRAINT "candidate_stage_summaries_pkey" PRIMARY KEY ("id")
+);
+
 -- CreateIndex
 CREATE INDEX "idx_jobs_active" ON "jobs"("tenant_id", "status");
+
+-- CreateIndex
+CREATE INDEX "idx_job_lookup_by_short_id" ON "jobs"("tenant_id", "short_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "jobs_id_tenant_id_key" ON "jobs"("id", "tenant_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "jobs_tenant_id_short_id_key" ON "jobs"("tenant_id", "short_id");
+
+-- CreateIndex
+CREATE INDEX "idx_candidates_tenant_job" ON "candidates"("tenant_id", "job_id");
+
+-- CreateIndex
+CREATE INDEX "idx_candidates_tenant_job_stage" ON "candidates"("tenant_id", "job_id", "hiring_stage_id");
 
 -- CreateIndex
 CREATE INDEX "idx_applications_job" ON "applications"("job_id");
@@ -131,11 +208,26 @@ CREATE UNIQUE INDEX "duplicate_flags_tenant_id_candidate_id_matched_candidate_id
 -- CreateIndex
 CREATE UNIQUE INDEX "email_intake_log_tenant_id_message_id_key" ON "email_intake_log"("tenant_id", "message_id");
 
+-- CreateIndex
+CREATE INDEX "idx_job_stages_job_order" ON "job_stages"("job_id", "order");
+
+-- CreateIndex
+CREATE INDEX "idx_screening_questions_job" ON "screening_questions"("job_id");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "candidate_stage_summaries_candidate_id_job_stage_id_key" ON "candidate_stage_summaries"("candidate_id", "job_stage_id");
+
 -- AddForeignKey
 ALTER TABLE "jobs" ADD CONSTRAINT "jobs_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "candidates" ADD CONSTRAINT "candidates_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "candidates" ADD CONSTRAINT "candidates_job_id_fkey" FOREIGN KEY ("job_id") REFERENCES "jobs"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "candidates" ADD CONSTRAINT "candidates_hiring_stage_id_fkey" FOREIGN KEY ("hiring_stage_id") REFERENCES "job_stages"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "applications" ADD CONSTRAINT "applications_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -148,6 +240,9 @@ ALTER TABLE "applications" ADD CONSTRAINT "applications_job_id_fkey" FOREIGN KEY
 
 -- AddForeignKey
 ALTER TABLE "applications" ADD CONSTRAINT "applications_intake_log_id_fkey" FOREIGN KEY ("intake_log_id") REFERENCES "email_intake_log"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "applications" ADD CONSTRAINT "applications_job_stage_id_fkey" FOREIGN KEY ("job_stage_id") REFERENCES "job_stages"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "candidate_job_scores" ADD CONSTRAINT "candidate_job_scores_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
@@ -170,31 +265,23 @@ ALTER TABLE "email_intake_log" ADD CONSTRAINT "email_intake_log_tenant_id_fkey" 
 -- AddForeignKey
 ALTER TABLE "email_intake_log" ADD CONSTRAINT "email_intake_log_candidate_id_fkey" FOREIGN KEY ("candidate_id") REFERENCES "candidates"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
--- pg_trgm extension for fuzzy dedup (DB-01, DB-09, DEDUP-01)
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
+-- AddForeignKey
+ALTER TABLE "job_stages" ADD CONSTRAINT "job_stages_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- Fuzzy dedup indexes on candidates (DB-09, DEDUP-06)
-CREATE INDEX idx_candidates_name_trgm ON candidates USING GIN (full_name gin_trgm_ops);
-CREATE INDEX idx_candidates_phone_trgm ON candidates USING GIN (phone gin_trgm_ops);
+-- AddForeignKey
+ALTER TABLE "job_stages" ADD CONSTRAINT "job_stages_job_id_fkey" FOREIGN KEY ("job_id") REFERENCES "jobs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- Partial unique index: one email per tenant, only when email is not null (DB-09, CAND-02)
-CREATE UNIQUE INDEX idx_candidates_email
-  ON candidates (tenant_id, email) WHERE email IS NOT NULL;
+-- AddForeignKey
+ALTER TABLE "screening_questions" ADD CONSTRAINT "screening_questions_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- Partial index: fast lookup of unreviewed duplicate flags (DB-09)
-CREATE INDEX idx_duplicates_unreviewed
-  ON duplicate_flags (tenant_id, reviewed) WHERE reviewed = false;
+-- AddForeignKey
+ALTER TABLE "screening_questions" ADD CONSTRAINT "screening_questions_job_id_fkey" FOREIGN KEY ("job_id") REFERENCES "jobs"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- Partial index: fast lookup of pending/failed intake jobs (DB-09)
-CREATE INDEX idx_intake_status
-  ON email_intake_log (processing_status)
-  WHERE processing_status IN ('pending', 'failed');
+-- AddForeignKey
+ALTER TABLE "candidate_stage_summaries" ADD CONSTRAINT "candidate_stage_summaries_tenant_id_fkey" FOREIGN KEY ("tenant_id") REFERENCES "tenants"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
--- CHECK constraints for status/type columns (DB-03)
-ALTER TABLE jobs ADD CONSTRAINT jobs_status_check CHECK (status IN ('active', 'draft', 'closed', 'paused'));
-ALTER TABLE jobs ADD CONSTRAINT jobs_job_type_check CHECK (job_type IN ('full_time', 'part_time', 'contract'));
-ALTER TABLE applications ADD CONSTRAINT applications_stage_check CHECK (stage IN ('new', 'screening', 'interview', 'offer', 'hired', 'rejected'));
-ALTER TABLE email_intake_log ADD CONSTRAINT intake_status_check CHECK (processing_status IN ('pending', 'processing', 'completed', 'failed', 'spam'));
-ALTER TABLE candidates ADD CONSTRAINT candidates_source_check CHECK (source IN ('linkedin', 'website', 'agency', 'referral', 'direct'));
-ALTER TABLE candidate_job_scores ADD CONSTRAINT scores_score_check CHECK (score BETWEEN 0 AND 100);
-ALTER TABLE duplicate_flags ADD CONSTRAINT duplicate_flags_confidence_check CHECK (confidence BETWEEN 0 AND 1);
+-- AddForeignKey
+ALTER TABLE "candidate_stage_summaries" ADD CONSTRAINT "candidate_stage_summaries_candidate_id_fkey" FOREIGN KEY ("candidate_id") REFERENCES "candidates"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "candidate_stage_summaries" ADD CONSTRAINT "candidate_stage_summaries_job_stage_id_fkey" FOREIGN KEY ("job_stage_id") REFERENCES "job_stages"("id") ON DELETE CASCADE ON UPDATE CASCADE;
