@@ -4,10 +4,11 @@ import { Injectable } from '@nestjs/common';
 export class AppConfigService {
   getConfig() {
     return {
-      departments: ['Engineering', 'Product', 'Design', 'Marketing', 'HR'],
+      departments: ['Engineering', 'Product', 'Design', 'Marketing', 'HR', 'Sales'],
       hiring_managers: [
-        { id: 'mgr-1', name: 'Jane Smith' },
-        { id: 'mgr-2', name: 'Admin Cohen' },
+        { id: 'mgr-1', name: 'Yuval Bar Or' },
+        { id: 'mgr-2', name: 'Asaf Bar Or' },
+        { id: 'mgr-3', name: 'Raanan Sucary' },
       ],
       job_types: [
         { id: 'full_time', label: 'Full Time' },
@@ -16,8 +17,9 @@ export class AppConfigService {
       ],
       organization_types: [
         { id: 'startup', label: 'Startup' },
-        { id: 'enterprise', label: 'Enterprise' },
-        { id: 'nonprofit', label: 'Nonprofit' },
+        { id: 'enterprise', label: 'Corporate / Enterprise' },
+        { id: 'agency', label: 'Agency' },
+        { id: 'nonprofit', label: 'Non-profit' },
       ],
       screening_question_types: [
         { id: 'yes_no', label: 'Yes / No' },
