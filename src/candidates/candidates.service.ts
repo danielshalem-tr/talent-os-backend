@@ -132,6 +132,9 @@ export class CandidatesService {
           select: { id: true },
         },
         status: true,
+        candidateStageSummaries: {
+          select: { jobStageId: true, summary: true },
+        },
       },
       orderBy: { createdAt: 'desc' },
     });
@@ -160,7 +163,13 @@ export class CandidatesService {
         // Profile data
         status: c.status,
         is_rejected: c.status === 'rejected',
-        stage_summaries: {},
+        stage_summaries: c.candidateStageSummaries.reduce(
+          (acc, curr) => {
+            acc[curr.jobStageId] = curr.summary;
+            return acc;
+          },
+          {} as Record<string, string>,
+        ),
 
         // Kanban board fields
         job_id: c.jobId,
