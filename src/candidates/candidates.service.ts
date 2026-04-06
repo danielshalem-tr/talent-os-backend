@@ -19,7 +19,7 @@ import { Prisma } from '@prisma/client';
 import { CandidateAiService } from './candidate-ai.service';
 import { ScoringAgentService } from '../scoring/scoring.service';
 
-export type CandidateFilter = 'all' | 'high-score' | 'available' | 'referred' | 'duplicates';
+export type CandidateFilter = 'all' | 'duplicates';
 
 @Injectable()
 export class CandidatesService {
@@ -32,6 +32,28 @@ export class CandidatesService {
     private readonly candidateAiService: CandidateAiService,
     private readonly scoringAgent: ScoringAgentService,
   ) {}
+
+  async getCounts(): Promise<{ total: number; duplicates: number; unassigned: number }> {
+    const tenantId = this.configService.get<string>('TENANT_ID')!;
+
+    const [total, duplicates, unassigned] = await Promise.all([
+      this.prisma.candidate.count({
+        where: { tenantId, status: 'active' },
+      }),
+      this.prisma.candidate.count({
+        where: {
+          tenantId,
+          status: 'active',
+          duplicateFlags: { some: { reviewed: false } },
+        },
+      }),
+      this.prisma.candidate.count({
+        where: { tenantId, status: 'active', jobId: null },
+      }),
+    ]);
+
+    return { total, duplicates, unassigned };
+  }
 
   async findAll(
     q?: string,
@@ -51,8 +73,8 @@ export class CandidatesService {
       where.jobId = jobId;
     }
 
-    // Always exclude rejected candidates from the talent pool and kanban board
-    where.status = { not: 'rejected' };
+    // Always use positive match for better index friendliness
+    where.status = 'active';
 
     if (q) {
       where.OR = [
@@ -60,18 +82,6 @@ export class CandidatesService {
         { email: { contains: q, mode: 'insensitive' } },
         { currentRole: { contains: q, mode: 'insensitive' } },
       ];
-    }
-
-    // filter='available': no application in hired or rejected stage
-    if (filter === 'available') {
-      where.applications = {
-        none: { stage: { in: ['hired', 'rejected'] } },
-      };
-    }
-
-    // filter='referred': source = 'referral'
-    if (filter === 'referred') {
-      where.source = 'referral';
     }
 
     // filter='duplicates': has unreviewed duplicate_flag
@@ -95,6 +105,7 @@ export class CandidatesService {
         sourceAgency: true,
         yearsExperience: true,
         aiSummary: true,
+        aiScore: true,
         createdAt: true,
         skills: true,
         jobId: true,
@@ -105,30 +116,18 @@ export class CandidatesService {
         job: {
           select: { title: true },
         },
-        applications: {
-          select: {
-            scores: {
-              select: { score: true },
-            },
-          },
-        },
         duplicateFlags: {
           where: { reviewed: false },
           select: { id: true },
         },
         status: true,
-        candidateStageSummaries: {
-          select: { jobStageId: true, summary: true },
-        },
       },
       orderBy: { createdAt: 'desc' },
     });
 
     // Compute derived fields and map to snake_case
     let result: CandidateResponse[] = candidates.map((c) => {
-      // ai_score = MAX score across all applications' scores
-      const allScores = c.applications.flatMap((a) => a.scores.map((s) => s.score));
-      const aiScore = allScores.length > 0 ? Math.max(...allScores) : null;
+      const aiScore = c.aiScore;
 
       return {
         id: c.id,
@@ -150,13 +149,7 @@ export class CandidatesService {
         // Profile data
         status: c.status,
         is_rejected: c.status === 'rejected',
-        stage_summaries: c.candidateStageSummaries.reduce(
-          (acc, curr) => {
-            acc[curr.jobStageId] = curr.summary;
-            return acc;
-          },
-          {} as Record<string, string>,
-        ),
+        stage_summaries: {},
 
         // Kanban board fields
         job_id: c.jobId,
@@ -165,11 +158,6 @@ export class CandidatesService {
         job_title: c.job?.title ?? null,
       };
     });
-
-    // filter='high-score': ai_score >= 70 (post-query filter since ai_score is computed)
-    if (filter === 'high-score') {
-      result = result.filter((c) => c.ai_score !== null && c.ai_score >= 70);
-    }
 
     return { candidates: result, total: result.length };
   }
@@ -195,6 +183,7 @@ export class CandidatesService {
         hiringStageId: true,
         yearsExperience: true,
         aiSummary: true,
+        aiScore: true,
         hiringStage: {
           select: { name: true },
         },
@@ -225,9 +214,6 @@ export class CandidatesService {
       });
     }
 
-    const allScores = c.applications.flatMap((a) => a.scores.map((s) => s.score));
-    const aiScore = allScores.length > 0 ? Math.max(...allScores) : null;
-
     return {
       id: c.id,
       full_name: c.fullName,
@@ -239,7 +225,7 @@ export class CandidatesService {
       source: c.source,
       source_agency: c.sourceAgency,
       created_at: c.createdAt,
-      ai_score: aiScore,
+      ai_score: c.aiScore,
       ai_summary: c.aiSummary,
       is_duplicate: c.duplicateFlags.length > 0,
       years_experience: c.yearsExperience,
@@ -358,6 +344,12 @@ export class CandidatesService {
                   gaps: scoreResult.gaps,
                   modelUsed: scoreResult.modelUsed,
                 },
+              });
+
+              // Update denormalized aiScore on candidate
+              await tx.candidate.update({
+                where: { id: candidateId },
+                data: { aiScore: scoreResult.score },
               });
             }
           } catch (err) {

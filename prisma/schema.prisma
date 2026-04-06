@@ -85,6 +85,7 @@ model Candidate {
   sourceAgency    String?  @map("source_agency") @db.Text
   sourceEmail     String?  @map("source_email") @db.Text
   aiSummary       String?  @map("ai_summary") @db.Text
+  aiScore         Int?     @map("ai_score") @db.SmallInt
   metadata        Json?    @db.JsonB
   status          String   @default("active") @db.Text // "active", "rejected"
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
@@ -103,6 +104,7 @@ model Candidate {
   // Indexes
   @@index([tenantId, jobId], name: "idx_candidates_tenant_job")
   @@index([tenantId, jobId, hiringStageId], name: "idx_candidates_tenant_job_stage")
+  @@index([tenantId, status], name: "idx_candidates_tenant_status")
   // Unique email per tenant (partial — only when email is not null, enforced via raw SQL index)
   @@map("candidates")
 }

@@ -416,6 +416,12 @@ export class IngestionProcessor extends WorkerHost {
         },
       });
 
+      // Update denormalized aiScore on candidate
+      await this.prisma.candidate.update({
+        where: { id: context.candidateId },
+        data: { aiScore: scoreResult.score },
+      });
+
       this.logger.log(
         `Phase 7 scored candidateId: ${context.candidateId} against jobId: ${activeJob.id} — score: ${scoreResult.score}`,
       );

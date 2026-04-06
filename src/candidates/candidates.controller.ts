@@ -28,9 +28,18 @@ export class CandidatesController {
   constructor(private readonly candidatesService: CandidatesService) {}
 
   /**
+   * Retrieve lightweight counts for dashboard alerts
+   * @returns { total, duplicates, unassigned } for the active candidate pool
+   */
+  @Get('counts')
+  async getCounts(): Promise<{ total: number; duplicates: number; unassigned: number }> {
+    return this.candidatesService.getCounts();
+  }
+
+  /**
    * Retrieve all candidates for the tenant
    * @param q      Optional search query (name, email, role)
-   * @param filter  Optional filter: all, high-score, available, referred, duplicates
+   * @param filter  Optional filter: all, duplicates
    * @param job_id  Optional job UUID — filters candidates linked to a specific job (used by Kanban board)
    * @returns Candidates with hiring stage info for Kanban board rendering
    */
