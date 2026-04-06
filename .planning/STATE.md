@@ -104,7 +104,7 @@ None — ready to proceed to `/gsd:plan-phase 1`.
 | 260330-idw | Add GET /jobs/:id endpoint to fetch single job with hiring_flow and screening_questions | 2026-03-30 | fcf3bae | [260330-idw-add-get-jobs-id-endpoint-to-fetch-single](./quick/260330-idw-add-get-jobs-id-endpoint-to-fetch-single/) |
 | 260401-c3k | Remove Jenkins, add GitHub Actions CI, strip nginx/certbot from docker-compose | 2026-04-01 | 212186d | [260401-c3k-remove-jenkins-add-github-actions-ci-upd](./quick/260401-c3k-remove-jenkins-add-github-actions-ci-upd/) |
 | 260401-ccr | Clean up Coolify migration leftovers: delete nginx.conf, deploy.sh, setup-ssl.sh; remove Makefile targets; fix CI node-version to 22 | 2026-04-01 | a0ca032 | [260401-ccr-clean-up-coolify-migration-leftovers-del](./quick/260401-ccr-clean-up-coolify-migration-leftovers-del/) |
-| 260406-85x | Clean up and update planning docs: fix tech stack refs (OpenRouter, Prisma 7), mark Phases 16–17 complete, sync REQUIREMENTS.md model names | 2026-04-06 | — | [260406-85x-clean-up-and-update-the-planning-directo](./quick/260406-85x-clean-up-and-update-the-planning-directo/) |
+| 260406-85x | Clean up and update planning docs: fix tech stack refs (OpenRouter, Prisma 7), mark Phases 16–17 complete, sync REQUIREMENTS.md model names | 2026-04-06 | 13895b6 | [260406-85x-clean-up-and-update-the-planning-directo](./quick/260406-85x-clean-up-and-update-the-planning-directo/) |
 
 ### Todos
 
