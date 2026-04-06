@@ -27,6 +27,7 @@ Fetch candidates with optional search and filtering.
   - `referred` — candidates sourced from referral
   - `duplicates` — candidates with unreviewed duplicate flags
 - `job_id` (optional): Filter candidates by job UUID (used for Kanban view)
+- `unassigned` (optional): `'true'` — filters candidates not yet assigned to any job
 
 **Response:** `200 OK`
 
@@ -53,7 +54,9 @@ Fetch candidates with optional search and filtering.
       "job_id": "uuid",
       "hiring_stage_id": "uuid",
       "hiring_stage_name": "Screening",
-      "job_title": "Senior Frontend Developer"
+      "job_title": "Senior Frontend Developer",
+      "ai_summary": "Experienced engineer with strong React skills. Recommended for senior roles.",
+      "years_experience": 5
     }
   ],
   "total": 1
@@ -106,7 +109,9 @@ Fetch a single candidate by ID.
   "job_id": "uuid",
   "hiring_stage_id": "uuid",
   "hiring_stage_name": "Screening",
-  "job_title": "Senior Frontend Developer"
+  "job_title": "Senior Frontend Developer",
+  "ai_summary": "Experienced engineer with strong React skills. Recommended for senior roles.",
+  "years_experience": 5
 }
 ```
 
@@ -169,7 +174,7 @@ Fetch a presigned S3 URL for a candidate's CV (valid for 1 hour).
 
 ```json
 {
-  "cv_url": "https://..."
+  "url": "https://..."
 }
 ```
 
@@ -291,7 +296,7 @@ Update a candidate's hiring stage (used for Kanban board drag-and-drop).
 
 ```json
 {
-  "stage_id": "uuid"
+  "hiring_stage_id": "uuid"
 }
 ```
 
@@ -328,6 +333,7 @@ Fetch all job openings with hiring stages and screening questions.
   "jobs": [
     {
       "id": "uuid",
+      "short_id": "42",
       "title": "Senior Frontend Developer",
       "department": "Engineering",
       "location": "Remote",
@@ -654,10 +660,11 @@ Fetch configuration options for UI dropdowns and templates.
 
 ```json
 {
-  "departments": ["Engineering", "Product", "Design", "Marketing", "HR"],
+  "departments": ["Engineering", "Product", "Design", "Marketing", "HR", "Sales"],
   "hiring_managers": [
-    { "id": "mgr-1", "name": "Jane Smith" },
-    { "id": "mgr-2", "name": "Admin Cohen" }
+    { "id": "mgr-1", "name": "Yuval Bar Or" },
+    { "id": "mgr-2", "name": "Asaf Bar Or" },
+    { "id": "mgr-3", "name": "Raanan Sucary" }
   ],
   "job_types": [
     { "id": "full_time", "label": "Full Time" },
@@ -666,8 +673,9 @@ Fetch configuration options for UI dropdowns and templates.
   ],
   "organization_types": [
     { "id": "startup", "label": "Startup" },
-    { "id": "enterprise", "label": "Enterprise" },
-    { "id": "nonprofit", "label": "Nonprofit" }
+    { "id": "enterprise", "label": "Corporate / Enterprise" },
+    { "id": "agency", "label": "Agency" },
+    { "id": "nonprofit", "label": "Non-profit" }
   ],
   "screening_question_types": [
     { "id": "yes_no", "label": "Yes / No" },
@@ -682,6 +690,14 @@ Fetch configuration options for UI dropdowns and templates.
     { "name": "Rejected", "is_enabled": false, "color": "bg-red-500", "is_custom": false, "order": 6 },
     { "name": "Pending Decision", "is_enabled": false, "color": "bg-yellow-400", "is_custom": false, "order": 7 },
     { "name": "On Hold", "is_enabled": false, "color": "bg-gray-500", "is_custom": false, "order": 8 }
+  ],
+  "candidate_sources": [
+    { "id": "linkedin", "label": "LinkedIn" },
+    { "id": "website", "label": "Website" },
+    { "id": "agency", "label": "Agency" },
+    { "id": "referral", "label": "Referral" },
+    { "id": "direct", "label": "Direct" },
+    { "id": "manual", "label": "Manual" }
   ]
 }
 ```
@@ -709,6 +725,40 @@ Fetch configuration options for UI dropdowns and templates.
 ### Screening Question Type
 
 - `yes_no`, `text`
+
+---
+
+## 6. Health API
+
+### `GET /health`
+
+System health check for monitoring.
+
+**Response:** `200 OK` or `503 Service Unavailable`
+
+```json
+{
+  "status": "ok",
+  "checks": {
+    "database": "ok",
+    "redis": "ok"
+  },
+  "uptime": 3600
+}
+```
+
+**Degraded Response:**
+
+```json
+{
+  "status": "degraded",
+  "checks": {
+    "database": "fail",
+    "redis": "ok"
+  },
+  "uptime": 3600
+}
+```
 
 ---
 
