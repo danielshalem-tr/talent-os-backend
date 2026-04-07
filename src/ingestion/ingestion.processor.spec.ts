@@ -429,27 +429,30 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  // 6-02-02: exact email match → UPSERT existing candidate → email_intake_log.candidate_id = existing ID
-  it('6-02-02: exact match — UPSERT called, createFlag called for duplicate detection, existing candidateId set on intake log', async () => {
+  // 6-02-02: exact phone match → INSERT new candidate → createFlag links new→existing → email_intake_log.candidate_id = new ID
+  it('6-02-02: exact phone match — INSERT new candidate, createFlag links new→existing, intake log gets new candidateId', async () => {
     dedupService.check.mockResolvedValue({
       match: { id: 'existing-cand-id' },
       confidence: 1.0,
-      fields: ['email'],
+      fields: ['phone'],
     });
+    dedupService.insertCandidate.mockResolvedValue('new-candidate-id');
 
     const job = { id: 'test-dedup-2', data: validJobPayload() } as any;
     await processor.process(job);
 
-    expect(dedupService.upsertCandidate).toHaveBeenCalledWith('existing-cand-id', expect.any(Object), expect.anything());
-    expect(dedupService.insertCandidate).not.toHaveBeenCalled();
-    // NEW: Exact match should call createFlag to record duplicate (per 260407-iff)
+    // New candidate inserted — existing NOT overwritten
+    expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
+    expect(dedupService.upsertCandidate).not.toHaveBeenCalled();
+
+    // Flag links new row → existing row
     expect(dedupService.createFlag).toHaveBeenCalledWith(
-      'existing-cand-id',      // matched candidate (upseerted)
-      null,                     // self-reference
-      1.0,                      // confidence
-      'test-tenant-id',         // tenantId
-      ['email'],                // matchFields
-      expect.any(Object),       // tx (transaction client)
+      'new-candidate-id', // new candidate (incoming)
+      'existing-cand-id', // existing candidate (first submission)
+      1.0,
+      'test-tenant-id',
+      ['phone'],
+      expect.anything(), // tx
     );
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
@@ -506,7 +509,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   });
 
   // 260407-iff: Exact phone match with flag creation — validates phone normalization and duplicate flag recording
-  it('260407-iff: exact phone match creates flag with phone field for HR duplicate review', async () => {
+  it('260407-iff: exact phone match inserts new candidate and links via createFlag for HR duplicate review', async () => {
     // Simulate exact phone match (confidence 1.0 = exact match via phone normalization)
     // This covers scenarios like +972 50 1234567 matching 050 1234567 (same number, different format)
     dedupService.check.mockResolvedValue({
@@ -514,21 +517,19 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
       confidence: 1.0,
       fields: ['phone'],
     });
+    dedupService.insertCandidate.mockResolvedValue('new-phone-cand-id');
 
     const job = { id: 'test-phone-match', data: validJobPayload() } as any;
     await processor.process(job);
 
-    // UPSERT the existing candidate (don't create new one)
-    expect(dedupService.upsertCandidate).toHaveBeenCalledTimes(1);
-    expect(dedupService.upsertCandidate).toHaveBeenCalledWith('existing-phone-cand', expect.any(Object), expect.anything());
+    // INSERT new candidate — existing untouched
+    expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
+    expect(dedupService.upsertCandidate).not.toHaveBeenCalled();
 
-    // Don't insert a new candidate
-    expect(dedupService.insertCandidate).not.toHaveBeenCalled();
-
-    // Record the duplicate via createFlag so getCounts() can reflect it
+    // createFlag cross-links new → existing
     expect(dedupService.createFlag).toHaveBeenCalledWith(
-      'existing-phone-cand',   // matched candidate (upseerted)
-      null,                     // self-reference
+      'new-phone-cand-id',      // new candidate (incoming submission)
+      'existing-phone-cand',    // existing candidate (first submission)
       1.0,                      // exact match confidence
       'test-tenant-id',
       ['phone'],                // matchFields — indicates phone-based deduplication
