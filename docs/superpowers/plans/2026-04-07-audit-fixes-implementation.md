@@ -16,12 +16,18 @@
 - `src/modules/scoring/scoring.service.ts` — Add context limits, error handling, Zod schema update
 - `src/modules/extraction/extraction-agent.service.ts` — Add context limits, error handling, Zod schema, name detection
 - `src/modules/ingestion/ingestion.processor.ts` — Race condition handler, idempotency guard, job extraction refactor
-- `prisma/schema.prisma` — Add unique constraint on (tenantId, phone), add cvText column to EmailIntakeLog
+- `prisma/schema.prisma` — Add unique partial constraint on (tenantId, phone) where phone IS NOT NULL
 - Test files: `src/**/*.spec.ts` — Unit tests for each fix
 
+**Important notes:**
+- NO new `cvText` column needed: `cvText` is already saved on `candidate.cvText` during Phase 7. On retry, read from `candidate.cvText`.
+- Fix #3 (TOCTOU): Unique constraint must be PARTIAL (WHERE phone IS NOT NULL) to allow the intentional duplicate-flag flow in dedup logic.
+- Fix #4 (Idempotency): On retry, re-run Phase 15 (job matching — cheap/idempotent) before scoring.
+- Fix #6 (Job Matching): `shortId` is STRING type, not number. Convert candidates before DB query. Accept `tenantId` as function parameter.
+- Migrations: Use `npm run db:migrate` (runs inside Docker), not `npx prisma migrate dev` directly.
+
 **Migration files to create:**
-- `prisma/migrations/add_unique_candidate_phone/migration.sql`
-- `prisma/migrations/add_cvtext_to_email_intake_log/migration.sql`
+- `prisma/migrations/add_partial_unique_candidate_phone/migration.sql`
 
 ---
 
@@ -461,7 +467,7 @@ Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
 
 ## Fix #3: Issue #2 — TOCTOU Race Condition
 
-### Task 3.1: Add unique constraint to Prisma schema
+### Task 3.1: Add partial unique constraint to Prisma schema
 
 **Files:**
 - Modify: `prisma/schema.prisma` (Candidate model)
@@ -470,9 +476,9 @@ Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
 
 Run: `grep -A 20 "model Candidate" prisma/schema.prisma`
 
-- [ ] **Step 2: Add unique constraint**
+- [ ] **Step 2: Add partial unique constraint**
 
-Modify `prisma/schema.prisma`, in the Candidate model, add the unique index after existing indexes:
+Modify `prisma/schema.prisma`, in the Candidate model. Add a PARTIAL unique index (WHERE phone IS NOT NULL) to allow the intentional duplicate-flag flow:
 
 ```prisma
 model Candidate {
@@ -489,27 +495,31 @@ model Candidate {
 
   // ... other fields ...
 
-  @@unique([tenantId, phone], name: "idx_candidate_tenant_phone")
+  // Partial unique constraint: only applies when phone IS NOT NULL
+  // This prevents duplicate exact-match candidates but allows NULL phones
+  @@unique([tenantId, phone], name: "idx_candidate_tenant_phone", where: "phone IS NOT NULL")
   @@index([tenantId])
   @@index([email])
   @@index([phone])
 }
 ```
 
+**CRITICAL:** The partial unique constraint is intentional. The dedup logic (line 232-270) intentionally inserts a new candidate with the same phone when `dedupResult.confidence === 1.0`, then creates a duplicate flag linking them. The partial constraint allows this flow while preventing accidental duplicates from concurrent workers.
+
 - [ ] **Step 3: Create migration**
 
-Run: `npx prisma migrate dev --name add_unique_candidate_phone`
+Run: `npm run db:migrate -- --name add_partial_unique_candidate_phone`
 
 This will:
-1. Create a migration file in `prisma/migrations/`
+1. Create a migration file in `prisma/migrations/` (inside Docker)
 2. Ask you to confirm the changes
-3. Apply the migration to your local database
+3. Apply the migration to your database
 
 Expected output: Migration created and applied successfully.
 
 - [ ] **Step 4: Verify migration**
 
-Run: `npx prisma migrate status`
+Run: `npm run db:migrate -- -- status`
 
 Expected: All migrations applied.
 
@@ -517,12 +527,13 @@ Expected: All migrations applied.
 
 ```bash
 git add prisma/schema.prisma prisma/migrations/
-git commit -m "fix(audit): Issue #2 part 1 — add unique constraint on (tenantId, phone)
+git commit -m "fix(audit): Issue #2 part 1 — add partial unique constraint on (tenantId, phone)
 
-- Add @@unique([tenantId, phone]) to Candidate model
-- Prevents duplicate candidates with same phone number per tenant
-- Constraint will be enforced at database level
-- Migration: add_unique_candidate_phone
+- Add partial @@unique([tenantId, phone] WHERE phone IS NOT NULL) to Candidate model
+- Prevents duplicate candidates from concurrent workers with same phone
+- Partial constraint (WHERE phone IS NOT NULL) allows intentional duplicate-flag flow in dedup logic
+- Constraint enforced at database level
+- Migration: add_partial_unique_candidate_phone
 
 Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
 ```
@@ -715,164 +726,9 @@ Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
 
 ## Fix #4: Issue #1 — Broken Idempotency on BullMQ Retries
 
-### Task 4.1: Add cvText column to Prisma schema
+**Key Insight:** `cvText` is already saved to `candidate.cvText` during Phase 7. No new column needed. On retry, fetch the existing candidate and read `cvText` from there. Then re-run Phase 15 (job matching — cheap/idempotent), then resume scoring.
 
-**Files:**
-- Modify: `prisma/schema.prisma` (EmailIntakeLog model)
-
-- [ ] **Step 1: Read current EmailIntakeLog model**
-
-Run: `grep -A 30 "model EmailIntakeLog" prisma/schema.prisma`
-
-- [ ] **Step 2: Add cvText column**
-
-Modify `prisma/schema.prisma`, in the EmailIntakeLog model:
-
-```prisma
-model EmailIntakeLog {
-  id          String    @id @default(cuid())
-  tenantId    String
-  messageId   String
-  candidateId String?
-  cvText      String?   // Store raw CV text from Phase 4 for retry resume
-  processingStatus String @default("pending") // pending, processing, completed, failed
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-
-  @@unique([tenantId, messageId], name: "idx_intake_message_id")
-  @@index([tenantId])
-}
-```
-
-- [ ] **Step 3: Create migration**
-
-Run: `npx prisma migrate dev --name add_cvtext_to_email_intake_log`
-
-Expected: Migration created and applied.
-
-- [ ] **Step 4: Commit**
-
-```bash
-git add prisma/schema.prisma prisma/migrations/
-git commit -m "fix(audit): Issue #1 part 1 — add cvText column to EmailIntakeLog for idempotency
-
-- Add cvText String? column to store raw CV text from Phase 4
-- Enables retry resume from Phase 7 without re-running Phase 6
-- Migration: add_cvtext_to_email_intake_log
-
-Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
-```
-
-### Task 4.2: Store cvText during extraction phase
-
-**Files:**
-- Modify: `src/modules/ingestion/ingestion.processor.ts:140-160` (Phase 4 completion)
-- Test: `src/modules/ingestion/ingestion.processor.spec.ts`
-
-- [ ] **Step 1: Read Phase 4 (extraction) code**
-
-Run: `grep -B 5 -A 15 "Phase 4\|extractWithLLM\|update.*candidateId" src/modules/ingestion/ingestion.processor.ts | head -40`
-
-- [ ] **Step 2: Write test for cvText storage**
-
-Append to `src/modules/ingestion/ingestion.processor.spec.ts`:
-
-```typescript
-describe('IngestionProcessor - cvText storage', () => {
-  it('should store cvText in EmailIntakeLog after extraction', async () => {
-    const extractedData = {
-      fullName: 'John Doe',
-      email: 'john@example.com',
-      phone: '+1-555-0001',
-      skills: ['Node.js'],
-      yearsExperience: 5,
-      currentRole: 'Engineer',
-      cvText: 'CV content here...', // Extracted CV text
-    };
-
-    // Mock extraction service
-    jest.spyOn(extractionService, 'extractWithLLM').mockResolvedValueOnce(extractedData);
-
-    // Process job
-    await processor.process(job);
-
-    // Verify cvText was stored in intake log
-    expect(prismaClient.emailIntakeLog.update).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ cvText: extractedData.cvText }),
-      })
-    );
-  });
-});
-```
-
-- [ ] **Step 3: Run test to verify it fails**
-
-Run: `npm test -- src/modules/ingestion/ingestion.processor.spec.ts --testNamePattern="cvText storage"`
-
-Expected: FAIL
-
-- [ ] **Step 4: Add cvText storage after Phase 4**
-
-Modify `src/modules/ingestion/ingestion.processor.ts`, after Phase 4 extraction completes (around line 150):
-
-Find where extraction is saved and add cvText storage:
-
-```typescript
-// Phase 4: AI Extraction (with fallback)
-let extraction: ExtractedCandidate;
-
-try {
-  extraction = await this.extractionService.extractWithLLM(emailBody, {
-    tenantId,
-    messageId: payload.MessageID,
-  });
-} catch (error) {
-  if (error instanceof Error && error.message === 'EXTRACTION_CONTEXT_EXCEEDED') {
-    this.logger.warn(
-      '[IngestionProcessor] Phase 4: LLM context exceeded, falling back to deterministic extraction'
-    );
-    extraction = this.extractionService.extractDeterministically(emailBody);
-  } else {
-    throw error;
-  }
-}
-
-// Store cvText in intake log for later retry resume (Phase 4 checkpoint)
-await this.prisma.emailIntakeLog.update({
-  where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-  data: { cvText: extraction.cvText },
-});
-
-// Continue to Phase 6...
-```
-
-- [ ] **Step 5: Run test to verify it passes**
-
-Run: `npm test -- src/modules/ingestion/ingestion.processor.spec.ts --testNamePattern="cvText storage"`
-
-Expected: PASS
-
-- [ ] **Step 6: Run full test suite**
-
-Run: `npm test`
-
-Expected: All tests pass
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add src/modules/ingestion/ingestion.processor.ts src/modules/ingestion/ingestion.processor.spec.ts
-git commit -m "fix(audit): Issue #1 part 2 — store cvText during extraction for retry resume
-
-- After Phase 4 extraction completes, save cvText to EmailIntakeLog
-- Allows Phase 7 (scoring) to resume on retry with original extraction data
-- cvText is not re-extracted on retry, uses stored value
-
-Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
-```
-
-### Task 4.3: Add idempotency guard at job start
+### Task 4.1: Add idempotency guard at job start (with Phase 15 re-run)
 
 **Files:**
 - Modify: `src/modules/ingestion/ingestion.processor.ts:90-125` (job process entry point)
@@ -888,11 +744,11 @@ Append to `src/modules/ingestion/ingestion.processor.spec.ts`:
 
 ```typescript
 describe('IngestionProcessor - idempotency guard', () => {
-  it('should skip Phase 6 on retry and resume from Phase 7', async () => {
+  it('should skip Phase 6 on retry, re-run Phase 15, and resume Phase 7', async () => {
     const tenantId = 'tenant-123';
     const messageId = 'msg-456';
     const candidateId = 'cand-789';
-    const cvText = 'CV content...';
+    const emailBody = 'Job 245 and position 1053 are open...';
 
     // Mock existing intake record (from a previous attempt that failed at Phase 7)
     jest.spyOn(prismaClient.emailIntakeLog, 'findUnique').mockResolvedValueOnce({
@@ -900,13 +756,12 @@ describe('IngestionProcessor - idempotency guard', () => {
       tenantId,
       messageId,
       candidateId, // Already set from Phase 6
-      cvText, // Stored during Phase 4
       processingStatus: 'processing',
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    // Mock candidate fetch
+    // Mock candidate fetch (has cvText on it from Phase 7)
     jest.spyOn(prismaClient.candidate, 'findUnique').mockResolvedValueOnce({
       id: candidateId,
       tenantId,
@@ -916,6 +771,7 @@ describe('IngestionProcessor - idempotency guard', () => {
       skills: ['Node.js'],
       yearsExperience: 5,
       currentRole: 'Engineer',
+      cvText: 'CV content from Phase 7...',
       createdAt: new Date(),
       updatedAt: new Date(),
     });
@@ -923,36 +779,57 @@ describe('IngestionProcessor - idempotency guard', () => {
     // Spy on Phase 6 (dedup service) to verify it's NOT called
     const dedupSpy = jest.spyOn(dedupService, 'check');
 
+    // Spy on Phase 15 (job matching) to verify it IS called on retry
+    const jobMatchingSpy = jest.spyOn(processor, 'extractAllJobIdsFromEmailText')
+      .mockResolvedValueOnce(['job-245-id', 'job-1053-id']);
+
     // Spy on Phase 7 (scoring) to verify it IS called
-    const scoringSpyResolves = jest.spyOn(processor, 'scoreAndStoreResults').mockResolvedValueOnce({
-      score: 85,
-      status: 'completed',
-    });
+    const scoringSpy = jest.spyOn(processor, 'scoreAndStoreResults')
+      .mockResolvedValueOnce({ score: 85, status: 'completed' });
 
     // Process retry
-    const job = { data: { tenantId, messageId, phone: '+1-555-0001' } };
+    const job = { data: { tenantId, messageId, emailBody } };
     await processor.process(job);
 
     // Verify Phase 6 (dedup) was skipped
     expect(dedupSpy).not.toHaveBeenCalled();
 
-    // Verify Phase 7 (scoring) was called with reconstructed ScoringInput
-    expect(scoringSpyResolves).toHaveBeenCalledWith(
+    // Verify Phase 15 (job matching) WAS called on retry
+    expect(jobMatchingSpy).toHaveBeenCalledWith(emailBody);
+
+    // Verify Phase 7 (scoring) was called with cvText from candidate
+    expect(scoringSpy).toHaveBeenCalledWith(
       expect.objectContaining({
-        cvText, // From stored cvText
+        cvText: 'CV content from Phase 7...',
         candidateFields: expect.any(Object),
       }),
-      expect.any(Object),
       expect.any(Object)
     );
   });
 
   it('should not create self-duplicate on retry', async () => {
-    // Same as above but verify no new candidate INSERT happens
     const candidateInsertSpy = jest.spyOn(prismaClient.candidate, 'create');
+    
+    // Setup existing intake with candidateId
+    jest.spyOn(prismaClient.emailIntakeLog, 'findUnique').mockResolvedValueOnce({
+      id: 'intake-1',
+      tenantId: 'tenant-123',
+      messageId: 'msg-456',
+      candidateId: 'cand-789',
+      processingStatus: 'processing',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
 
-    // ... setup same as above ...
+    jest.spyOn(prismaClient.candidate, 'findUnique').mockResolvedValueOnce({
+      id: 'cand-789',
+      tenantId: 'tenant-123',
+      phone: '+1-555-0001',
+      cvText: 'CV...',
+      // ... other fields ...
+    });
 
+    const job = { data: { tenantId: 'tenant-123', messageId: 'msg-456' } };
     await processor.process(job);
 
     // Verify create() was NOT called (no new candidate)
@@ -960,27 +837,24 @@ describe('IngestionProcessor - idempotency guard', () => {
   });
 
   it('should proceed normally if intake has no candidateId (first attempt)', async () => {
-    // Mock intake record WITHOUT candidateId (first time processing)
     jest.spyOn(prismaClient.emailIntakeLog, 'findUnique').mockResolvedValueOnce({
       id: 'intake-1',
       tenantId: 'tenant-123',
       messageId: 'msg-456',
       candidateId: null, // Not yet processed
-      cvText: null,
       processingStatus: 'pending',
       createdAt: new Date(),
       updatedAt: new Date(),
     });
 
-    // Spy on Phase 6 (dedup service) to verify it IS called (normal flow)
-    const dedupSpy = jest.spyOn(dedupService, 'check').mockResolvedValueOnce({
-      match: null,
-    });
+    const normalFlowSpy = jest.spyOn(processor, 'normalProcessFlow')
+      .mockResolvedValueOnce(undefined);
 
-    // ... continue processing ...
+    const job = { data: { tenantId: 'tenant-123', messageId: 'msg-456' } };
+    await processor.process(job);
 
-    // Verify Phase 6 (dedup) was called (normal flow)
-    expect(dedupSpy).toHaveBeenCalled();
+    // Should proceed to normal flow
+    expect(normalFlowSpy).toHaveBeenCalled();
   });
 });
 ```
@@ -998,52 +872,54 @@ Modify `src/modules/ingestion/ingestion.processor.ts`, at the beginning of the `
 ```typescript
 async process(job: Job): Promise<void> {
   const payload = job.data as ProcessEmailPayload;
-  const { tenantId, messageId } = payload;
+  const { tenantId, messageId, emailBody } = payload;
 
   try {
     // **IDEMPOTENCY GUARD: Check if this intake was already processed**
     const existingIntake = await this.prisma.emailIntakeLog.findUnique({
       where: { idx_intake_message_id: { tenantId, messageId } },
-      select: { candidateId: true, cvText: true },
+      select: { candidateId: true },
     });
 
-    if (existingIntake?.candidateId && existingIntake.cvText) {
-      // Retry detected: This intake already has a candidateId from a previous attempt
+    if (existingIntake?.candidateId) {
+      // Retry detected: This intake already has a candidateId from a previous attempt (Phase 6 completed)
       this.logger.info(
-        `[IngestionProcessor] Retry detected for intake ${messageId}. Resuming from Phase 7.`
+        `[IngestionProcessor] Retry detected for intake ${messageId}. Resuming from Phase 15+7.`
       );
 
-      // Fetch the existing candidate
+      // Fetch the existing candidate (has cvText saved on it from Phase 7)
       const candidate = await this.prisma.candidate.findUnique({
         where: { id: existingIntake.candidateId },
-        select: {
-          id: true,
-          fullName: true,
-          email: true,
-          phone: true,
-          skills: true,
-          yearsExperience: true,
-          currentRole: true,
-        },
       });
 
-      if (!candidate) {
-        throw new Error(`Candidate ${existingIntake.candidateId} not found (data inconsistency)`);
+      if (!candidate || !candidate.cvText) {
+        throw new Error(`Candidate ${existingIntake.candidateId} or cvText not found (data inconsistency)`);
       }
 
-      // Reconstruct ScoringInput from stored data
+      // **Phase 15 (re-run): Job matching — cheap and idempotent**
+      const matchedJobIds = await this.extractAllJobIdsFromEmailText(emailBody, tenantId);
+
+      // Get first matched job or use a default
+      let matchedJob;
+      if (matchedJobIds.length > 0) {
+        matchedJob = await this.prisma.job.findUnique({
+          where: { id: matchedJobIds[0] },
+        });
+      }
+
+      // Reconstruct ScoringInput from saved candidate data
       const scoringInput: ScoringInput = {
-        cvText: existingIntake.cvText,
+        cvText: candidate.cvText,
         candidateFields: {
           currentRole: candidate.currentRole || null,
           yearsExperience: candidate.yearsExperience || null,
           skills: candidate.skills || [],
         },
-        job: payload.job, // From job context
+        job: matchedJob || { title: 'General', description: '', requirements: [] }, // Use matched job or default
       };
 
-      // Resume Phase 7 (scoring), skip Phase 6 entirely
-      return this.scoreAndStoreResults(scoringInput, candidate, existingIntake);
+      // **Resume Phase 7 (scoring), skip Phase 4-6 entirely**
+      return this.scoreAndStoreResults(scoringInput, candidate);
     }
 
     // **Normal flow: No prior processing, start from Phase 4**
@@ -1073,12 +949,14 @@ Expected: All tests pass
 
 ```bash
 git add src/modules/ingestion/ingestion.processor.ts src/modules/ingestion/ingestion.processor.spec.ts
-git commit -m "fix(audit): Issue #1 part 3 — add idempotency guard at job start
+git commit -m "fix(audit): Issue #1 — add idempotency guard at job start with Phase 15 re-run
 
-- Check if intake already has candidateId + cvText at job start
-- If yes, skip Phase 6 (dedup), reconstruct ScoringInput, resume Phase 7
+- Check if intake already has candidateId at job start
+- If yes: fetch candidate (has cvText from Phase 7), re-run Phase 15 (job matching)
+- Reconstruct ScoringInput with candidate.cvText, skip Phase 4-6
+- Resume Phase 7 (scoring) with original extracted data
 - Prevents re-running dedup on retry, eliminates self-duplicate risk
-- Fetches candidate from DB instead of re-extracting data
+- Phase 15 re-run is cheap (query only matched job numbers) and idempotent
 
 Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
 ```
@@ -1207,6 +1085,7 @@ extractDeterministically(cvText: string): ExtractedCandidate {
   // Helper: Check if a line looks like a name
   const looksLikeName = (line: string): boolean => {
     const trimmed = line.trim();
+    const words = trimmed.split(/\s+/);
 
     // Skip if it's clearly a header, date, or sentence
     if (
@@ -1215,7 +1094,8 @@ extractDeterministically(cvText: string): ExtractedCandidate {
       trimmed.match(/^\d{1,2}[/-]\d{1,2}/) || // dates like 01/15/2024
       trimmed.match(/\d{4}/) || // likely a year
       trimmed.toLowerCase().match(/^(dear|hello|hi|to|from|subject|re:)/) || // greetings
-      trimmed.split(/\s+/).length > 4 // more than 4 words = likely a sentence
+      words.length < 2 || // Less than 2 words = likely single word like "Summary" or "Jerusalem"
+      words.length > 4 // more than 4 words = likely a sentence
     ) {
       return false;
     }
@@ -1393,7 +1273,7 @@ Expected: FAIL (refactored logic not implemented)
 Modify `src/modules/ingestion/ingestion.processor.ts`, replace the `extractAllJobIdsFromEmailText()` method (lines 51-92):
 
 ```typescript
-async extractAllJobIdsFromEmailText(emailText: string): Promise<string[]> {
+async extractAllJobIdsFromEmailText(emailText: string, tenantId: string): Promise<string[]> {
   // Extract all numeric tokens >= 100 from email
   // System short_ids are plain numbers: 100, 101, 245, 1053, etc.
   // This catches job mentions like "for position 245" or "apply to job 1053"
@@ -1416,12 +1296,12 @@ async extractAllJobIdsFromEmailText(emailText: string): Promise<string[]> {
     return []; // No valid job number candidates
   }
 
-  // Query only the extracted numbers as short_ids
+  // Query only the extracted numbers as short_ids (convert numbers to strings)
   // DB will naturally filter out non-existent IDs and false positives
   const matchedJobs = await this.prisma.job.findMany({
     where: {
-      shortId: { in: Array.from(candidates) },
-      tenantId: this.tenantId,
+      shortId: { in: Array.from(candidates).map(String) }, // Convert numbers to strings (shortId is STRING type)
+      tenantId, // Passed as parameter
       status: 'open',
     },
     select: { id: true },
@@ -1466,14 +1346,21 @@ Co-Authored-By: Claude Haiku 4.5 <noreply@anthropic.com>"
 
 After completing all 6 tasks above, the system is stabilized:
 
-✅ **Fix #1 (Issue #4):** Context limits prevent LLM errors
-✅ **Fix #2 (Issue #6):** Zod coercion handles float LLM outputs
-✅ **Fix #3 (Issue #2):** Unique constraint + P2002 handling prevents races
-✅ **Fix #4 (Issue #1):** Idempotency guard + cvText storage prevents self-duplicates
-✅ **Fix #5 (Issue #7):** Unicode-aware name detection improves data quality
-✅ **Fix #6 (Issue #3):** Numeric job matching optimizes from O(N) to O(K)
+✅ **Fix #1 (Issue #4):** Context limits prevent LLM errors on oversized inputs
+✅ **Fix #2 (Issue #6):** Zod coercion handles float LLM outputs (85.5 → 85)
+✅ **Fix #3 (Issue #2):** Partial unique constraint + P2002 handling prevents concurrent races
+✅ **Fix #4 (Issue #1):** Idempotency guard + Phase 15 re-run prevents self-duplicates on retry
+✅ **Fix #5 (Issue #7):** Unicode-aware name detection (2-word minimum, supports Hebrew/Arabic)
+✅ **Fix #6 (Issue #3):** Numeric job matching optimizes from O(N) to O(K) where K=extracted IDs
+
+**Corrections applied to plan:**
+- Fix #3: Partial unique constraint (WHERE phone IS NOT NULL) to allow intentional duplicate-flag flow
+- Fix #4: No cvText column needed — reads from candidate.cvText (saved Phase 7), re-runs Phase 15 on retry
+- Fix #5: Added 2-word minimum check to name detection to avoid single-word false positives
+- Fix #6: Added tenantId parameter to extractAllJobIdsFromEmailText(), convert candidates to strings for shortId query
 
 **Final validation:**
 - Run full test suite: `npm test`
 - Expected: 249+ tests passing, zero regressions
 - All 6 issues resolved with atomic commits
+- Use `npm run db:migrate` (not npx prisma) for migrations in Docker
