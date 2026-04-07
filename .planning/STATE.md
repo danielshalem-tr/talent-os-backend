@@ -1,37 +1,39 @@
 ---
-gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: Triolla Talent OS Backend — v1.0 Complete
-status: Milestone archived
+gsd_state_version: 2.0
+milestone: v2.0
+milestone_name: Triolla Talent OS Backend — v2.0 (Organization Signup & Auth)
+status: Milestone planning started
 last_updated: "2026-04-07T00:00:00.000Z"
-last_activity: 2026-04-07 milestone completion
+last_activity: 2026-04-07 v2.0 milestone planning
 progress:
-  total_phases: 17
-  completed_phases: 17
-  total_plans: 38
-  completed_plans: 38
+  total_phases: 5
+  completed_phases: 0
+  total_plans: 5
+  completed_plans: 0
 ---
 
 # State: Triolla Talent OS — Backend
 
-**Initialized:** 2026-03-22 at 00:00 UTC
+**Initialized (v1.0):** 2026-03-22 at 00:00 UTC  
+**Restarted (v2.0):** 2026-04-07 at 00:00 UTC  
 **Model:** Claude Haiku 4.5
 **Budget:** 200,000 tokens
 
 ## Project Reference
 
-**Core Value:** Inbound CVs are automatically processed, de-duplicated, and scored against open jobs without any manual recruiter effort — end-to-end from email receipt to scored candidate record.
+**v1.0 Core Value (Complete):** Inbound CVs are automatically processed, de-duplicated, and scored against open jobs without any manual recruiter effort — end-to-end from email receipt to scored candidate record.
 
-**Current Focus:** All phases complete — ready for Phase 2 planning (recruiter auth, admin UI, outbound communications)
+**v2.0 Core Value (Planning):** Organization-level signup, admin-managed user accounts, and role-based recruiter access to the platform.
 
 **Tech Stack (Locked):** TypeScript, NestJS 11, BullMQ + Redis, Prisma 7, PostgreSQL 16, OpenRouter via @openrouter/sdk (openai/gpt-4o-mini), Cloudflare R2, Postmark Inbound webhooks.
 
 ## Current Position
 
-Phase: 17
+Milestone: v2.0 (5 phases planned, agile structure)
+Phase: 18 (pending)
 Plan: Not started
 
-**STATUS: All 17 phases complete. v1.0 milestone done. 250 tests passing.**
+**STATUS: v1.0 complete (17 phases, 250+ tests). v2.0 planning done. Ready to execute Phase 18.**
 
 ## Accumulated Context
 

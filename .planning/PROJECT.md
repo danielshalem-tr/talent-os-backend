@@ -88,7 +88,13 @@ Inbound CVs are automatically processed, de-duplicated, and scored against open 
 
 **v1.0 Milestone Complete (2026-04-07)**
 
-All 17 phases delivered end-to-end:
+All 17 phases delivered end-to-end (email intake pipeline, OpenRouter extraction, pg_trgm dedup, recruiter API, production deployment).
+
+**v2.0 Milestone Planning Started (2026-04-07)**
+
+Focus: Organization signup, admin user management, role-based access control. 5 phases planned in agile structure (Phase 18–22); no strict order required but Phase 18 is prerequisite.
+
+### v1.0 Deliverables
 1. **Foundation** — Database schema (7 tables, tenant_id everywhere), NestJS + BullMQ worker, environment validation
 2. **Webhook Intake** — Postmark inbound webhooks, HMAC verification, idempotency via MessageID
 3. **Processing Pipeline** — PDF/DOCX parsing, spam pre-filtering (no attachment, marketing keywords)
@@ -113,6 +119,23 @@ All 17 phases delivered end-to-end:
 - 100% requirement coverage (40/40 v1 requirements mapped and validated)
 - Production-ready: Hetzner CX21 deployment-ready, docker-compose with healthchecks, structured logging
 
+## v2.0 Focus: Organization Signup & Admin User Management
+
+**Core Value:** Organization-level signup + admin-managed team access + role-based recruiter workflows.
+
+**Key Changes from v1.0:**
+- v1.0: Single hardcoded tenant, no auth, API-only (no recruiter login)
+- v2.0: Multi-tenant signup, JWT auth, user roles (admin/recruiter/viewer), org management
+
+**5 Planned Phases (Agile):**
+1. **Phase 18** (prereq): Database schema (organizations + users tables) + JWT service
+2. **Phase 19:** POST /auth/signup endpoint (org creation + admin user)
+3. **Phase 20:** Admin user management (POST/GET/PUT/DELETE /api/admin/users)
+4. **Phase 21:** JWT auth middleware + role-based guards on all API endpoints
+5. **Phase 22:** Login + token refresh endpoints (complete auth flow)
+
+**Recommended execution order:** 18 → 19 → 20/21/22 (20/21/22 can be parallel after 18 complete)
+
 ## Evolution
 
 This document evolves at phase transitions and milestone boundaries.
@@ -131,4 +154,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-06 after Phase 17 completion — all 17 phases complete, milestone done*
+*Last updated: 2026-04-07 after v2.0 milestone planning — 5 phases defined (18–22), agile structure (Phase 18 prerequisite, 19–22 flexible order)*
