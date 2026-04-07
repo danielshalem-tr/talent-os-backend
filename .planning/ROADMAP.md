@@ -38,6 +38,7 @@ The following phases can be worked in parallel or sequentially. Core dependency:
 **Requirements:** DB-01, DB-02, DB-03, DB-04, DB-05, DB-06, DB-07, DB-08, DB-09, INFR-01, INFR-02, INFR-03, INFR-04, INFR-05, PROC-01
 
 **Success Criteria** (what must be TRUE):
+
 1. PostgreSQL database with 7 tables (tenants, jobs, candidates, applications, candidate_job_scores, duplicate_flags, email_intake_log) created and accessible
 2. Every table has `tenant_id` FK to tenants.id and all required constraints/indexes in place
 3. NestJS API starts with `rawBody: true` for HMAC verification and serves HTTP requests
@@ -48,6 +49,7 @@ The following phases can be worked in parallel or sequentially. Core dependency:
 **Plans:** 3/3 plans complete
 
 Plans:
+
 - [x] 01-01-PLAN.md — Install dependencies, clean scaffold, bootstrap main.ts + worker.ts + env validation + PrismaService
 - [x] 01-02-PLAN.md — Prisma schema (7 tables), initial migration, pg_trgm indexes, seed data
 - [x] 01-03-PLAN.md — Dockerfile (multi-stage), docker-compose.yml (4 services + health checks), .env.example
@@ -61,6 +63,7 @@ Plans:
 **Requirements:** UM-01, UM-02, UM-03, UM-04, AUTH-01
 
 **Success Criteria** (what must be TRUE):
+
 1. `organizations` table: id (UUID PK), name (text), shortId (unique, varchar), created_by_user_id (FK users.id), created_at, updated_at
 2. `users` table: id (UUID PK), email (text), password_hash (text), tenant_id/organization_id (FK organizations.id), role (text CHECK IN ('admin','recruiter','viewer')), full_name (text), is_active (boolean default true), created_at, updated_at
 3. Unique constraint on (organization_id, email) prevents duplicate user accounts per org
@@ -70,6 +73,7 @@ Plans:
 **Plans:** 1/1 plan pending
 
 Plans:
+
 - [ ] 18-01-PLAN.md — Schema design (organizations + users tables), migration, JwtService scaffold, env validation
 
 ### Phase 19: Organization Signup Endpoint
@@ -81,6 +85,7 @@ Plans:
 **Requirements:** UM-02, AUTH-02, AUTH-06
 
 **Success Criteria** (what must be TRUE):
+
 1. POST /auth/signup accepts `{ orgName, adminEmail, adminPassword }` and validates password (min 8 chars, 1 uppercase, 1 number, 1 digit)
 2. Organization created with auto-generated `shortId` (e.g., "triol-01" from org name)
 3. Admin user created with role='admin', password hashed via bcrypt, is_active=true
@@ -92,6 +97,7 @@ Plans:
 **Plans:** 1/1 plan pending
 
 Plans:
+
 - [ ] 19-01-PLAN.md — AuthController.signup(), AuthService signup logic, bcrypt integration, password validation, atomic transaction, tests
 
 ### Phase 20: Admin User Management Endpoints
@@ -103,6 +109,7 @@ Plans:
 **Requirements:** ADMIN-01, ADMIN-02, ADMIN-03, ADMIN-04, ADMIN-05
 
 **Success Criteria** (what must be TRUE):
+
 1. GET /api/admin/users returns all users for authenticated user's org with id, email, full_name, role, is_active, created_at
 2. POST /api/admin/users creates new user; admin provides email, full_name, role; system generates temporary password
 3. Response includes temporary password (shown once); email invite with link to reset password sent to new user email
@@ -115,6 +122,7 @@ Plans:
 **Plans:** 1/1 plan pending
 
 Plans:
+
 - [ ] 20-01-PLAN.md — AdminModule, AdminUsersController/Service, CRUD endpoints, invite email logic, temp password generation, tenant isolation, tests
 
 ### Phase 21: JWT Auth Middleware & Role-Based Access Control
@@ -126,6 +134,7 @@ Plans:
 **Requirements:** AUTH-06, RBAC-01, RBAC-02, RBAC-03, RBAC-04, RBAC-05, API-01, API-02, API-03, API-04
 
 **Success Criteria** (what must be TRUE):
+
 1. JwtAuthGuard middleware validates access token on all `/api/*` endpoints except `/auth/signup` and `/auth/login`
 2. Missing/invalid token returns 401 Unauthorized with standard error format
 3. Valid token extracts user.id and tenant_id (organization_id) and attaches to request context
@@ -138,6 +147,7 @@ Plans:
 **Plans:** 1/1 plan pending
 
 Plans:
+
 - [ ] 21-01-PLAN.md — JwtAuthGuard + RoleGuard middleware, tenant isolation checks, error handling, update all endpoint tests, integration tests
 
 ### Phase 22: Login & Token Refresh Endpoints
@@ -149,6 +159,7 @@ Plans:
 **Requirements:** AUTH-03, AUTH-04, AUTH-05
 
 **Success Criteria** (what must be TRUE):
+
 1. POST /auth/login accepts email, password; validates credentials; returns accessToken, refreshToken, user object
 2. POST /auth/refresh accepts refreshToken; validates; returns new accessToken (old token invalidated)
 3. POST /auth/logout invalidates all tokens for user (requires valid accessToken)
@@ -160,6 +171,7 @@ Plans:
 **Plans:** 1/1 plan pending
 
 Plans:
+
 - [ ] 22-01-PLAN.md — Login/refresh/logout logic, token invalidation strategy, tests, password reset prep
 
 ## Phase 2: Webhook Intake & Idempotency (v1.0 - ARCHIVED)
@@ -171,6 +183,7 @@ Plans:
 **Requirements:** WBHK-01, WBHK-02, WBHK-03, WBHK-04, WBHK-05, WBHK-06
 
 **Success Criteria** (what must be TRUE):
+
 1. POST /webhooks/email endpoint responds to Postmark inbound webhook payload within 100ms with 200 OK
 2. Invalid HMAC-SHA256 signature returns 401 Unauthorized; valid signature allows processing
 3. Duplicate MessageID against email_intake_log returns 200 OK silently (idempotent)
@@ -181,6 +194,7 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
+
 - [x] 02-01-PLAN.md — PostmarkPayloadDto (Zod), test spec scaffolds (guard/service/controller), IngestionProcessor stub
 - [x] 02-02-PLAN.md — PostmarkAuthGuard (Basic Auth), WebhooksService (idempotency + enqueue + health), WebhooksController, WebhooksModule
 - [x] 02-03-PLAN.md — Wire WebhooksModule into AppModule, IngestionModule into WorkerModule, human smoke test
@@ -194,6 +208,7 @@ Plans:
 **Requirements:** PROC-02, PROC-03, PROC-04, PROC-05, PROC-06
 
 **Success Criteria** (what must be TRUE):
+
 1. Emails with no attachment AND body < 100 chars marked as spam and processing stops
 2. Emails with marketing keywords in subject (unsubscribe, newsletter, promotion, deal, offer) marked as spam and processing stops
 3. PDF attachments parsed to plain text via pdf-parse and made available to extraction agent
@@ -203,6 +218,7 @@ Plans:
 **Plans:** 4/4 plans complete
 
 Plans:
+
 - [x] 03-00-PLAN.md — Wave 0: Create 3 test spec stub files (spam-filter, attachment-extractor, processor integration)
 - [x] 03-01-PLAN.md — Wave 1A: SpamFilterService (PROC-02, PROC-03) with 5 passing unit tests
 - [x] 03-02-PLAN.md — Wave 1B: AttachmentExtractorService (PROC-04, PROC-05) with 5 passing unit tests
@@ -217,6 +233,7 @@ Plans:
 **Requirements:** AIEX-01, AIEX-02, AIEX-03
 
 **Success Criteria** (what must be TRUE):
+
 1. Agent generates structured object with schema: fullName (required), email, phone, currentRole, yearsExperience, skills[], summary (2-sentence), source enum
 2. All fields except fullName are nullable; agent never throws on missing optional fields
 3. Extracted data returned as typed object matching Zod schema; Vercel AI SDK used for generateObject call
@@ -224,6 +241,7 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
+
 - [x] 04-00-PLAN.md — Wave 0: Create extraction-agent.service.spec.ts stub + minimal service stub
 - [x] 04-01-PLAN.md — Implement ExtractionAgentService (mock) with CandidateExtractSchema and 5 unit tests
 - [x] 04-02-PLAN.md — Wire ExtractionAgentService into IngestionProcessor and IngestionModule; 2 integration tests
@@ -237,6 +255,7 @@ Plans:
 **Requirements:** STOR-01, STOR-02, STOR-03
 
 **Success Criteria** (what must be TRUE):
+
 1. Original CV file uploaded to R2 at path cvs/{tenantId}/{messageId} before duplicate detection runs
 2. R2 file URL stored in candidates.cv_file_url; file remains accessible after Postmark webhook delivery
 3. Full extracted CV text stored in candidates.cv_text (PostgreSQL); no binary blobs in database
@@ -244,6 +263,7 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
+
 - [x] 05-00-PLAN.md — Wave 1: Create StorageService stub, StorageModule, and failing test scaffolds (Nyquist setup)
 - [x] 05-01-PLAN.md — Wave 2: Implement StorageService (S3Client, attachment selection, R2 upload); 5 unit tests green
 - [x] 05-02-PLAN.md — Wave 3: Wire StorageService into IngestionProcessor + IngestionModule; extend ProcessingContext; 3 integration tests green
@@ -257,6 +277,7 @@ Plans:
 **Requirements:** DEDUP-01, DEDUP-02, DEDUP-03, DEDUP-04, DEDUP-05, DEDUP-06
 
 **Success Criteria** (what must be TRUE):
+
 1. Exact email match (confidence = 1.0) triggers UPSERT of existing candidate record (idempotent on retry)
 2. Fuzzy name match (similarity > 0.7, confidence < 1.0) creates new candidate + duplicate_flags row for human review; never auto-merges
 3. No match on fuzzy check inserts new candidate record
@@ -266,6 +287,7 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
+
 - [x] 06-00-PLAN.md — Wave 0: DedupModule skeleton, DedupService stub, 5+3 it.todo test stubs, ai_summary migration
 - [x] 06-01-PLAN.md — Wave 1: Implement DedupService (check/insertCandidate/upsertCandidate/createFlag); 5 unit tests green
 - [x] 06-02-PLAN.md — Wave 2: Wire DedupService into IngestionProcessor + IngestionModule; extend ProcessingContext; 3 integration tests green
@@ -279,6 +301,7 @@ Plans:
 **Requirements:** CAND-01, CAND-02, CAND-03, SCOR-01, SCOR-02, SCOR-03, SCOR-04, SCOR-05
 
 **Success Criteria** (what must be TRUE):
+
 1. Candidates table stores: AI-extracted fields, cv_text, cv_file_url, source, source_email, source_agency, metadata JSONB
 2. UNIQUE index on (tenant_id, email) WHERE email IS NOT NULL prevents duplicate candidate emails per tenant
 3. email_intake_log.candidate_id set after successful candidate creation
@@ -289,6 +312,7 @@ Plans:
 **Plans:** 2/2 plans complete
 
 Plans:
+
 - [x] 07-01-PLAN.md — Wave 1: Create ScoringModule + ScoringAgentService (mock-first, real call scaffolded); 3 unit tests
 - [x] 07-02-PLAN.md — Wave 2: Implement Phase 7 in IngestionProcessor (enrichment + scoring loop + terminal status); wire ScoringModule; 5 integration tests
 
@@ -303,6 +327,7 @@ Plans:
 **Gap Closure:** Closes gaps from v1.0-MILESTONE-AUDIT.md
 
 **Success Criteria** (what must be TRUE):
+
 1. `phases/01-foundation/VERIFICATION.md` exists and confirms docker-compose.yml, .env.example, and Worker bootstrap meet Phase 1 success criteria
 2. PROC-01, INFR-04, INFR-05 checkboxes marked `[x]` in REQUIREMENTS.md
 3. Traceability table updated: PROC-01, INFR-04, INFR-05 → Phase 8, Status: Complete
@@ -310,6 +335,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
+
 - [x] 08-01-PLAN.md — Write 01-VERIFICATION.md (15 requirements) and tick PROC-01/INFR-04/INFR-05 checkboxes in REQUIREMENTS.md
 
 ### Phase 9: Create client-facing REST API endpoints
@@ -323,6 +349,7 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
+
 - [x] 09-01-PLAN.md — Wave 1: CandidatesModule (GET /candidates with q + filter params, ai_score, is_duplicate)
 - [x] 09-02-PLAN.md — Wave 1: JobsModule (GET /jobs with candidate_count) + ApplicationsModule (GET /applications with nested candidate)
 - [x] 09-03-PLAN.md — Wave 2: Wire modules into AppModule, add CORS + global prefix to main.ts, human smoke test
@@ -338,6 +365,7 @@ Plans:
 **Plans:** 4/4 plans complete
 
 Plans:
+
 - [x] 10-00-PLAN.md — Wave 0: Create 3 test stub files (jobs.service.spec.ts, jobs.controller.spec.ts, jobs.integration.spec.ts) with it.todo stubs
 - [x] 10-01-PLAN.md — Wave 1: Prisma schema migration — add JobStage + ScreeningQuestion models, extend Job + Application; run prisma migrate dev
 - [x] 10-02-PLAN.md — Wave 2: Create src/jobs/dto/create-job.dto.ts (Zod schemas); implement JobsService.createJob() with default stage seeding; 7 unit tests green
@@ -352,6 +380,7 @@ Plans:
 **Requirements:** API_PROTOCOL_MVP_SCHEMA_UPDATES, API_PROTOCOL_MVP_ENDPOINTS, API_PROTOCOL_MVP_VALIDATION, API_PROTOCOL_MVP_TESTING
 
 **Success Criteria** (what must be TRUE):
+
 1. Prisma schema updated: JobStage has `interviewer` (TEXT, nullable) and `isEnabled` (BOOLEAN, default true); ScreeningQuestion has `expectedAnswer` (VARCHAR, nullable)
 2. GET /config returns hardcoded response with 6 lookup tables and 4 default hiring stages with correct Tailwind colors
 3. GET /jobs returns complete job data with nested hiring_flow and screening_questions, all fields matching API_PROTOCOL_MVP.md, snake_case field names
@@ -367,6 +396,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
+
 - [x] 11-01-PLAN.md — Schema migrations (JobStage+ScreeningQuestion), GET /config endpoint, Jobs endpoints (GET/POST/PUT/DELETE), validation, error handling, 195 tests passing
 
 ### Phase 15: Migrate email ingestion to deterministic Job ID routing and remove semantic matching
@@ -378,6 +408,7 @@ Plans:
 **Requirements:** [Phase 15 is a refactoring/migration phase; requirements are inherited from Phase 7 (CAND-01, CAND-02, CAND-03, SCOR-01, SCOR-02, SCOR-03, SCOR-04, SCOR-05)]
 
 **Success Criteria** (what must be TRUE):
+
 1. Job model has `shortId` field with UNIQUE(tenantId, shortId) constraint; existing jobs backfilled deterministically
 2. Job ID extracted from email subject via regex pattern `[Job ID: ...]` or `[JID: ...]` (case insensitive)
 3. IngestionProcessor looks up Job by (shortId, tenantId); sets candidate.jobId atomically
@@ -392,6 +423,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
+
 - [x] 15-01-PLAN.md — Task 1-8: Extend Job schema with shortId + migration, remove job_title_hint from extraction schema, add regex Job ID extraction to IngestionProcessor, delete JobTitleMatcherService, update seed data, full test verification
 
 ### Phase 16: Backend Support for Manual Routing & UI Parity
@@ -403,6 +435,7 @@ Plans:
 **Requirements:** D-01, D-02, D-03, D-04, D-05, D-06, D-07, D-08, D-09, D-10, D-11, D-12, D-13, D-14, D-15, D-16, D-17, D-18, D-19, D-20, D-21
 
 **Success Criteria** (what must be TRUE):
+
 1. PATCH /candidates/:id endpoint removes ALREADY_ASSIGNED error and allows reassignment (jobId=X→Y)
 2. Old Application + scores preserved on reassignment (historical audit trail maintained)
 3. New Application created for new job with stage='new' on reassignment
@@ -419,6 +452,7 @@ Plans:
 **Plans:** 3/3 plans
 
 Plans:
+
 - [ ] 16-01-PLAN.md — Wave 1: Add shortId to JobResponse, verify sourceAgency in CandidateResponse, confirm flattened response format
 - [ ] 16-02-PLAN.md — Wave 1: Implement updateCandidate() reassignment logic + findAll() unassigned filter, remove ALREADY_ASSIGNED error
 - [ ] 16-03-PLAN.md — Wave 2: Comprehensive integration tests (80+ tests), manual smoke test checkpoint for reassignment workflow
@@ -434,6 +468,7 @@ Plans:
 **Plans:** 5/5 plans complete
 
 Plans:
+
 - [x] 17-01-PLAN.md — Wave 1: Fix 6 failing unit tests (jobs.integration.spec.ts + ingestion.processor.spec.ts)
 - [x] 17-02-PLAN.md — Wave 1: Health endpoint (GET /health), E2E smoke test, nestjs-pino structured logging, BullMQ lifecycle logs
 - [x] 17-03-PLAN.md — Wave 2: Security hardening (helmet, throttler, CORS deny-all) + API endpoint review vs PROTOCOL.md
@@ -444,38 +479,38 @@ Plans:
 
 ### v1.0 Phases (Archived)
 
-| Phase | Plans Complete | Status | Completed |
-|-------|----------------|--------|-----------|
-| 1. Foundation | 3/3 | Complete | 2026-03-22 |
-| 2. Webhook Intake & Idempotency | 3/3 | Complete | 2026-03-22 |
-| 3. Processing Pipeline & Spam Filter | 4/4 | Complete | 2026-03-22 |
-| 4. AI Extraction | 3/3 | Complete | 2026-03-22 |
-| 5. File Storage | 3/3 | Complete | 2026-03-22 |
-| 6. Duplicate Detection | 3/3 | Complete | 2026-03-23 |
-| 7. Candidate Storage & Scoring | 2/2 | Complete | 2026-03-23 |
-| 8. Phase 1 Verification | 1/1 | Complete | 2026-03-23 |
-| 9. Client-facing REST API | 3/3 | Complete | 2026-03-23 |
-| 10. Add job creation feature | 4/4 | Complete | 2026-03-24 |
-| 11. API Protocol MVP Implementation | 1/1 | Complete | 2026-03-25 |
-| 12. Support add candidate from the UI | 0/1 | Planned | TBD |
-| 13. Implement Kanban board with candidate hiring stage tracking | 0/1 | Planned | TBD |
-| 14. Wire OpenRouter extraction pipeline | 1/1 | Complete | 2026-03-29 |
-| 15. Migrate email ingestion to deterministic Job ID routing | 1/1 | Complete | 2026-03-31 |
-| 16. Backend Support for Manual Routing & UI Parity | 0/3 | Planned | TBD |
-| 17. Production Deployment Readiness | 5/5 | Complete | 2026-04-01 |
+| Phase                                                           | Plans Complete | Status   | Completed  |
+| --------------------------------------------------------------- | -------------- | -------- | ---------- |
+| 1. Foundation                                                   | 3/3            | Complete | 2026-03-22 |
+| 2. Webhook Intake & Idempotency                                 | 3/3            | Complete | 2026-03-22 |
+| 3. Processing Pipeline & Spam Filter                            | 4/4            | Complete | 2026-03-22 |
+| 4. AI Extraction                                                | 3/3            | Complete | 2026-03-22 |
+| 5. File Storage                                                 | 3/3            | Complete | 2026-03-22 |
+| 6. Duplicate Detection                                          | 3/3            | Complete | 2026-03-23 |
+| 7. Candidate Storage & Scoring                                  | 2/2            | Complete | 2026-03-23 |
+| 8. Phase 1 Verification                                         | 1/1            | Complete | 2026-03-23 |
+| 9. Client-facing REST API                                       | 3/3            | Complete | 2026-03-23 |
+| 10. Add job creation feature                                    | 4/4            | Complete | 2026-03-24 |
+| 11. API Protocol MVP Implementation                             | 1/1            | Complete | 2026-03-25 |
+| 12. Support add candidate from the UI                           | 0/1            | Planned  | TBD        |
+| 13. Implement Kanban board with candidate hiring stage tracking | 0/1            | Planned  | TBD        |
+| 14. Wire OpenRouter extraction pipeline                         | 1/1            | Complete | 2026-03-29 |
+| 15. Migrate email ingestion to deterministic Job ID routing     | 1/1            | Complete | 2026-03-31 |
+| 16. Backend Support for Manual Routing & UI Parity              | 0/3            | Planned  | TBD        |
+| 17. Production Deployment Readiness                             | 5/5            | Complete | 2026-04-01 |
 
 ### v2.0 Phases (Agile — No Strict Order)
 
-| Phase | Plans Complete | Status | Started |
-|-------|----------------|--------|---------|
-| 18. Database Schema & JWT Infrastructure | 0/1 | Pending | — |
-| 19. Organization Signup Endpoint | 0/1 | Pending | — |
-| 20. Admin User Management Endpoints | 0/1 | Pending | — |
-| 21. JWT Auth Middleware & RBAC | 0/1 | Pending | — |
-| 22. Login & Token Refresh Endpoints | 0/1 | Pending | — |
+| Phase                                    | Plans Complete | Status  | Started |
+| ---------------------------------------- | -------------- | ------- | ------- |
+| 18. Database Schema & JWT Infrastructure | 0/1            | Pending | —       |
+| 19. Organization Signup Endpoint         | 0/1            | Pending | —       |
+| 20. Admin User Management Endpoints      | 0/1            | Pending | —       |
+| 21. JWT Auth Middleware & RBAC           | 0/1            | Pending | —       |
+| 22. Login & Token Refresh Endpoints      | 0/1            | Pending | —       |
 
 ---
 
-*Roadmap created: 2026-03-22 by /gsd:new-roadmap*
-*Updated: 2026-03-31 by plan-phase (Phase 17 planning complete)*
-*Updated: 2026-04-07 for v2.0 milestone planning (Phases 18–22, agile structure)*
+_Roadmap created: 2026-03-22 by /gsd:new-roadmap_
+_Updated: 2026-03-31 by plan-phase (Phase 17 planning complete)_
+_Updated: 2026-04-07 for v2.0 milestone planning (Phases 18–22, agile structure)_
