@@ -16,14 +16,16 @@ export class DedupService {
   async check(
     candidate: CandidateExtract,
     tenantId: string,
+    tx?: Prisma.TransactionClient,
   ): Promise<DedupResult | null> {
+    const client = tx ?? this.prisma;
     // Step 1: No phone — return sentinel so processor can create phone_missing flag for HR review
     if (!candidate.phone || candidate.phone.trim() === '') {
       return { match: null, confidence: 0, fields: ['phone_missing'] };
     }
 
     // Step 2: Exact phone match — strip non-digit characters from both sides before comparing
-    const phoneMatches = await this.prisma.$queryRaw<{ id: string }[]>`
+    const phoneMatches = await client.$queryRaw<{ id: string }[]>`
       SELECT id::text
       FROM candidates
       WHERE tenant_id = ${tenantId}::uuid

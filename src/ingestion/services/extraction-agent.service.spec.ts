@@ -293,3 +293,125 @@ describe('ExtractionAgentService', () => {
     expect(result).toHaveProperty('skills');
   });
 });
+
+describe('CandidateExtractSchema - float coercion', () => {
+  const validBase = {
+    full_name: 'Test User',
+    email: null,
+    phone: null,
+    current_role: null,
+    location: null,
+    skills: [],
+    ai_summary: null,
+    source_hint: null,
+    source_agency: null,
+  };
+
+  it('should coerce years_experience 6.7 to 7', () => {
+    const result = CandidateExtractSchema.parse({ ...validBase, years_experience: 6.7 });
+    expect(result.years_experience).toBe(7);
+  });
+
+  it('should accept years_experience null', () => {
+    const result = CandidateExtractSchema.parse({ ...validBase, years_experience: null });
+    expect(result.years_experience).toBeNull();
+  });
+
+  it('should reject years_experience > 50', () => {
+    expect(() => CandidateExtractSchema.parse({ ...validBase, years_experience: 75 })).toThrow();
+  });
+});
+
+describe('ExtractionAgentService - context limits', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCallModel.mockReturnValue({ getText: mockGetText });
+  });
+
+  it('should not throw on 100K char fullText (truncated internally)', async () => {
+    const aiResult = {
+      full_name: 'Test User', email: null, phone: null, current_role: null,
+      years_experience: null, location: null, skills: [], ai_summary: null,
+      source_hint: null, source_agency: null,
+    };
+    mockGetText.mockResolvedValueOnce(JSON.stringify(aiResult));
+    const service = makeService();
+    const longText = 'a'.repeat(100_000);
+    await expect(service.extract(longText, false, { subject: 'Test', fromEmail: 'a@b.com' })).resolves.toBeDefined();
+  });
+
+  it('should throw EXTRACTION_CONTEXT_EXCEEDED on HTTP 400 error', async () => {
+    mockGetText.mockRejectedValueOnce(new Error('Request failed with status 400'));
+    const service = makeService();
+    await expect(service.extract('text', false, { subject: 'Test', fromEmail: 'a@b.com' })).rejects.toThrow('EXTRACTION_CONTEXT_EXCEEDED');
+  });
+
+  it('should throw EXTRACTION_CONTEXT_EXCEEDED on HTTP 413 error', async () => {
+    mockGetText.mockRejectedValueOnce(new Error('413 Payload Too Large'));
+    const service = makeService();
+    await expect(service.extract('text', false, { subject: 'Test', fromEmail: 'a@b.com' })).rejects.toThrow('EXTRACTION_CONTEXT_EXCEEDED');
+  });
+});
+
+describe('extractDeterministically() - name detection', () => {
+  let service: ExtractionAgentService;
+
+  beforeEach(() => {
+    const configService = { get: jest.fn().mockReturnValue('fake-key') } as unknown as ConfigService;
+    service = new ExtractionAgentService(configService);
+  });
+
+  it('should skip CONFIDENTIAL header and find name', () => {
+    const result = service.extractDeterministically('CONFIDENTIAL\nJohn Doe\nSenior Engineer\njohn@test.com');
+    expect(result.full_name).toBe('John Doe');
+  });
+
+  it('should skip date line and find name', () => {
+    const result = service.extractDeterministically('01/15/2024\nJane Smith\nEngineer');
+    expect(result.full_name).toBe('Jane Smith');
+  });
+
+  it('should detect Hebrew name', () => {
+    const result = service.extractDeterministically('אבי לוי\nמהנדס תוכנה\navi@test.com');
+    expect(result.full_name).toBe('אבי לוי');
+  });
+
+  it('should detect Arabic name', () => {
+    const result = service.extractDeterministically('محمد علي\nمهندس برمجيات');
+    expect(result.full_name).toBe('محمد علي');
+  });
+
+  it('should handle hyphenated names', () => {
+    const result = service.extractDeterministically('Jean-Pierre Dupont\nEngineer');
+    expect(result.full_name).toBe('Jean-Pierre Dupont');
+  });
+
+  it('should reject single-word lines as names', () => {
+    const result = service.extractDeterministically(
+      'Summary\nThis document contains a very long professional description that spans many words.\n',
+    );
+    expect(result.full_name).toBe('Unknown Candidate');
+  });
+
+  it('should fallback to Unknown Candidate when no name found', () => {
+    const result = service.extractDeterministically(
+      'CONFIDENTIAL\nProfessional Summary\nThis is a long description of the candidate profile and experience.',
+    );
+    expect(result.full_name).toBe('Unknown Candidate');
+  });
+
+  it('should skip Curriculum Vitae header', () => {
+    const result = service.extractDeterministically('Curriculum Vitae\nDavid Cohen\nSoftware Developer');
+    expect(result.full_name).toBe('David Cohen');
+  });
+
+  it('should accept multi-part names (Maria de la Cruz)', () => {
+    const result = service.extractDeterministically('Maria de la Cruz\nSenior Engineer');
+    expect(result.full_name).toBe('Maria de la Cruz');
+  });
+
+  it('should accept Arabic multi-part name', () => {
+    const result = service.extractDeterministically('عبد الرحمن الحسيني\nمهندس برمجيات');
+    expect(result.full_name).toBe('عبد الرحمن الحسيني');
+  });
+});

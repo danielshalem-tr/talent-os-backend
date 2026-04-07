@@ -44,51 +44,24 @@ export class IngestionProcessor extends WorkerHost {
   }
 
   /**
-   * Extract all short_ids from combined subject + body text.
-   * Searches for each active job's short_id using word boundaries.
-   * Returns array of matched short_ids (may be empty).
+   * Extract candidate short_ids from combined subject + body text.
+   * Short_ids are plain numbers >= 100 (e.g., 100, 245, 1053).
+   * Returns array of candidate short_id strings (may include false positives
+   * like years or zip codes — the downstream DB query filters those out).
    */
-  private async extractAllJobIdsFromEmailText(
-    subject: string | null | undefined,
-    body: string | null | undefined,
-    tenantId: string,
-  ): Promise<string[]> {
-    // Fetch all active jobs for this tenant (needed to get their short_ids)
-    const activeJobs = await this.prisma.job.findMany({
-      where: {
-        tenantId,
-        status: 'open', // Only search active job listings
-      },
-      select: {
-        id: true,
-        shortId: true,
-      },
-    });
+  private extractCandidateShortIds(subject: string | null | undefined, body: string | null | undefined): string[] {
+    const combinedText = [subject, body].filter(Boolean).join(' ');
 
+    if (!combinedText) return [];
 
-    if (activeJobs.length === 0) {
-      return [];
-    }
+    // Match all 3+ digit numbers as word boundaries
+    const numberPattern = /\b(\d{3,})\b/g;
+    const matches = [...combinedText.matchAll(numberPattern)];
 
-    // Combine subject and body for searching
-    const combinedText = [subject, body].filter(Boolean).join(' ').toLowerCase();
+    if (matches.length === 0) return [];
 
-    // For each job's shortId, search with word boundaries
-    const matchedShortIds: string[] = [];
-
-    for (const job of activeJobs) {
-      const cleanShortId = job.shortId.trim();
-      // Use word boundaries: \b matches at word start/end
-      // Escape hyphens in shortId for regex safety
-      const escapedShortId = cleanShortId.replace(/[-[\]{}()*+?.\\^$|#\s]/g, '\\$&');
-      const pattern = new RegExp(`(?:^|\\s|[.,!?"'])(${escapedShortId})(?:\\s|[.,!?"']|$)`, 'i');
-
-      if (pattern.test(combinedText)) {
-        matchedShortIds.push(job.shortId);
-      }
-    }
-
-    return [...new Set(matchedShortIds)]; // Deduplicate in case of typos/duplicates
+    // Filter >= 100, deduplicate, keep as strings (shortId is string type in DB)
+    return [...new Set(matches.map((m) => m[1]).filter((s) => parseInt(s, 10) >= 100))];
   }
 
   async process(job: Job<PostmarkPayloadDto>): Promise<void> {
@@ -96,10 +69,7 @@ export class IngestionProcessor extends WorkerHost {
     const tenantId = this.config.get<string>('TENANT_ID')!;
 
     // D-24: structured lifecycle log — pino object-first pattern
-    this.pinoLogger.log(
-      { jobId: job.id, jobName: job.name, tenantId },
-      'Job started',
-    );
+    this.pinoLogger.log({ jobId: job.id, jobName: job.name, tenantId }, 'Job started');
     this.logger.log(`Processing job ${job.id} for MessageID: ${payload.MessageID}`);
 
     // Step 0: Spam filter FIRST — before any parsing (D-11)
@@ -210,103 +180,120 @@ export class IngestionProcessor extends WorkerHost {
     this.logger.log(`Phase 4 complete for MessageID: ${payload.MessageID} — extracted: ${extraction!.full_name}`);
 
     // Phase 6: Duplicate detection + minimal candidate shell INSERT/UPSERT (atomic)
-    // dedupService.check() runs OUTSIDE the transaction — read-only query, no benefit from holding lock
-    let dedupResult: DedupResult | null = null;
-    try {
-      dedupResult = await this.dedupService.check(extraction!, tenantId);
-    } catch (err) {
-      this.logger.error(
-        `Dedup check failed for MessageID: ${payload.MessageID} — ${(err as Error).message}`,
-        (err as Error).stack,
-      );
-      await this.prisma.emailIntakeLog.update({
-        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-        data: { processingStatus: 'failed', errorMessage: (err as Error).message },
-      });
-      throw err; // Re-throw for BullMQ to retry
-    }
+    // === IDEMPOTENCY GUARD ===
+    // If this is a BullMQ retry and Phase 6 already completed (candidateId is set),
+    // skip the entire dedup + insert transaction and reuse the existing candidateId.
+    const existingIntake = await this.prisma.emailIntakeLog.findUnique({
+      where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+      select: { candidateId: true },
+    });
 
     let candidateId!: string;
 
-    try {
-      await this.prisma.$transaction(async (tx) => {
-        if (dedupResult === null) {
-          // No phone match — new candidate, proceed normally
-          candidateId = await this.dedupService.insertCandidate(
-            extraction!,
-            tenantId,
-            payload.From,
-            tx,
-            extraction!.source_hint,
-          );
-        } else if (dedupResult.fields.includes('phone_missing')) {
-          // Phone not extracted from CV — insert as new candidate + flag for HR review
-          candidateId = await this.dedupService.insertCandidate(
-            extraction!,
-            tenantId,
-            payload.From,
-            tx,
-            extraction!.source_hint,
-          );
-          await this.dedupService.createFlag(
-            candidateId,
-            null,              // no match target — self-referencing flag
-            0,                 // confidence 0 — not a real duplicate signal
-            tenantId,
-            ['phone_missing'],
-            tx,
-          );
-        } else if (dedupResult.confidence === 1.0) {
-          // Exact phone match — insert a NEW candidate row so both submissions appear in the UI
-          // The existing candidate is untouched (first-submission attribution preserved, D-07)
-          candidateId = await this.dedupService.insertCandidate(
-            extraction!,
-            tenantId,
-            payload.From,
-            tx,
-            extraction!.source_hint,
-          );
+    if (existingIntake?.candidateId) {
+      this.logger.log(
+        `Idempotency guard: intake ${payload.MessageID} already has candidateId ${existingIntake.candidateId}. Skipping Phase 6.`,
+      );
+      candidateId = existingIntake.candidateId;
+    } else {
+      try {
+        await this.prisma.$transaction(async (tx) => {
+          // Advisory lock: serialize concurrent workers processing the same phone
+          // Lock is automatically released when the transaction commits/rollbacks
+          if (extraction!.phone?.trim()) {
+            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${extraction!.phone}))`;
+          }
 
-          // Link new row → existing row so HR can see both are the same person
-          await this.dedupService.createFlag(
-            candidateId,             // new candidate (incoming submission)
-            dedupResult.match!.id,  // existing candidate (first submission)
-            dedupResult.confidence,  // 1.0 — exact phone match
-            tenantId,
-            dedupResult.fields,      // ['phone']
-            tx,
-          );
-        }
+          // Dedup check — now INSIDE the transaction, protected by advisory lock
+          let dedupResult: DedupResult | null = null;
+          try {
+            dedupResult = await this.dedupService.check(extraction!, tenantId, tx);
+          } catch (err) {
+            this.logger.error(
+              `Dedup check failed for MessageID: ${payload.MessageID} — ${(err as Error).message}`,
+              (err as Error).stack,
+            );
+            throw err; // Transaction will rollback
+          }
 
-        // D-10: Set email_intake_log.candidate_id atomically — if this fails, candidate INSERT rolls back too
-        await tx.emailIntakeLog.update({
-          where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-          data: { candidateId: candidateId! },
+          if (dedupResult === null) {
+            // No phone match — new candidate, proceed normally
+            candidateId = await this.dedupService.insertCandidate(
+              extraction!,
+              tenantId,
+              payload.From,
+              tx,
+              extraction!.source_hint,
+            );
+          } else if (dedupResult.fields.includes('phone_missing')) {
+            // Phone not extracted from CV — insert as new candidate + flag for HR review
+            candidateId = await this.dedupService.insertCandidate(
+              extraction!,
+              tenantId,
+              payload.From,
+              tx,
+              extraction!.source_hint,
+            );
+            await this.dedupService.createFlag(
+              candidateId,
+              null, // no match target — self-referencing flag
+              0, // confidence 0 — not a real duplicate signal
+              tenantId,
+              ['phone_missing'],
+              tx,
+            );
+          } else if (dedupResult.confidence === 1.0) {
+            // Exact phone match — insert a NEW candidate row so both submissions appear in the UI
+            // The existing candidate is untouched (first-submission attribution preserved, D-07)
+            candidateId = await this.dedupService.insertCandidate(
+              extraction!,
+              tenantId,
+              payload.From,
+              tx,
+              extraction!.source_hint,
+            );
+
+            // Link new row → existing row so HR can see both are the same person
+            await this.dedupService.createFlag(
+              candidateId, // new candidate (incoming submission)
+              dedupResult.match!.id, // existing candidate (first submission)
+              dedupResult.confidence, // 1.0 — exact phone match
+              tenantId,
+              dedupResult.fields, // ['phone']
+              tx,
+            );
+          }
+
+          // D-10: Set email_intake_log.candidate_id atomically — if this fails, candidate INSERT rolls back too
+          await tx.emailIntakeLog.update({
+            where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+            data: { candidateId: candidateId! },
+          });
         });
-      });
-    } catch (err) {
-      this.logger.error(
-        `Phase 6 transaction failed for MessageID: ${payload.MessageID} — ${(err as Error).message}`,
-        (err as Error).stack,
-      );
-      // D-24: structured lifecycle log — job failed
-      this.pinoLogger.error(
-        {
-          jobId: job.id,
-          jobName: job.name,
-          tenantId,
-          error: err instanceof Error ? err.message : String(err),
-        },
-        'Job failed',
-      );
-      // Log failure in intake status — transaction errors may be transient (DB connection loss)
-      // or permanent (constraint violation). BullMQ will retry up to 3 attempts.
-      await this.prisma.emailIntakeLog.update({
-        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-        data: { processingStatus: 'failed', errorMessage: (err as Error).message },
-      });
-      throw err; // Re-throw so BullMQ retries (attempt 1, 2, 3) for transient errors
-    }
+      } catch (err) {
+        this.logger.error(
+          `Phase 6 transaction failed for MessageID: ${payload.MessageID} — ${(err as Error).message}`,
+          (err as Error).stack,
+        );
+        // D-24: structured lifecycle log — job failed
+        this.pinoLogger.error(
+          {
+            jobId: job.id,
+            jobName: job.name,
+            tenantId,
+            error: err instanceof Error ? err.message : String(err),
+          },
+          'Job failed',
+        );
+        // Log failure in intake status — transaction errors may be transient (DB connection loss)
+        // or permanent (constraint violation). BullMQ will retry up to 3 attempts.
+        await this.prisma.emailIntakeLog.update({
+          where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+          data: { processingStatus: 'failed', errorMessage: (err as Error).message },
+        });
+        throw err; // Re-throw so BullMQ retries (attempt 1, 2, 3) for transient errors
+      }
+    } // end else (idempotency guard)
 
     // Pass candidateId to Phase 7 via context (D-16)
     context.candidateId = candidateId!;
@@ -314,8 +301,8 @@ export class IngestionProcessor extends WorkerHost {
     this.logger.log(`Phase 6 complete for MessageID: ${payload.MessageID} — candidateId: ${candidateId}`);
 
     // Phase 15: Deterministic Job ID extraction + multi-job lookup
-    // Extract ALL matching short_ids from combined subject + body text
-    const matchedShortIds = await this.extractAllJobIdsFromEmailText(payload.Subject, payload.TextBody, tenantId);
+    // Extract candidate short_ids (pure text parse — no DB query)
+    const matchedShortIds = this.extractCandidateShortIds(payload.Subject, payload.TextBody);
 
     let matchedJobs: Array<{
       id: string;
@@ -331,6 +318,7 @@ export class IngestionProcessor extends WorkerHost {
         where: {
           tenantId,
           shortId: { in: matchedShortIds },
+          status: 'open',
         },
         select: {
           id: true,
@@ -478,10 +466,7 @@ export class IngestionProcessor extends WorkerHost {
     });
 
     // D-24: structured lifecycle log — job completed
-    this.pinoLogger.log(
-      { jobId: job.id, jobName: job.name, tenantId },
-      'Job completed',
-    );
+    this.pinoLogger.log({ jobId: job.id, jobName: job.name, tenantId }, 'Job completed');
     this.logger.log(`Phase 7 complete for MessageID: ${payload.MessageID} — pipeline finished`);
   }
 }

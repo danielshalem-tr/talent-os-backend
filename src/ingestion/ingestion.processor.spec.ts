@@ -32,9 +32,10 @@ describe('IngestionProcessor', () => {
   beforeEach(async () => {
     const txClient = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
@@ -205,7 +206,7 @@ describe('IngestionProcessor', () => {
 
 describe('IngestionProcessor — Phase 5 StorageService', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
@@ -213,9 +214,10 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
   beforeEach(async () => {
     const txClient = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
@@ -329,7 +331,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
 
 describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: {
@@ -342,10 +344,11 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   beforeEach(async () => {
     const txClient = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
 
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
       // Simulate prisma.$transaction by invoking the callback with a tx client
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => {
         return cb(txClient);
@@ -492,6 +495,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
       emailIntakeLog: {
         update: jest.fn().mockRejectedValueOnce(new Error('DB connection lost')),
       },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
     prisma.$transaction.mockImplementationOnce(async (cb: (tx: typeof txClient) => Promise<void>) => {
       return cb(txClient);
@@ -556,21 +560,20 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
   let scoringService: { score: jest.Mock };
 
-  const activeJob = { id: 'job-id-1', shortId: 'job-id-1', title: 'Senior Backend Developer', description: 'Build APIs.', requirements: ['TypeScript'], hiringStages: [{ id: 'stage-1' }] };
+  const activeJob = { id: 'job-id-1', shortId: '101', title: 'Senior Backend Developer', description: 'Build APIs.', requirements: ['TypeScript'], hiringStages: [{ id: 'stage-1' }] };
 
   beforeEach(async () => {
     const txClient = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
 
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: {
-        findMany: jest.fn()
-          .mockResolvedValueOnce([activeJob]) // First call: list active jobs
-          .mockResolvedValueOnce([activeJob]), // Second call: find jobs matching short_ids
+        findMany: jest.fn().mockResolvedValue([activeJob]),
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn().mockResolvedValue(activeJob),
       },
@@ -639,10 +642,10 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     mockPostmarkPayload({
       MessageID: 'msg-phase7-test',
       From: 'sender@example.com',
-      Subject: 'Job Application for job-id-1',
+      Subject: 'Job Application for position 101',
       TextBody:
         'Dear Hiring Manager, I have 7 years of TypeScript and Node.js experience building backend systems. ' +
-        'I am very interested in job-id-1 and would love to discuss my background further. ' +
+        'I am very interested in position 101 and would love to discuss my background further. ' +
         'Please find my CV attached.',
       Attachments: [],
     });
@@ -668,23 +671,26 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     );
   });
 
-  it('7-02-02: SCOR-01 — Phase 15: job.findMany called for flexible Job ID extraction', async () => {
-    // Phase 15: Extract short_id from flexible format (not strict [Job ID:...])
+  it('7-02-02: SCOR-01 — Phase 15: job.findMany called with status:open for matched shortIds', async () => {
+    // Phase 15: Extract numeric short_id from text, look up with status:open filter
     const jobPayloadWithId = mockPostmarkPayload({
       MessageID: 'msg-p15-test',
       From: 'sender@example.com',
-      Subject: 'Job Application for job-id-1',
+      Subject: 'Job Application for position 101',
       TextBody:
-        'Dear Hiring Manager, I have 5 years of experience and interested in job-id-1. Please find my CV attached.',
+        'Dear Hiring Manager, I have 5 years of experience and interested in position 101. Please find my CV attached.',
       Attachments: [],
     });
     const job = { id: 'test-p7-2', data: jobPayloadWithId } as any;
     await processor.process(job);
 
-    // Phase 15: job.findMany called to fetch active jobs and match short_ids
+    // Phase 15: job.findMany called with status:open and matched shortIds
     expect(prisma.job.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { tenantId: 'test-tenant-id', status: 'open' },
+        where: expect.objectContaining({
+          tenantId: 'test-tenant-id',
+          status: 'open',
+        }),
       }),
     );
   });
@@ -718,9 +724,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
   it('7-02-04: SCOR-01 — Phase 15: no matching short_ids: scoring loop skipped, processingStatus still completed', async () => {
     // Reset the findMany mock and configure for no matches
     prisma.job.findMany.mockReset();
-    prisma.job.findMany
-      .mockResolvedValueOnce([activeJob]) // First call: list active jobs
-      .mockResolvedValueOnce([]); // Second call: no jobs match the short_ids
+    prisma.job.findMany.mockResolvedValueOnce([]); // shortId lookup returns no jobs
 
     const job = { id: 'test-p7-4', data: validJobPayload() } as any;
     await processor.process(job);
@@ -773,22 +777,25 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     );
   });
 
-  describe('IngestionProcessor — Phase 15 Flexible Job ID Extraction (Word Boundaries)', () => {
+  describe('IngestionProcessor — Phase 15 Numeric Job ID Extraction', () => {
     let processor: IngestionProcessor;
     let prisma: any;
     let extractionAgent: any;
 
-    const job1 = { id: 'job-1', title: 'Senior Software Engineer', shortId: 'se-1', description: null, requirements: [], hiringStages: [{ id: 'stage-1' }] };
-    const job2 = { id: 'job-2', title: 'Product Manager', shortId: 'pm-2', description: null, requirements: [], hiringStages: [{ id: 'stage-2' }] };
+    const job1 = { id: 'job-1', title: 'Senior Software Engineer', shortId: '100', description: null, requirements: [], hiringStages: [{ id: 'stage-1' }] };
+    const job2 = { id: 'job-2', title: 'Product Manager', shortId: '101', description: null, requirements: [], hiringStages: [{ id: 'stage-2' }] };
 
     beforeEach(async () => {
-      const txClient = { emailIntakeLog: { update: jest.fn().mockResolvedValue({}) } };
-      prisma = {
+      const txClient = {
         emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+        $queryRaw: jest.fn().mockResolvedValue([]),
+      };
+      prisma = {
+        emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
         $transaction: jest.fn().mockImplementation(async (cb) => cb(txClient)),
         candidate: { update: jest.fn().mockResolvedValue({}) },
         job: {
-          findMany: jest.fn().mockResolvedValue([job1, job2]), // Active jobs list
+          findMany: jest.fn().mockResolvedValue([job1, job2]),
           findUnique: jest.fn(),
         },
         application: { upsert: jest.fn().mockResolvedValue({ id: 'app-1' }) },
@@ -806,35 +813,25 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           { provide: ExtractionAgentService, useValue: extractionAgent },
           { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key') } },
           { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
-          { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, modelUsed: 'test' }) } },
+          { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, modelUsed: 'test', reasoning: '', strengths: [], gaps: [] }) } },
           { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
         ],
       }).compile();
       processor = module.get<IngestionProcessor>(IngestionProcessor);
     });
 
-    it('15-01: extracts single short_id from subject with word boundaries (strict formatting optional)', async () => {
-      // Test: "applying for se-1" → should extract se-1 (not strict [Job ID:...] format)
-      prisma.job.findMany.mockResolvedValueOnce([job1, job2]);
-      prisma.job.findMany.mockResolvedValueOnce([job1]); // For job lookup by shortId
-      const payload = mockPostmarkPayload({ Subject: 'CV for se-1 position', TextBody: 'a'.repeat(101) });
+    it('15-01: extracts numeric short_id from subject', async () => {
+      prisma.job.findMany.mockResolvedValueOnce([job1]);
+      const payload = mockPostmarkPayload({ Subject: 'CV for position 100', TextBody: 'a'.repeat(101) });
       const job = { id: 'test-1', data: payload } as any;
 
       await processor.process(job);
 
-      // Should search for all active jobs first
       expect(prisma.job.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { tenantId: 'test-tenant-id', status: 'open' },
+          where: expect.objectContaining({ shortId: { in: ['100'] }, status: 'open' }),
         }),
       );
-      // Should look up matched jobs
-      expect(prisma.job.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: { tenantId: 'test-tenant-id', shortId: { in: ['se-1'] } },
-        }),
-      );
-      // Should assign job
       expect(prisma.candidate.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ jobId: 'job-1' }),
@@ -842,113 +839,243 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       );
     });
 
-    it('15-02: respects word boundaries (matches se-1 but not in use-1)', async () => {
-      // Test: "use-1" should NOT match "se-1" (word boundary enforcement)
-      prisma.job.findMany.mockResolvedValueOnce([job1, job2]);
-      prisma.job.findMany.mockResolvedValueOnce([]); // No jobs matched
-      const payload = mockPostmarkPayload({ Subject: 'use-1 reference', TextBody: 'a'.repeat(101) });
+    it('15-02: ignores numbers < 100', async () => {
+      prisma.job.findMany.mockResolvedValueOnce([]);
+      const payload = mockPostmarkPayload({ Subject: 'I am 25 years old', TextBody: 'Position 50 is closed. a'.repeat(10) });
       const job = { id: 'test-2', data: payload } as any;
 
       await processor.process(job);
 
-      // Should skip job lookup (no matches found)
+      // No valid shortIds found → findMany not called for job lookup
       expect(prisma.candidate.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ jobId: null }),
         }),
       );
-      // Scoring skipped
       expect(prisma.application.upsert).not.toHaveBeenCalled();
     });
 
-    it('15-03: extracts multiple short_ids from body text and assigns to all', async () => {
-      // Test: body has "se-1" and "pm-2" → should create 2 application records
-      prisma.job.findMany
-        .mockResolvedValueOnce([job1, job2]) // Active jobs list
-        .mockResolvedValueOnce([job1, job2]); // Jobs matching short_ids
+    it('15-03: extracts multiple numeric short_ids and creates applications for each', async () => {
+      prisma.job.findMany.mockResolvedValueOnce([job1, job2]);
       prisma.application.upsert
         .mockResolvedValueOnce({ id: 'app-1' })
         .mockResolvedValueOnce({ id: 'app-2' });
       const payload = mockPostmarkPayload({
         Subject: 'CV Submission',
-        TextBody: 'I am interested in both se-1 and pm-2 positions. a'.repeat(20),
+        TextBody: 'I am interested in both position 100 and 101. a'.repeat(5),
       });
       const job = { id: 'test-3', data: payload } as any;
 
       await processor.process(job);
 
-      // Should find both jobs
       expect(prisma.job.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { tenantId: 'test-tenant-id', shortId: { in: expect.arrayContaining(['se-1', 'pm-2']) } },
+          where: expect.objectContaining({ shortId: { in: expect.arrayContaining(['100', '101']) } }),
         }),
       );
-      // Should create 2 applications (one per job)
       expect(prisma.application.upsert).toHaveBeenCalledTimes(2);
-      // Should score against 2 jobs
       expect(prisma.candidateJobScore.create).toHaveBeenCalledTimes(2);
     });
 
-    it('15-04: gracefully handles no matching short_ids in email', async () => {
-      // Test: email has no matching short_ids → proceed without job assignment
-      prisma.job.findMany.mockResolvedValueOnce([job1, job2]);
-      prisma.job.findMany.mockResolvedValueOnce([]); // No matches
+    it('15-04: gracefully handles no numeric short_ids in email', async () => {
       const payload = mockPostmarkPayload({ Subject: 'Random CV', TextBody: 'a'.repeat(101) });
       const job = { id: 'test-4', data: payload } as any;
 
       await processor.process(job);
 
-      // Should set jobId to null
       expect(prisma.candidate.update).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({ jobId: null }),
         }),
       );
-      // Should complete without scoring
       expect(prisma.emailIntakeLog.update).toHaveBeenLastCalledWith(
         expect.objectContaining({ data: { processingStatus: 'completed' } }),
       );
       expect(prisma.application.upsert).not.toHaveBeenCalled();
     });
 
-    it('15-05: case-insensitive short_id matching', async () => {
-      // Test: "SE-1" (uppercase) should match "se-1" (lowercase)
-      prisma.job.findMany.mockResolvedValueOnce([job1, job2]);
-      prisma.job.findMany.mockResolvedValueOnce([job1]);
-      const payload = mockPostmarkPayload({ Subject: 'Applying for SE-1', TextBody: 'a'.repeat(101) });
+    it('15-05: includes years as false positives (filtered by DB)', async () => {
+      prisma.job.findMany.mockResolvedValueOnce([]);
+      const payload = mockPostmarkPayload({ Subject: 'In 2024 I applied', TextBody: 'Job 101 is open. ' + 'a'.repeat(101) });
       const job = { id: 'test-5', data: payload } as any;
 
       await processor.process(job);
 
-      // Should match case-insensitively
+      // Both 2024 and 101 extracted, DB query filters by actual shortIds
       expect(prisma.job.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { tenantId: 'test-tenant-id', shortId: { in: ['se-1'] } },
+          where: expect.objectContaining({
+            shortId: { in: expect.arrayContaining(['2024', '101']) },
+          }),
         }),
       );
     });
 
-    it('15-06: deduplicates duplicate short_id matches', async () => {
-      // Test: "se-1 and also se-1" → should extract ['se-1'] not ['se-1', 'se-1']
-      prisma.job.findMany
-        .mockResolvedValueOnce([job1, job2])
-        .mockResolvedValueOnce([job1]); // Should have single se-1
+    it('15-06: deduplicates repeated numeric short_ids', async () => {
+      prisma.job.findMany.mockResolvedValueOnce([job1]);
       const payload = mockPostmarkPayload({
-        Subject: 'se-1 position',
-        TextBody: 'Very interested in se-1. a'.repeat(20),
+        Subject: 'position 100',
+        TextBody: 'Very interested in position 100. a'.repeat(20),
       });
       const job = { id: 'test-6', data: payload } as any;
 
       await processor.process(job);
 
-      // Should call findMany with only one se-1 in the in clause
       expect(prisma.job.findMany).toHaveBeenCalledWith(
         expect.objectContaining({
-          where: { tenantId: 'test-tenant-id', shortId: { in: ['se-1'] } },
+          where: expect.objectContaining({ shortId: { in: ['100'] } }),
         }),
       );
-      // Should create only 1 application
       expect(prisma.application.upsert).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('IngestionProcessor — extractCandidateShortIds()', () => {
+  let processor: IngestionProcessor;
+
+  beforeEach(async () => {
+    const txClient = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    const prisma = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
+      $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
+      candidate: { update: jest.fn().mockResolvedValue({}) },
+      job: { findMany: jest.fn().mockResolvedValue([]) },
+      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
+      candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        IngestionProcessor,
+        SpamFilterService,
+        AttachmentExtractorService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-tenant-id') } },
+        { provide: ExtractionAgentService, useValue: { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) } },
+        { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key') } },
+        { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
+        { provide: ScoringAgentService, useValue: { score: jest.fn() } },
+        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
+      ],
+    }).compile();
+    processor = module.get<IngestionProcessor>(IngestionProcessor);
+  });
+
+  it('should extract 3+ digit numbers from email text', () => {
+    const result = processor['extractCandidateShortIds']('Apply for job 245', 'Also position 1053 is open');
+    expect(result).toEqual(expect.arrayContaining(['245', '1053']));
+    expect(result).toHaveLength(2);
+  });
+
+  it('should return empty for no numbers', () => {
+    const result = processor['extractCandidateShortIds']('Hello', 'I want to apply');
+    expect(result).toEqual([]);
+  });
+
+  it('should filter out numbers < 100', () => {
+    const result = processor['extractCandidateShortIds']('I am 25 years old', 'Position 50 is closed');
+    expect(result).toEqual([]);
+  });
+
+  it('should include years (false positives filtered by DB)', () => {
+    const result = processor['extractCandidateShortIds']('In 2024 I applied', 'Job 101 is open');
+    expect(result).toEqual(expect.arrayContaining(['2024', '101']));
+  });
+
+  it('should deduplicate repeated numbers', () => {
+    const result = processor['extractCandidateShortIds']('Job 245 and job 245', 'Position 245');
+    expect(result).toEqual(['245']);
+  });
+
+  it('should handle null subject and body', () => {
+    const result = processor['extractCandidateShortIds'](null, null);
+    expect(result).toEqual([]);
+  });
+
+  it('should return strings (matching shortId DB type)', () => {
+    const result = processor['extractCandidateShortIds']('Job 100', null);
+    expect(result[0]).toBe('100');
+    expect(typeof result[0]).toBe('string');
+  });
+});
+
+describe('IngestionProcessor — Phase 6 idempotency guard', () => {
+  let processor: IngestionProcessor;
+  let prisma: any;
+  let dedupService: any;
+
+  const validPayload = () => mockPostmarkPayload({
+    MessageID: 'msg-idempotency-test',
+    From: 'sender@example.com',
+    Subject: 'Job Application from Jane Doe',
+    TextBody: 'Dear Hiring Manager, I have 5 years of experience in software engineering. Please find my CV attached.',
+    Attachments: [],
+  });
+
+  beforeEach(async () => {
+    const txClient = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+    };
+    prisma = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
+      $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
+      candidate: { update: jest.fn().mockResolvedValue({}) },
+      job: { findMany: jest.fn().mockResolvedValue([]) },
+      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
+      candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+    };
+    dedupService = {
+      check: jest.fn().mockResolvedValue(null),
+      insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
+      upsertCandidate: jest.fn().mockResolvedValue(undefined),
+      createFlag: jest.fn().mockResolvedValue(undefined),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        IngestionProcessor,
+        SpamFilterService,
+        AttachmentExtractorService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-tenant-id') } },
+        { provide: ExtractionAgentService, useValue: { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) } },
+        { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key') } },
+        { provide: DedupService, useValue: dedupService },
+        { provide: ScoringAgentService, useValue: { score: jest.fn() } },
+        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
+      ],
+    }).compile();
+    processor = module.get<IngestionProcessor>(IngestionProcessor);
+  });
+
+  it('should skip Phase 6 when intake already has candidateId (retry scenario)', async () => {
+    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: 'existing-candidate-id' });
+
+    const job = { id: 'test-idempotency-1', data: validPayload() } as any;
+    await processor.process(job);
+
+    expect(dedupService.check).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('should run Phase 6 normally on first attempt (no candidateId)', async () => {
+    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: null });
+
+    const job = { id: 'test-idempotency-2', data: validPayload() } as any;
+    await processor.process(job);
+
+    expect(dedupService.check).toHaveBeenCalled();
+  });
+
+  it('should not create duplicate candidate on retry', async () => {
+    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: 'existing-candidate-id' });
+
+    const job = { id: 'test-idempotency-3', data: validPayload() } as any;
+    await processor.process(job);
+
+    expect(dedupService.insertCandidate).not.toHaveBeenCalled();
   });
 });

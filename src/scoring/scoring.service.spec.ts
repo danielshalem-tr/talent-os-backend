@@ -116,3 +116,49 @@ describe('ScoringAgentService', () => {
     expect(result.score).toBe(85);
   });
 });
+
+describe('ScoreSchema - float coercion', () => {
+  it('should coerce 85.5 to 86', () => {
+    const result = ScoreSchema.parse({ score: 85.5, reasoning: 'ok', strengths: [], gaps: [] });
+    expect(result.score).toBe(86);
+  });
+
+  it('should reject score > 100', () => {
+    expect(() => ScoreSchema.parse({ score: 150, reasoning: 'ok', strengths: [], gaps: [] })).toThrow();
+  });
+
+  it('should accept integer score unchanged', () => {
+    const result = ScoreSchema.parse({ score: 85, reasoning: 'ok', strengths: [], gaps: [] });
+    expect(result.score).toBe(85);
+  });
+});
+
+describe('ScoringAgentService - context limits', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCallModel.mockReturnValue({ getText: mockGetText });
+  });
+
+  it('should not throw on 50K char cvText (truncated internally)', async () => {
+    mockGetText.mockResolvedValueOnce(validScoreResponse);
+    const input: ScoringInput = {
+      cvText: 'a'.repeat(50_000),
+      candidateFields: { currentRole: 'Dev', yearsExperience: 5, skills: ['ts'] },
+      job: { title: 'Engineer', description: 'b'.repeat(50_000), requirements: [] },
+    };
+    const service = makeService();
+    await expect(service.score(input)).resolves.toBeDefined();
+  });
+
+  it('should throw SCORING_CONTEXT_EXCEEDED on HTTP 400 error', async () => {
+    mockGetText.mockRejectedValueOnce(new Error('Request failed with status 400'));
+    const service = makeService();
+    await expect(service.score(mockScoringInput())).rejects.toThrow('SCORING_CONTEXT_EXCEEDED');
+  });
+
+  it('should throw SCORING_CONTEXT_EXCEEDED on HTTP 413 error', async () => {
+    mockGetText.mockRejectedValueOnce(new Error('413 Payload Too Large'));
+    const service = makeService();
+    await expect(service.score(mockScoringInput())).rejects.toThrow('SCORING_CONTEXT_EXCEEDED');
+  });
+});

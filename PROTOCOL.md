@@ -13,6 +13,28 @@ This document is the single source of truth for all API endpoints supported by t
 
 ## 1. Candidates API
 
+### `GET /candidates/counts`
+
+Retrieve lightweight counts for dashboard alerts.
+
+**Response:** `200 OK`
+
+```json
+{
+  "total": 42,
+  "duplicates": 3,
+  "unassigned": 7
+}
+```
+
+**Notes:**
+
+- `total` — count of active (non-rejected, non-deleted) candidates
+- `duplicates` — count of active candidates with at least one unreviewed duplicate flag. Includes candidates flagged as `phone_missing` (see `is_duplicate` note below)
+- `unassigned` — count of active candidates not yet linked to any job
+
+---
+
 ### `GET /candidates`
 
 Fetch candidates with optional search and filtering.
@@ -59,6 +81,19 @@ Fetch candidates with optional search and filtering.
   "total": 1
 }
 ```
+
+**Notes on `is_duplicate`:**
+
+`is_duplicate: true` means the candidate has at least one unreviewed `duplicate_flag`. There are two distinct cases:
+
+- **Phone match** (`fields: ["phone"]`): Another candidate with the same phone number already exists. Both submissions are stored as separate rows — the existing candidate is not updated. The flag links the new row to the existing one. HR should review and merge manually.
+- **Phone missing** (`fields: ["phone_missing"]`): No phone number could be extracted from the CV. This is a data quality flag, not a real duplicate signal. The candidate is flagged for HR review but is not linked to another person.
+
+Do not treat `is_duplicate: true` as a guarantee that two candidate rows represent the same person — always check the flag type.
+
+**Notes on `full_name`:**
+
+For email-ingested CVs, if a candidate name cannot be detected, `full_name` will be `"Unknown Candidate"` (never an empty string).
 
 ### `GET /candidates/:id`
 
@@ -330,7 +365,7 @@ Fetch all job openings with hiring stages and screening questions.
   "jobs": [
     {
       "id": "uuid",
-      "short_id": "42",
+      "short_id": "100",
       "title": "Senior Frontend Developer",
       "department": "Engineering",
       "location": "Remote",
@@ -387,6 +422,7 @@ Fetch a single job by ID, including full hiring flow and screening questions.
 ```json
 {
   "id": "uuid",
+  "short_id": "100",
   "title": "Senior Frontend Developer",
   "department": "Engineering",
   "location": "Remote",
@@ -481,11 +517,13 @@ Create a new job opening.
 
 - `title` is required
 - `hiring_flow[].id` and `screening_questions[].id` are optional — used by the client to pass temp UUIDs; ignored by the server
+- `screening_questions[].order` is optional — defaults to the question's index position (1-based) if omitted
 - If `hiring_flow` is omitted or empty, **8** default stages are seeded automatically:
   `Application Review`, `Screening`, `Interview`, `Offer` (enabled) + `Hired`, `Rejected`, `Pending Decision`, `On Hold` (disabled)
 - All other fields are optional with sensible defaults
 - At least one hiring stage must be enabled (if provided)
 - Screening question `type` must be `yes_no` or `text`
+- `short_id` in the response is a numeric string auto-assigned by the server, starting at `"100"` and incrementing. Never below 100.
 
 **Response:** `201 Created` (returns full job object, same structure as GET /jobs)
 

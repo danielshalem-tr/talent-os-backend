@@ -4,7 +4,7 @@ import { OpenRouter } from '@openrouter/sdk';
 import { z } from 'zod';
 
 export const ScoreSchema = z.object({
-  score: z.number().int().min(0).max(100),
+  score: z.number().min(0).max(100).transform(Math.round),
   reasoning: z.string(),
   strengths: z.array(z.string()),
   gaps: z.array(z.string()),
@@ -58,13 +58,17 @@ Example output:
 export class ScoringAgentService {
   private readonly logger = new Logger(ScoringAgentService.name);
 
-  constructor(
-    private readonly config: ConfigService,
-  ) {}
+  constructor(private readonly config: ConfigService) {}
 
   async score(input: ScoringInput): Promise<ScoreResult & { modelUsed: string }> {
     const apiKey = this.config.get<string>('OPENROUTER_API_KEY')!;
     const client = new OpenRouter({ apiKey });
+
+    const MAX_CV_LENGTH = 15_000;
+    const MAX_JOB_DESC_LENGTH = 15_000;
+
+    const safeCvText = input.cvText.substring(0, MAX_CV_LENGTH);
+    const safeJobDesc = (input.job.description ?? '').substring(0, MAX_JOB_DESC_LENGTH);
 
     const candidateSection = [
       `Candidate:`,
@@ -73,37 +77,45 @@ export class ScoringAgentService {
       `- Skills: ${input.candidateFields.skills.length > 0 ? input.candidateFields.skills.join(', ') : 'None listed'}`,
       ``,
       `CV Text:`,
-      input.cvText,
+      safeCvText,
     ].join('\n');
 
     const jobSection = [
       `Job:`,
       `- Title: ${input.job.title}`,
-      `- Description: ${input.job.description ?? 'N/A'}`,
+      `- Description: ${safeJobDesc || 'N/A'}`,
       `- Requirements: ${input.job.requirements.length > 0 ? input.job.requirements.join(', ') : 'None specified'}`,
     ].join('\n');
 
     const userMessage = `${candidateSection}\n\n${jobSection}`;
 
-    const result = client.callModel({
-      model: 'openai/gpt-4o-mini',
-      instructions: SCORING_INSTRUCTIONS,
-      input: userMessage,
-    });
+    try {
+      const result = client.callModel({
+        model: 'openai/gpt-4o-mini',
+        instructions: SCORING_INSTRUCTIONS,
+        input: userMessage,
+      });
 
-    const raw = await result.getText();
-    const json = raw
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/, '')
-      .trim();
+      const raw = await result.getText();
+      const json = raw
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/, '')
+        .trim();
 
-    const parseResult = ScoreSchema.safeParse(JSON.parse(json));
-    if (!parseResult.success) {
-      this.logger.error('Scoring LLM returned invalid JSON', parseResult.error.issues);
-      throw new Error(`Scoring output validation failed: ${parseResult.error.message}`);
+      const parseResult = ScoreSchema.safeParse(JSON.parse(json));
+      if (!parseResult.success) {
+        this.logger.error('Scoring LLM returned invalid JSON', parseResult.error.issues);
+        throw new Error(`Scoring output validation failed: ${parseResult.error.message}`);
+      }
+
+      this.logger.log(`Scored candidate — score: ${parseResult.data.score}`);
+      return { ...parseResult.data, modelUsed: 'openai/gpt-4o-mini' };
+    } catch (error) {
+      if (error instanceof Error && (error.message.includes('400') || error.message.includes('413'))) {
+        this.logger.error(`LLM context window exceeded: ${error.message}`);
+        throw new Error('SCORING_CONTEXT_EXCEEDED');
+      }
+      throw error;
     }
-
-    this.logger.log(`Scored candidate — score: ${parseResult.data.score}`);
-    return { ...parseResult.data, modelUsed: 'openai/gpt-4o-mini' };
   }
 }

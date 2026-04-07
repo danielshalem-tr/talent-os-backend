@@ -8,7 +8,7 @@ export const CandidateExtractSchema = z.object({
   email: z.string().nullable(),
   phone: z.string().nullable(),
   current_role: z.string().nullable(),
-  years_experience: z.number().int().min(0).max(50).nullable(),
+  years_experience: z.number().min(0).max(50).transform(Math.round).nullable(),
   location: z.string().nullable(),
   skills: z.array(z.string()),
   ai_summary: z.string().nullable(),
@@ -87,36 +87,47 @@ export class ExtractionAgentService {
     const apiKey = this.config.get<string>('OPENROUTER_API_KEY')!;
     const client = new OpenRouter({ apiKey });
 
+    const MAX_INPUT_LENGTH = 20_000;
+    const safeFullText = fullText.substring(0, MAX_INPUT_LENGTH);
+
     const userMessage = [
       `--- Email Metadata ---`,
       `Subject: ${metadata.subject}`,
       `From: ${metadata.fromEmail}`,
       ``,
       `--- CV / Email Content ---`,
-      fullText,
+      safeFullText,
     ].join('\n');
 
-    const result = client.callModel({
-      model: 'openai/gpt-4o-mini',
-      instructions: INSTRUCTIONS,
-      input: userMessage,
-    });
+    try {
+      const result = client.callModel({
+        model: 'openai/gpt-4o-mini',
+        instructions: INSTRUCTIONS,
+        input: userMessage,
+      });
 
-    const raw = await result.getText();
+      const raw = await result.getText();
 
-    // Strip markdown code fences if the model ignores instructions
-    const json = raw
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/, '')
-      .trim();
+      // Strip markdown code fences if the model ignores instructions
+      const json = raw
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/, '')
+        .trim();
 
-    const parseResult = CandidateExtractSchema.safeParse(JSON.parse(json));
-    if (!parseResult.success) {
-      this.logger.error('LLM returned invalid JSON structure', parseResult.error.issues);
-      throw new Error(`LLM output validation failed: ${parseResult.error.message}`);
+      const parseResult = CandidateExtractSchema.safeParse(JSON.parse(json));
+      if (!parseResult.success) {
+        this.logger.error('LLM returned invalid JSON structure', parseResult.error.issues);
+        throw new Error(`LLM output validation failed: ${parseResult.error.message}`);
+      }
+      this.logger.log('OpenRouter extraction successful', parseResult.data);
+      return parseResult.data;
+    } catch (error) {
+      if (error instanceof Error && (error.message.includes('400') || error.message.includes('413'))) {
+        this.logger.error(`LLM context window exceeded: ${error.message}`);
+        throw new Error('EXTRACTION_CONTEXT_EXCEEDED');
+      }
+      throw error;
     }
-    this.logger.log('OpenRouter extraction successful', parseResult.data);
-    return parseResult.data;
   }
 
   extractDeterministically(fullText: string): Omit<CandidateExtract, 'suspicious'> {
@@ -132,12 +143,39 @@ export class ExtractionAgentService {
         !line.startsWith('--- Attachment') &&
         !line.startsWith('--- Email Metadata ---') &&
         !line.startsWith('Subject:') &&
-        !line.startsWith('From:'),
+        !line.startsWith('From:') &&
+        !/^(Curriculum Vitae|Professional Summary|CONFIDENTIAL|Private & Confidential|Resume|CV)\b/i.test(line),
     );
     const realText = realLines.join('\n');
 
-    // 1. Full Name: first real line (best guess)
-    const fullName = realLines[0] || '';
+    /**
+     * Heuristic: a line "looks like a name" if it has 2-5 short words,
+     * contains at least one Unicode letter, and doesn't look like a date,
+     * year, greeting, or sentence.
+     * Supports Latin ("John Doe"), Hebrew ("אבי לוי"), Arabic ("محمد علي"),
+     * hyphenated names ("Jean-Pierre Dupont"), and multi-part names ("Maria de la Cruz").
+     */
+    const looksLikeName = (line: string): boolean => {
+      const trimmed = line.trim();
+      const words = trimmed.split(/\s+/);
+
+      if (
+        trimmed.length < 3 ||
+        trimmed.length > 80 ||
+        /^\d{1,2}[/.-]\d{1,2}/.test(trimmed) || // date patterns: 01/15, 15-01
+        /\d{4}/.test(trimmed) || // contains a year
+        /^(dear|hello|hi|to|from|subject|re:|tel:|phone:|email:)/i.test(trimmed) ||
+        words.length < 2 || // single word: "Summary", "Jerusalem"
+        words.length > 5 // 6+ words = likely a sentence
+      ) {
+        return false;
+      }
+
+      return /\p{L}/u.test(trimmed);
+    };
+
+    // 1. Full Name: first line that looks like a name (best guess)
+    const fullName = realLines.find((line) => looksLikeName(line)) || 'Unknown Candidate';
 
     // 2. Email: simple regex
     const emailMatch = realText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
