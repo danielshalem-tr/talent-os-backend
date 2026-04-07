@@ -430,7 +430,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   });
 
   // 6-02-02: exact email match → UPSERT existing candidate → email_intake_log.candidate_id = existing ID
-  it('6-02-02: exact match — UPSERT called, existing candidateId set on intake log', async () => {
+  it('6-02-02: exact match — UPSERT called, createFlag called for duplicate detection, existing candidateId set on intake log', async () => {
     dedupService.check.mockResolvedValue({
       match: { id: 'existing-cand-id' },
       confidence: 1.0,
@@ -442,7 +442,15 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
 
     expect(dedupService.upsertCandidate).toHaveBeenCalledWith('existing-cand-id', expect.any(Object), expect.anything());
     expect(dedupService.insertCandidate).not.toHaveBeenCalled();
-    expect(dedupService.createFlag).not.toHaveBeenCalled();
+    // NEW: Exact match should call createFlag to record duplicate (per 260407-iff)
+    expect(dedupService.createFlag).toHaveBeenCalledWith(
+      'existing-cand-id',      // matched candidate (upseerted)
+      null,                     // self-reference
+      1.0,                      // confidence
+      'test-tenant-id',         // tenantId
+      ['email'],                // matchFields
+      expect.any(Object),       // tx (transaction client)
+    );
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -495,6 +503,40 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
     // The tx emailIntakeLog.update threw — simulating that Prisma would roll back
     expect(txClient.emailIntakeLog.update).toHaveBeenCalledTimes(1);
+  });
+
+  // 260407-iff: Exact phone match with flag creation — validates phone normalization and duplicate flag recording
+  it('260407-iff: exact phone match creates flag with phone field for HR duplicate review', async () => {
+    // Simulate exact phone match (confidence 1.0 = exact match via phone normalization)
+    // This covers scenarios like +972 50 1234567 matching 050 1234567 (same number, different format)
+    dedupService.check.mockResolvedValue({
+      match: { id: 'existing-phone-cand' },
+      confidence: 1.0,
+      fields: ['phone'],
+    });
+
+    const job = { id: 'test-phone-match', data: validJobPayload() } as any;
+    await processor.process(job);
+
+    // UPSERT the existing candidate (don't create new one)
+    expect(dedupService.upsertCandidate).toHaveBeenCalledTimes(1);
+    expect(dedupService.upsertCandidate).toHaveBeenCalledWith('existing-phone-cand', expect.any(Object), expect.anything());
+
+    // Don't insert a new candidate
+    expect(dedupService.insertCandidate).not.toHaveBeenCalled();
+
+    // Record the duplicate via createFlag so getCounts() can reflect it
+    expect(dedupService.createFlag).toHaveBeenCalledWith(
+      'existing-phone-cand',   // matched candidate (upseerted)
+      null,                     // self-reference
+      1.0,                      // exact match confidence
+      'test-tenant-id',
+      ['phone'],                // matchFields — indicates phone-based deduplication
+      expect.any(Object),       // tx (transaction client)
+    );
+
+    // candidateId should be set on the intake log
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 });
 

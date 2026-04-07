@@ -261,6 +261,16 @@ export class IngestionProcessor extends WorkerHost {
           // source and sourceEmail are NEVER updated — first-submission ROI attribution (D-07)
           await this.dedupService.upsertCandidate(dedupResult.match!.id, extraction!, tx);
           candidateId = dedupResult.match!.id; // Use existing candidate ID (D-11)
+
+          // Record duplicate flag for HR review (per 260407-iff)
+          await this.dedupService.createFlag(
+            dedupResult.match!.id, // matched candidate = candidateId for the flag
+            null,                   // self-reference: matched_candidate_id = candidate_id (no new candidate created)
+            dedupResult.confidence, // 1.0 for exact match
+            tenantId,
+            dedupResult.fields,     // ['phone']
+            tx,
+          );
         }
 
         // D-10: Set email_intake_log.candidate_id atomically — if this fails, candidate INSERT rolls back too
