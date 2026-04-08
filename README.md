@@ -23,7 +23,7 @@ Automated email intake pipeline: receives CVs via Postmark webhooks, extracts ca
 | ------------------------ | -------- | ----------------------------------------------------------------------------- |
 | `DATABASE_URL`           | Yes      | PostgreSQL connection string. Format: `postgresql://user:pass@host:5432/db`   |
 | `REDIS_URL`              | Yes      | Redis connection string. Format: `redis://host:6379`                          |
-| `ANTHROPIC_API_KEY`      | Yes      | Anthropic API key for Claude Haiku (extraction) and Claude Sonnet (scoring)   |
+| `OPENROUTER_API_KEY`     | Yes      | OpenRouter API key for openai/gpt-4o-mini (extraction and scoring)            |
 | `POSTMARK_WEBHOOK_TOKEN` | Yes      | Token from Postmark Inbound webhook settings (used for HTTP Basic Auth guard) |
 | `TENANT_ID`              | Yes      | UUID of the tenant record in the `tenants` table. Run `make seed` to create.  |
 | `R2_ACCOUNT_ID`          | Yes      | Cloudflare R2 account ID (from Cloudflare dashboard → R2 → Manage API Tokens) |
@@ -48,8 +48,6 @@ Automated email intake pipeline: receives CVs via Postmark webhooks, extracts ca
 | `make backup`                     | Dump DB to `./backups/YYYY-MM-DD_HH-MM.sql.gz`                                      |
 | `make restore BACKUP=path`        | Restore DB from a dump file                                                         |
 | `make ngrok`                      | Start ngrok tunnel for Postmark webhook testing                                     |
-| `make migrate-prod`               | Run `prisma migrate deploy` on production server (requires `PROD_HOST=user@server`) |
-| `make ssl-setup DOMAIN=x EMAIL=y` | Provision Let's Encrypt TLS certificate                                             |
 
 ## Local Development
 
@@ -110,9 +108,43 @@ Postmark → POST /api/webhooks/email → BullMQ queue → Worker
                                                         ↓
                                SpamFilter → AttachmentExtractor → R2 upload
                                                         ↓
-                               ExtractionAgent (Claude Haiku) → DedupService (pg_trgm)
+                               ExtractionAgent (gpt-4o-mini via OpenRouter) → DedupService (pg_trgm)
                                                         ↓
-                               ScoringAgent (Claude Sonnet) → PostgreSQL
+                               ScoringAgent (gpt-4o-mini via OpenRouter) → PostgreSQL
+```
+
+## Pipeline Flowchart
+
+```
+Postmark
+   │  POST /api/webhooks/email (HTTP Basic Auth)
+   ▼
+Idempotency Check (emailIntakeLog)
+   │  duplicate? → 200 OK (skip)
+   ▼
+BullMQ Redis Queue ("ingest-email")
+   │  return 200 immediately
+   ▼
+Worker: SpamFilter
+   │  spam or no CV? → reject job
+   ▼
+Worker: AttachmentExtractor
+   │  PDF/DOCX → plain text
+   ▼
+Worker: R2 Upload
+   │  store original CV file
+   ▼
+Worker: ExtractionAgent (gpt-4o-mini via OpenRouter)
+   │  plain text → structured CandidateExtract JSON
+   ▼
+Worker: DedupService (pg_trgm phone-exact match)
+   │  duplicate? → flag for HR review, skip insert
+   ▼
+Worker: ScoringAgent (gpt-4o-mini via OpenRouter)
+   │  score candidate against all open jobs
+   ▼
+PostgreSQL
+   candidates + candidate_job_scores tables
 ```
 
 - **API service** (port 3000): Receives Postmark inbound webhooks, validates Basic Auth, enqueues jobs in BullMQ
@@ -138,22 +170,6 @@ cp ~/triolla/.env.example ~/triolla/.env
 # Edit ~/triolla/.env with production secrets
 ```
 
-### Provision TLS certificate (once)
-
-```bash
-# From your local machine:
-make ssl-setup DOMAIN=api.yourdomain.com EMAIL=admin@yourdomain.com
-# Update nginx/nginx.conf: replace $DOMAIN placeholder with your actual domain
-```
-
-### Run database migrations
-
-Run before the first deploy and after every schema change:
-
-```bash
-PROD_HOST=ubuntu@your.server.ip make migrate-prod
-```
-
 ### Deploy
 
 ```bash
@@ -162,19 +178,14 @@ PROD_HOST=ubuntu@your.server.ip ./scripts/deploy.sh main
 
 The deploy script SSHes to the server, pulls the specified branch, and runs `docker compose up -d --build`. It does NOT run migrations automatically.
 
-### CI/CD (Jenkins)
+### CI/CD (GitHub Actions)
 
-Trigger a parameterized build with `BRANCH_NAME=main` to run the Build → Test → Docker Build pipeline.
+Push to `main` triggers the GitHub Actions workflow (`.github/workflows/ci.yml`) — runs install → build → test → Docker build.
 
-The pipeline does NOT auto-deploy — deploy is always a manual human action via `scripts/deploy.sh`.
+The pipeline does NOT auto-deploy — deploy is always a manual action via `scripts/deploy.sh`.
 
 ```
-Pipeline stages:
-  1. Checkout — git checkout $BRANCH_NAME
-  2. Install   — npm ci
-  3. Build     — npm run build (TypeScript compilation)
-  4. Test      — npm run test  (unit tests; failing tests block pipeline)
-  5. Docker    — docker build -t triolla-backend (verifies image builds)
+on: push to main → Install → Build → Test → Docker Build
 ```
 
 ## Troubleshooting
