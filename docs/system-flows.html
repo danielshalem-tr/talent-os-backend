@@ -484,6 +484,7 @@
   <button class="nav-tab" onclick="showTab('candidates')">Candidates API</button>
   <button class="nav-tab" onclick="showTab('jobs')">Jobs API</button>
   <button class="nav-tab" onclick="showTab('data')">Data Models</button>
+  <button class="nav-tab" onclick="showTab('flowchart')">Pipeline Flowchart</button>
 </nav>
 
 <!-- ═══════════════════════════════════════════════════════════ -->
@@ -1482,6 +1483,144 @@
           Unique: (candidateId, jobStageId)
         </div>
       </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════ -->
+<!-- PIPELINE FLOWCHART TAB -->
+<!-- ═══════════════════════════════════════════════════════════ -->
+<div id="tab-flowchart" class="section">
+  <div class="section-header">
+    <h2>Pipeline Flowchart</h2>
+    <p>End-to-end email-to-database flow: from Postmark inbound webhook to scored candidate record in PostgreSQL.</p>
+  </div>
+
+  <div style="max-width:520px;margin:0 auto;font-family:inherit">
+
+    <!-- Step 1: Postmark -->
+    <div style="background:var(--surface);border:2px solid var(--accent-blue);border-radius:10px;padding:14px 20px;text-align:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-blue);margin-bottom:4px">Trigger</div>
+      <div style="font-weight:600;color:var(--text);font-size:14px">Postmark Inbound Email</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">POST /api/webhooks/email &nbsp;·&nbsp; HTTP Basic Auth</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
+      <div style="width:2px;height:20px;background:var(--border)"></div>
+      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
+    </div>
+
+    <!-- Decision: Idempotency -->
+    <div style="background:var(--surface2);border:2px solid var(--accent-orange);border-radius:10px;padding:14px 20px;text-align:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-orange);margin-bottom:4px">Decision</div>
+      <div style="font-weight:600;color:var(--text);font-size:14px">Idempotency Check</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">emailIntakeLog — already seen this messageId?</div>
+      <div style="margin-top:10px;padding:8px 12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;font-size:12px;color:var(--accent-red)">
+        duplicate → return 200 OK (skip silently)
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
+      <div style="width:2px;height:20px;background:var(--border)"></div>
+      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
+    </div>
+
+    <!-- Step 2: Enqueue -->
+    <div style="background:var(--surface);border:2px solid var(--accent-blue);border-radius:10px;padding:14px 20px;text-align:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-blue);margin-bottom:4px">API</div>
+      <div style="font-weight:600;color:var(--text);font-size:14px">Enqueue to BullMQ Redis</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Queue: "ingest-email" &nbsp;·&nbsp; return 200 immediately</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
+      <div style="width:2px;height:20px;background:var(--border)"></div>
+      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
+    </div>
+
+    <!-- Step 3: SpamFilter -->
+    <div style="background:var(--surface);border:2px solid var(--accent-purple);border-radius:10px;padding:14px 20px;text-align:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-purple);margin-bottom:4px">Worker</div>
+      <div style="font-weight:600;color:var(--text);font-size:14px">SpamFilter</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Detect spam or missing CV attachment</div>
+      <div style="margin-top:10px;padding:8px 12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;font-size:12px;color:var(--accent-red)">
+        spam / no CV → reject job
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
+      <div style="width:2px;height:20px;background:var(--border)"></div>
+      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
+    </div>
+
+    <!-- Step 4: AttachmentExtractor -->
+    <div style="background:var(--surface);border:2px solid var(--accent-purple);border-radius:10px;padding:14px 20px;text-align:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-purple);margin-bottom:4px">Worker</div>
+      <div style="font-weight:600;color:var(--text);font-size:14px">AttachmentExtractor</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">PDF / DOCX → plain text</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
+      <div style="width:2px;height:20px;background:var(--border)"></div>
+      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
+    </div>
+
+    <!-- Step 5: R2 Upload -->
+    <div style="background:var(--surface);border:2px solid var(--accent-cyan);border-radius:10px;padding:14px 20px;text-align:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-cyan);margin-bottom:4px">Worker</div>
+      <div style="font-weight:600;color:var(--text);font-size:14px">R2 Upload</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Store original CV file in Cloudflare R2</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
+      <div style="width:2px;height:20px;background:var(--border)"></div>
+      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
+    </div>
+
+    <!-- Step 6: ExtractionAgent -->
+    <div style="background:var(--surface);border:2px solid var(--accent-green);border-radius:10px;padding:14px 20px;text-align:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-green);margin-bottom:4px">Worker · AI</div>
+      <div style="font-weight:600;color:var(--text);font-size:14px">ExtractionAgent</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">gpt-4o-mini via OpenRouter &nbsp;·&nbsp; plain text → CandidateExtract JSON</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
+      <div style="width:2px;height:20px;background:var(--border)"></div>
+      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
+    </div>
+
+    <!-- Decision: DedupService -->
+    <div style="background:var(--surface2);border:2px solid var(--accent-orange);border-radius:10px;padding:14px 20px;text-align:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-orange);margin-bottom:4px">Decision</div>
+      <div style="font-weight:600;color:var(--text);font-size:14px">DedupService</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">pg_trgm phone-exact match — is this a known candidate?</div>
+      <div style="margin-top:10px;padding:8px 12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;font-size:12px;color:var(--accent-red)">
+        duplicate → flag for HR review, skip insert
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
+      <div style="width:2px;height:20px;background:var(--border)"></div>
+      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
+    </div>
+
+    <!-- Step 7: ScoringAgent -->
+    <div style="background:var(--surface);border:2px solid var(--accent-green);border-radius:10px;padding:14px 20px;text-align:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-green);margin-bottom:4px">Worker · AI</div>
+      <div style="font-weight:600;color:var(--text);font-size:14px">ScoringAgent</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">gpt-4o-mini via OpenRouter &nbsp;·&nbsp; score candidate against all open jobs</div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
+      <div style="width:2px;height:20px;background:var(--border)"></div>
+      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
+    </div>
+
+    <!-- Step 8: PostgreSQL -->
+    <div style="background:var(--surface);border:2px solid var(--accent-blue);border-radius:10px;padding:14px 20px;text-align:center">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-blue);margin-bottom:4px">Storage</div>
+      <div style="font-weight:600;color:var(--text);font-size:14px">PostgreSQL</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:4px">Write to candidates + candidate_job_scores tables</div>
     </div>
 
   </div>
