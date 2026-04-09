@@ -165,7 +165,7 @@ This phase is a **prerequisite for Phase 19–22** (signup flow, admin endpoints
 - Migration file naming convention (timestamp prefix standard)
 - Exact Prisma model field ordering/grouping style
 - `jose` version to pin (latest stable at time of install)
-</decisions>
+  </decisions>
 
 <canonical_refs>
 
@@ -184,7 +184,7 @@ This phase is a **prerequisite for Phase 19–22** (signup flow, admin endpoints
 ### Project constraints
 
 - `CLAUDE.md` — Stack constraints (TypeScript, NestJS 11, Prisma 7, PostgreSQL 16), DB conventions (text + CHECK constraints over ENUMs, no binary blobs, @updatedAt)
-</canonical_refs>
+  </canonical_refs>
 
 <code_context>
 
@@ -211,7 +211,7 @@ This phase is a **prerequisite for Phase 19–22** (signup flow, admin endpoints
 - Existing v1.0 models (Job, Candidate, Application, etc.) reference `Tenant` via `tenantId` relation — Prisma relation references update to `Organization` model name; column names (`tenant_id`) unchanged
 - `AppModule` imports new `AuthModule`; `JwtService` exportable for Phase 19/21 injection
 - `docker-compose.yml` environment section — must include `JWT_SECRET` for api and worker services
-</code_context>
+  </code_context>
 
 <specifics>
 ## Specific Ideas
@@ -221,7 +221,7 @@ This phase is a **prerequisite for Phase 19–22** (signup flow, admin endpoints
 - `invited_by_user_id` on invitations table — needed for Phase 20 audit/display (Settings → Team shows who sent pending invites)
 - `logo_url` on Organization is nullable — it's uploaded during onboarding (Phase 19/20), not at DB creation time. The field must exist from day 1 so Phase 20 doesn't require a schema migration.
 - JWT payload uses `sub`/`org` (JWT standard short names) not `userId`/`organizationId` — smaller token, standard-compliant. The `JwtPayload` type definition enforces this.
-</specifics>
+  </specifics>
 
 <deferred>
 ## Deferred Ideas

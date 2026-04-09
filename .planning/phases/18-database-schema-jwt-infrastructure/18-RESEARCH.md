@@ -45,6 +45,7 @@
 **D-16:** `src/auth/jwt.service.ts` with `sign(payload, options?)`, `verify(token)`. Throws `UnauthorizedException` on invalid/expired tokens.
 
 **D-17:** JWT payload uses `sub` and `org` (NOT userId/organizationId):
+
 ```json
 { "sub": "user-uuid", "org": "org-uuid", "role": "owner|admin|member|viewer", "iat": ..., "exp": ... }
 ```
@@ -94,13 +95,13 @@
 
 ## Phase Requirements
 
-| ID | Description | Research Support |
-|----|-------------|------------------|
-| UM-01 | Organization signup endpoint accepts org name, admin email — creates new tenant with auto-generated shortId | D-03/D-04 schema + shortId utility researched |
-| UM-02 | Organization model: id, name, shortId, created_at, updated_at, created_by_user_id | D-03 verified against existing schema |
-| UM-03 | Users table: id, email, organization_id (FK), role (text), full_name, is_active, created_at, updated_at | D-05 researched; auth_provider replaces password_hash per spec/auth-rules.md |
-| UM-04 | Unique constraint on (organization_id, email) prevents duplicate user accounts per org | D-06 verified; PostgreSQL composite UNIQUE constraint |
-| AUTH-01 | JWT access token (15m) + refresh token (7d); signed with JWT_SECRET | D-15 through D-19; jose library researched |
+| ID      | Description                                                                                                 | Research Support                                                             |
+| ------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| UM-01   | Organization signup endpoint accepts org name, admin email — creates new tenant with auto-generated shortId | D-03/D-04 schema + shortId utility researched                                |
+| UM-02   | Organization model: id, name, shortId, created_at, updated_at, created_by_user_id                           | D-03 verified against existing schema                                        |
+| UM-03   | Users table: id, email, organization_id (FK), role (text), full_name, is_active, created_at, updated_at     | D-05 researched; auth_provider replaces password_hash per spec/auth-rules.md |
+| UM-04   | Unique constraint on (organization_id, email) prevents duplicate user accounts per org                      | D-06 verified; PostgreSQL composite UNIQUE constraint                        |
+| AUTH-01 | JWT access token (15m) + refresh token (7d); signed with JWT_SECRET                                         | D-15 through D-19; jose library researched                                   |
 
 </phase_requirements>
 
@@ -122,30 +123,31 @@ The Prisma migration split strategy (D-20) is the correct approach: Migration 1 
 
 ### Core
 
-| Library | Version | Purpose | Why Standard |
-|---------|---------|---------|--------------|
-| jose | 6.2.2 | JWT sign/verify (HS256) | ESM-native, zero deps, actively maintained; chosen over jsonwebtoken which is in maintenance mode |
-| Prisma 7 | ^7.0.0 | ORM + migrations | Already installed, locked by CLAUDE.md |
-| @nestjs/config | ^4.0.3 | ConfigService for JWT_SECRET | Already installed, used for all env validation |
-| zod | ^4.3.6 | Env schema validation | Already installed, used in `src/config/env.ts` |
+| Library        | Version | Purpose                      | Why Standard                                                                                      |
+| -------------- | ------- | ---------------------------- | ------------------------------------------------------------------------------------------------- |
+| jose           | 6.2.2   | JWT sign/verify (HS256)      | ESM-native, zero deps, actively maintained; chosen over jsonwebtoken which is in maintenance mode |
+| Prisma 7       | ^7.0.0  | ORM + migrations             | Already installed, locked by CLAUDE.md                                                            |
+| @nestjs/config | ^4.0.3  | ConfigService for JWT_SECRET | Already installed, used for all env validation                                                    |
+| zod            | ^4.3.6  | Env schema validation        | Already installed, used in `src/config/env.ts`                                                    |
 
 [VERIFIED: npm registry] — jose@6.2.2 is the current latest version as of 2026-04-09.
 [VERIFIED: codebase] — Prisma 7, @nestjs/config, zod all already in package.json.
 
 ### Supporting
 
-| Library | Version | Purpose | When to Use |
-|---------|---------|---------|-------------|
+| Library         | Version | Purpose                    | When to Use     |
+| --------------- | ------- | -------------------------- | --------------- |
 | @nestjs/testing | ^11.0.1 | Test module for JwtService | Unit tests only |
 
 ### Alternatives Considered
 
-| Instead of | Could Use | Tradeoff |
-|------------|-----------|----------|
-| jose | jsonwebtoken | jsonwebtoken is in maintenance mode; synchronous API (no async/await); CJS native but legacy |
-| jose | @nestjs/jwt | @nestjs/jwt wraps jsonwebtoken; adds abstraction layer with no benefit for this use case |
+| Instead of | Could Use    | Tradeoff                                                                                     |
+| ---------- | ------------ | -------------------------------------------------------------------------------------------- |
+| jose       | jsonwebtoken | jsonwebtoken is in maintenance mode; synchronous API (no async/await); CJS native but legacy |
+| jose       | @nestjs/jwt  | @nestjs/jwt wraps jsonwebtoken; adds abstraction layer with no benefit for this use case     |
 
 **Installation:**
+
 ```bash
 npm install jose
 ```
@@ -210,8 +212,8 @@ import { ConfigService } from '@nestjs/config';
 import { SignJWT, jwtVerify } from 'jose';
 
 export interface JwtPayload {
-  sub: string;   // user UUID
-  org: string;   // organization UUID
+  sub: string; // user UUID
+  org: string; // organization UUID
   role: 'owner' | 'admin' | 'member' | 'viewer';
 }
 
@@ -256,6 +258,7 @@ export class JwtService {
 The existing `Tenant` model already has `@@map("tenants")`. Renaming the Prisma model to `Organization` while keeping `@@map("tenants")` generates an empty or near-empty migration (Prisma may emit a comment-only file). The DB table name does not change.
 
 **What Prisma generates for Migration 1:**
+
 ```sql
 -- This is an empty migration (Prisma model rename with @@map intact)
 -- The underlying table name "tenants" is unchanged
@@ -290,15 +293,12 @@ ALTER TABLE "invitations"
 
 ```typescript
 // src/auth/utils/generate-short-id.ts [ASSUMED pattern based on D-04 spec]
-export async function generateOrgShortId(
-  name: string,
-  prisma: PrismaService,
-): Promise<string> {
+export async function generateOrgShortId(name: string, prisma: PrismaService): Promise<string> {
   const prefix = name
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '')
     .slice(0, 5)
-    .padEnd(5, 'x');  // pad if name < 5 alphanumeric chars
+    .padEnd(5, 'x'); // pad if name < 5 alphanumeric chars
 
   for (let i = 1; i <= 10; i++) {
     const shortId = `${prefix}-${String(i).padStart(2, '0')}`;
@@ -324,13 +324,13 @@ export async function generateOrgShortId(
 
 ## Don't Hand-Roll
 
-| Problem | Don't Build | Use Instead | Why |
-|---------|-------------|-------------|-----|
-| JWT signing | Custom HMAC implementation | `jose` SignJWT | Correct JWA implementation, handles alg header, iat/exp |
-| JWT verification | Manual base64 decode + signature check | `jose` jwtVerify | Handles clock skew, expiry, algorithm verification |
-| Secret encoding | String comparison of JWT secret | `TextEncoder().encode()` then `jose` | jose requires Uint8Array; string comparison is timing-unsafe |
-| Env validation | Manual process.env checks in constructor | Zod schema in `src/config/env.ts` | Already the established pattern; fail-fast at startup |
-| Unique shortId | Probabilistic UUID suffix | Deterministic prefix + counter loop | Readable, predictable, collision-safe with retry |
+| Problem          | Don't Build                              | Use Instead                          | Why                                                          |
+| ---------------- | ---------------------------------------- | ------------------------------------ | ------------------------------------------------------------ |
+| JWT signing      | Custom HMAC implementation               | `jose` SignJWT                       | Correct JWA implementation, handles alg header, iat/exp      |
+| JWT verification | Manual base64 decode + signature check   | `jose` jwtVerify                     | Handles clock skew, expiry, algorithm verification           |
+| Secret encoding  | String comparison of JWT secret          | `TextEncoder().encode()` then `jose` | jose requires Uint8Array; string comparison is timing-unsafe |
+| Env validation   | Manual process.env checks in constructor | Zod schema in `src/config/env.ts`    | Already the established pattern; fail-fast at startup        |
+| Unique shortId   | Probabilistic UUID suffix                | Deterministic prefix + counter loop  | Readable, predictable, collision-safe with retry             |
 
 ---
 
@@ -340,10 +340,10 @@ This is the highest-risk technical area. Full findings:
 
 ### Runtime (Node.js)
 
-| Environment | Node Version | require(esm) support | Status |
-|-------------|-------------|----------------------|--------|
-| Local dev | 25.8.1 | Native (no flags needed) | No issue |
-| Docker containers | 22.22.2 (node:22-alpine as of 2026-04) | Native (>= 22.12.0) | No issue |
+| Environment       | Node Version                           | require(esm) support     | Status   |
+| ----------------- | -------------------------------------- | ------------------------ | -------- |
+| Local dev         | 25.8.1                                 | Native (no flags needed) | No issue |
+| Docker containers | 22.22.2 (node:22-alpine as of 2026-04) | Native (>= 22.12.0)      | No issue |
 
 [VERIFIED: codebase] — `node --version` returns `v25.8.1` locally. [VERIFIED: WebSearch] — `node:22-alpine` resolves to 22.22.2 as of 2026-04.
 
@@ -440,6 +440,7 @@ This must be extended to include `jose`:
 **Why it happens:** Bi-directional relations with nullable FK need explicit relation naming in Prisma.
 
 **How to avoid:** Use named relations in Prisma schema:
+
 ```prisma
 model Organization {
   createdByUser  User? @relation("OrgCreatedBy", fields: [createdByUserId], references: [id])
@@ -462,8 +463,8 @@ model User {
 ```typescript
 // src/auth/jwt.service.ts
 export interface JwtPayload {
-  sub: string;    // user UUID (standard JWT "subject" claim)
-  org: string;    // organization UUID
+  sub: string; // user UUID (standard JWT "subject" claim)
+  org: string; // organization UUID
   role: 'owner' | 'admin' | 'member' | 'viewer';
 }
 ```
@@ -510,8 +511,8 @@ describe('JwtService', () => {
     const payload = { sub: 'user-1', org: 'org-1', role: 'admin' as const };
     const token = await jwtService.sign(payload);
     const decoded = await jwtService.verify(token);
-    expect(decoded.sub).toBe('user-1');  // NOT payload.userId
-    expect(decoded.org).toBe('org-1');   // NOT payload.organizationId
+    expect(decoded.sub).toBe('user-1'); // NOT payload.userId
+    expect(decoded.org).toBe('org-1'); // NOT payload.organizationId
     expect(decoded.role).toBe('admin');
   });
 
@@ -568,13 +569,13 @@ model Organization {
 
 The plan in `18-01-PLAN.md` contains two factual errors that must be corrected before execution:
 
-| # | Location | Error | Correct Value |
-|---|----------|-------|---------------|
-| C1 | Task 3 `<behavior>` | Tests assert `userId`, `organizationId` in payload | Must use `sub`, `org` per D-17 |
-| C2 | Task 3 `<action>` JwtPayload interface | `userId: string; organizationId: string` | `sub: string; org: string` |
-| C3 | Task 3 `<action>` JwtService code | `sign(): string` (synchronous) | `sign(): Promise<string>` (jose is async) |
-| C4 | Task 3 `<action>` JwtService code | Uses `jsonwebtoken` (`import * as jwt`) | Must use `jose` (`import { SignJWT, jwtVerify }`) |
-| C5 | Task 3 `<action>` | `JwtPayload` uses `jwt.sign(payload, secret, opts)` | Must use `new SignJWT(payload).setProtectedHeader({alg:'HS256'}).setExpirationTime(opts).sign(secret)` |
+| #   | Location                               | Error                                               | Correct Value                                                                                          |
+| --- | -------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| C1  | Task 3 `<behavior>`                    | Tests assert `userId`, `organizationId` in payload  | Must use `sub`, `org` per D-17                                                                         |
+| C2  | Task 3 `<action>` JwtPayload interface | `userId: string; organizationId: string`            | `sub: string; org: string`                                                                             |
+| C3  | Task 3 `<action>` JwtService code      | `sign(): string` (synchronous)                      | `sign(): Promise<string>` (jose is async)                                                              |
+| C4  | Task 3 `<action>` JwtService code      | Uses `jsonwebtoken` (`import * as jwt`)             | Must use `jose` (`import { SignJWT, jwtVerify }`)                                                      |
+| C5  | Task 3 `<action>`                      | `JwtPayload` uses `jwt.sign(payload, secret, opts)` | Must use `new SignJWT(payload).setProtectedHeader({alg:'HS256'}).setExpirationTime(opts).sign(secret)` |
 
 ---
 
@@ -582,14 +583,14 @@ The plan in `18-01-PLAN.md` contains two factual errors that must be corrected b
 
 This phase involves a rename/refactor (Tenant → Organization) at the Prisma model level.
 
-| Category | Items Found | Action Required |
-|----------|-------------|------------------|
-| Stored data | PostgreSQL `tenants` table with TENANT_ID `00000000-0000-0000-0000-000000000001` | No rename — `@@map("tenants")` keeps the table name; no data migration needed |
-| Live service config | None — no external services reference the Prisma model name | None |
-| OS-registered state | None | None |
-| Secrets/env vars | No existing JWT_SECRET — must be added to `.env` locally and `.env.example` | Add JWT_SECRET to `.env` (not committed), `.env.example` (committed) |
-| Build artifacts | Prisma generated client (`node_modules/.prisma/client`) will reference `Tenant` until regenerated | `npx prisma generate` after Migration 1 — handled by plan task |
-| seed.ts | `prisma.tenant.upsert()` at line 91 — breaks after client regeneration | Update to `prisma.organization.upsert()` with `shortId: 'triol-01'` added to create object |
+| Category            | Items Found                                                                                       | Action Required                                                                            |
+| ------------------- | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| Stored data         | PostgreSQL `tenants` table with TENANT_ID `00000000-0000-0000-0000-000000000001`                  | No rename — `@@map("tenants")` keeps the table name; no data migration needed              |
+| Live service config | None — no external services reference the Prisma model name                                       | None                                                                                       |
+| OS-registered state | None                                                                                              | None                                                                                       |
+| Secrets/env vars    | No existing JWT_SECRET — must be added to `.env` locally and `.env.example`                       | Add JWT_SECRET to `.env` (not committed), `.env.example` (committed)                       |
+| Build artifacts     | Prisma generated client (`node_modules/.prisma/client`) will reference `Tenant` until regenerated | `npx prisma generate` after Migration 1 — handled by plan task                             |
+| seed.ts             | `prisma.tenant.upsert()` at line 91 — breaks after client regeneration                            | Update to `prisma.organization.upsert()` with `shortId: 'triol-01'` added to create object |
 
 **Key: The actual PostgreSQL table name `tenants` does not change.** Only the Prisma client accessor changes from `prisma.tenant` to `prisma.organization`.
 
@@ -597,13 +598,13 @@ This phase involves a rename/refactor (Tenant → Organization) at the Prisma mo
 
 ## Environment Availability
 
-| Dependency | Required By | Available | Version | Fallback |
-|------------|------------|-----------|---------|----------|
-| Node.js | Runtime, jose ESM support | Yes | 25.8.1 (local), 22.22.2 (Docker) | — |
-| PostgreSQL 16 | Prisma migrations | Yes (via Docker) | 16-alpine | — |
-| Redis 7 | Docker compose | Yes (via Docker) | 7-alpine | — |
-| Docker | `npm run docker:up`, `npm run db:migrate` | Yes | docker compose v2 | — |
-| jose (not yet installed) | JWT signing/verification | Needs install | — | `npm install jose` |
+| Dependency               | Required By                               | Available        | Version                          | Fallback           |
+| ------------------------ | ----------------------------------------- | ---------------- | -------------------------------- | ------------------ |
+| Node.js                  | Runtime, jose ESM support                 | Yes              | 25.8.1 (local), 22.22.2 (Docker) | —                  |
+| PostgreSQL 16            | Prisma migrations                         | Yes (via Docker) | 16-alpine                        | —                  |
+| Redis 7                  | Docker compose                            | Yes (via Docker) | 7-alpine                         | —                  |
+| Docker                   | `npm run docker:up`, `npm run db:migrate` | Yes              | docker compose v2                | —                  |
+| jose (not yet installed) | JWT signing/verification                  | Needs install    | —                                | `npm install jose` |
 
 [VERIFIED: codebase] — Node 25.8.1 local, Node 22.22.2 Docker (from Dockerfile `node:22-alpine`). jose not yet in package.json.
 
@@ -613,25 +614,25 @@ This phase involves a rename/refactor (Tenant → Organization) at the Prisma mo
 
 ### Test Framework
 
-| Property | Value |
-|----------|-------|
-| Framework | Jest 29 + ts-jest 29.4.6 |
-| Config file | `package.json` (jest key) |
-| Quick run command | `npm test -- --testPathPattern=jwt.service.spec` |
-| Full suite command | `npm test` |
+| Property           | Value                                            |
+| ------------------ | ------------------------------------------------ |
+| Framework          | Jest 29 + ts-jest 29.4.6                         |
+| Config file        | `package.json` (jest key)                        |
+| Quick run command  | `npm test -- --testPathPattern=jwt.service.spec` |
+| Full suite command | `npm test`                                       |
 
 ### Phase Requirements → Test Map
 
-| Req ID | Behavior | Test Type | Automated Command | File Exists? |
-|--------|----------|-----------|-------------------|-------------|
-| AUTH-01 | JwtService.sign() produces valid 15m token | unit | `npm test -- --testPathPattern=jwt.service.spec` | No — Wave 0 |
-| AUTH-01 | JwtService.verify() decodes sub/org/role | unit | same | No — Wave 0 |
-| AUTH-01 | verify() throws UnauthorizedException on expired | unit | same | No — Wave 0 |
-| AUTH-01 | verify() throws UnauthorizedException on tampered | unit | same | No — Wave 0 |
-| AUTH-01 | signAccessToken() returns token (15m) | unit | same | No — Wave 0 |
-| AUTH-01 | signRefreshToken() returns token (7d) | unit | same | No — Wave 0 |
-| UM-02/UM-03 | Prisma migration applies without error | smoke | `npm run db:migrate` inside Docker | No — run as task |
-| UM-02/UM-03 | Existing v1.0 data intact after migration | smoke | DB row count check via SQL | No — run as task |
+| Req ID      | Behavior                                          | Test Type | Automated Command                                | File Exists?     |
+| ----------- | ------------------------------------------------- | --------- | ------------------------------------------------ | ---------------- |
+| AUTH-01     | JwtService.sign() produces valid 15m token        | unit      | `npm test -- --testPathPattern=jwt.service.spec` | No — Wave 0      |
+| AUTH-01     | JwtService.verify() decodes sub/org/role          | unit      | same                                             | No — Wave 0      |
+| AUTH-01     | verify() throws UnauthorizedException on expired  | unit      | same                                             | No — Wave 0      |
+| AUTH-01     | verify() throws UnauthorizedException on tampered | unit      | same                                             | No — Wave 0      |
+| AUTH-01     | signAccessToken() returns token (15m)             | unit      | same                                             | No — Wave 0      |
+| AUTH-01     | signRefreshToken() returns token (7d)             | unit      | same                                             | No — Wave 0      |
+| UM-02/UM-03 | Prisma migration applies without error            | smoke     | `npm run db:migrate` inside Docker               | No — run as task |
+| UM-02/UM-03 | Existing v1.0 data intact after migration         | smoke     | DB row count check via SQL                       | No — run as task |
 
 ### Sampling Rate
 
@@ -646,7 +647,7 @@ This phase involves a rename/refactor (Tenant → Organization) at the Prisma mo
 - [ ] `src/auth/auth.module.ts` — NestJS module stub
 - [ ] `src/auth/utils/generate-short-id.ts` — utility stub
 
-*(No test framework install needed — Jest + ts-jest already installed.)*
+_(No test framework install needed — Jest + ts-jest already installed.)_
 
 ### Jest Config Change Required
 
@@ -664,34 +665,34 @@ The `transformIgnorePatterns` in `package.json` must be updated before jose test
 
 ### Applicable ASVS Categories
 
-| ASVS Category | Applies | Standard Control |
-|---------------|---------|-----------------|
-| V2 Authentication | Partial (infrastructure only) | JWT_SECRET min 32 chars, Zod fail-fast validation |
-| V3 Session Management | No (tokens not stored in Phase 18) | — |
-| V4 Access Control | No (guards in Phase 21) | — |
-| V5 Input Validation | Yes | Zod on JWT_SECRET length; CHECK constraints on role/auth_provider/status |
-| V6 Cryptography | Yes | jose with HS256; JWT_SECRET via env (not hardcoded) |
+| ASVS Category         | Applies                            | Standard Control                                                         |
+| --------------------- | ---------------------------------- | ------------------------------------------------------------------------ |
+| V2 Authentication     | Partial (infrastructure only)      | JWT_SECRET min 32 chars, Zod fail-fast validation                        |
+| V3 Session Management | No (tokens not stored in Phase 18) | —                                                                        |
+| V4 Access Control     | No (guards in Phase 21)            | —                                                                        |
+| V5 Input Validation   | Yes                                | Zod on JWT_SECRET length; CHECK constraints on role/auth_provider/status |
+| V6 Cryptography       | Yes                                | jose with HS256; JWT_SECRET via env (not hardcoded)                      |
 
 ### Known Threat Patterns for This Stack
 
-| Pattern | STRIDE | Standard Mitigation |
-|---------|--------|---------------------|
-| Weak JWT secret | Spoofing | Zod `.min(32)` on JWT_SECRET; app fails to start if absent |
-| Role escalation via invalid CHECK value | Elevation of Privilege | PostgreSQL CHECK constraint on `role` and `invitation.role` |
-| Owner role invited via invitation | Elevation of Privilege | invitations.role CHECK excludes 'owner' value |
-| Token forgery | Spoofing | jose HS256 with secret from env; `jwtVerify` validates signature |
-| Migration rolls back existing data | Tampering | Migration 1 is near-empty (rename only); Migration 2 is additive only — no ALTER on existing tables |
+| Pattern                                 | STRIDE                 | Standard Mitigation                                                                                 |
+| --------------------------------------- | ---------------------- | --------------------------------------------------------------------------------------------------- |
+| Weak JWT secret                         | Spoofing               | Zod `.min(32)` on JWT_SECRET; app fails to start if absent                                          |
+| Role escalation via invalid CHECK value | Elevation of Privilege | PostgreSQL CHECK constraint on `role` and `invitation.role`                                         |
+| Owner role invited via invitation       | Elevation of Privilege | invitations.role CHECK excludes 'owner' value                                                       |
+| Token forgery                           | Spoofing               | jose HS256 with secret from env; `jwtVerify` validates signature                                    |
+| Migration rolls back existing data      | Tampering              | Migration 1 is near-empty (rename only); Migration 2 is additive only — no ALTER on existing tables |
 
 ---
 
 ## Assumptions Log
 
-| # | Claim | Section | Risk if Wrong |
-|---|-------|---------|---------------|
-| A1 | TypeScript `nodenext` module resolution handles `jose` ESM exports correctly | ESM Compatibility | Compilation error; workaround: add `"allowImportingTsExtensions": false` or adjust moduleResolution |
-| A2 | Prisma generates an empty/comment-only migration SQL for the Tenant→Organization rename (since @@map("tenants") is already present) | Pitfall 3 | Migration might contain unwanted ALTER/RENAME; must inspect before applying |
-| A3 | `generateOrgShortId` retry-up-to-10 pattern is sufficient for dev/test | Architecture Patterns | Very low risk in development; higher risk at scale (deferred, not Phase 18 concern) |
-| A4 | Named Prisma relations required for Organization↔User circular FK | Pitfall 7 | `npx prisma validate` will catch this immediately; low risk |
+| #   | Claim                                                                                                                               | Section               | Risk if Wrong                                                                                       |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------- |
+| A1  | TypeScript `nodenext` module resolution handles `jose` ESM exports correctly                                                        | ESM Compatibility     | Compilation error; workaround: add `"allowImportingTsExtensions": false` or adjust moduleResolution |
+| A2  | Prisma generates an empty/comment-only migration SQL for the Tenant→Organization rename (since @@map("tenants") is already present) | Pitfall 3             | Migration might contain unwanted ALTER/RENAME; must inspect before applying                         |
+| A3  | `generateOrgShortId` retry-up-to-10 pattern is sufficient for dev/test                                                              | Architecture Patterns | Very low risk in development; higher risk at scale (deferred, not Phase 18 concern)                 |
+| A4  | Named Prisma relations required for Organization↔User circular FK                                                                   | Pitfall 7             | `npx prisma validate` will catch this immediately; low risk                                         |
 
 ---
 
@@ -711,18 +712,18 @@ The `transformIgnorePatterns` in `package.json` must be updated before jose test
 
 ## Project Constraints (from CLAUDE.md)
 
-| Directive | Impact on Phase 18 |
-|-----------|-------------------|
-| TypeScript only | All new files in TypeScript |
-| NestJS 11 | Use `@Injectable()`, `@Module()`, NestJS DI patterns |
-| Prisma 7 | Use Prisma 7 API; `prisma.organization.upsert()` after rename |
-| PostgreSQL 16 | `TIMESTAMPTZ`, `UUID`, `TEXT` column types |
-| text + CHECK constraints over PostgreSQL ENUMs | Confirmed for role, auth_provider, status fields |
-| no binary blobs in DB | Confirmed — no password_hash, no binary fields |
-| `updated_at` via Prisma `@updatedAt` | Use `@updatedAt` on Organization, User, Invitation models |
-| `tenant_id` on every table from day 1 | New User/Invitation tables use `organization_id` (FK to tenants table) — consistent with multi-tenant pattern |
-| camelCase Prisma + `@map("snake_case")` | All new fields follow this convention (e.g., `organizationId @map("organization_id")`) |
-| UUID primary keys with `@default(dbgenerated("gen_random_uuid()"))` | Use on all new models |
+| Directive                                                           | Impact on Phase 18                                                                                            |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| TypeScript only                                                     | All new files in TypeScript                                                                                   |
+| NestJS 11                                                           | Use `@Injectable()`, `@Module()`, NestJS DI patterns                                                          |
+| Prisma 7                                                            | Use Prisma 7 API; `prisma.organization.upsert()` after rename                                                 |
+| PostgreSQL 16                                                       | `TIMESTAMPTZ`, `UUID`, `TEXT` column types                                                                    |
+| text + CHECK constraints over PostgreSQL ENUMs                      | Confirmed for role, auth_provider, status fields                                                              |
+| no binary blobs in DB                                               | Confirmed — no password_hash, no binary fields                                                                |
+| `updated_at` via Prisma `@updatedAt`                                | Use `@updatedAt` on Organization, User, Invitation models                                                     |
+| `tenant_id` on every table from day 1                               | New User/Invitation tables use `organization_id` (FK to tenants table) — consistent with multi-tenant pattern |
+| camelCase Prisma + `@map("snake_case")`                             | All new fields follow this convention (e.g., `organizationId @map("organization_id")`)                        |
+| UUID primary keys with `@default(dbgenerated("gen_random_uuid()"))` | Use on all new models                                                                                         |
 
 ---
 
