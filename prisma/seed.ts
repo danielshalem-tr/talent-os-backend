@@ -87,13 +87,13 @@ const DEFAULT_HIRING_STAGES = [
 async function main() {
   console.log('🌱 Seeding database...\n');
 
-  // ── 1. Tenant ─────────────────────────────────────────────────────────
-  await prisma.tenant.upsert({
+  // ── 1. Organization ─────────────────────────────────────────────────────────
+  await prisma.organization.upsert({
     where: { id: TENANT_ID },
     update: {},
-    create: { id: TENANT_ID, name: 'Triolla' },
+    create: { id: TENANT_ID, name: 'Triolla', shortId: 'triol-01' },
   });
-  console.log('✓ Tenant');
+  console.log('✓ Organization');
 
   // ── 2. Jobs ───────────────────────────────────────────────────────────
   const jobs = [
