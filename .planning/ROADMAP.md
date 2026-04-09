@@ -70,11 +70,11 @@ Plans:
 4. JwtService scaffolded with sign() and verify() methods; JWT_SECRET loaded from env and validated at startup
 5. Prisma migration runs cleanly; existing v1.0 data unaffected (add new tables only, no alter existing)
 
-**Plans:** 1/1 plan pending
+**Plans:** 1/1 plans complete
 
 Plans:
 
-- [ ] 18-01-PLAN.md — Schema design (organizations + users tables), migration, JwtService scaffold, env validation
+- [x] 18-01-PLAN.md — Schema design (organizations + users tables), migration, JwtService scaffold, env validation
 
 ### Phase 19: Organization Signup Endpoint
 
@@ -503,7 +503,7 @@ Plans:
 
 | Phase                                    | Plans Complete | Status  | Started |
 | ---------------------------------------- | -------------- | ------- | ------- |
-| 18. Database Schema & JWT Infrastructure | 0/1            | Pending | —       |
+| 18. Database Schema & JWT Infrastructure | 1/1 | Complete    | 2026-04-09 |
 | 19. Organization Signup Endpoint         | 0/1            | Pending | —       |
 | 20. Admin User Management Endpoints      | 0/1            | Pending | —       |
 | 21. JWT Auth Middleware & RBAC           | 0/1            | Pending | —       |
