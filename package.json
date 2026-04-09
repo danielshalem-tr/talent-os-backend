@@ -100,7 +100,7 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "transformIgnorePatterns": [
-      "node_modules/(?!@openrouter)"
+      "node_modules/(?!@openrouter|jose)"
     ],
     "collectCoverageFrom": [
       "**/*.(t|j)s"
