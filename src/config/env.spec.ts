@@ -12,6 +12,7 @@ const validEnv = {
   R2_SECRET_ACCESS_KEY: 'secret123',
   R2_BUCKET_NAME: 'triolla-cvs',
   NODE_ENV: 'test' as const,
+  JWT_SECRET: 'test-jwt-secret-for-unit-tests-minimum-32chars',
 };
 
 describe('envSchema', () => {
