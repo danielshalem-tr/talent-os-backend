@@ -1,1638 +1,2461 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Triolla Talent OS — System Flows</title>
-<style>
-  :root {
-    --bg: #0f1117;
-    --surface: #161b27;
-    --surface2: #1e2535;
-    --border: #2a3347;
-    --text: #e2e8f0;
-    --muted: #8892a4;
-    --accent-blue: #3b82f6;
-    --accent-purple: #8b5cf6;
-    --accent-green: #10b981;
-    --accent-orange: #f59e0b;
-    --accent-red: #ef4444;
-    --accent-cyan: #06b6d4;
-    --accent-pink: #ec4899;
-  }
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Triolla Talent OS — System Flows</title>
+    <style>
+      :root {
+        --bg: #0f1117;
+        --surface: #161b27;
+        --surface2: #1e2535;
+        --border: #2a3347;
+        --text: #e2e8f0;
+        --muted: #8892a4;
+        --accent-blue: #3b82f6;
+        --accent-purple: #8b5cf6;
+        --accent-green: #10b981;
+        --accent-orange: #f59e0b;
+        --accent-red: #ef4444;
+        --accent-cyan: #06b6d4;
+        --accent-pink: #ec4899;
+      }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
 
-  body {
-    background: var(--bg);
-    color: var(--text);
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    line-height: 1.6;
-    min-height: 100vh;
-  }
+      body {
+        background: var(--bg);
+        color: var(--text);
+        font-family:
+          'Inter',
+          -apple-system,
+          BlinkMacSystemFont,
+          'Segoe UI',
+          sans-serif;
+        line-height: 1.6;
+        min-height: 100vh;
+      }
 
-  /* Header */
-  .header {
-    background: linear-gradient(135deg, #0f1117 0%, #1a1f30 50%, #0f1117 100%);
-    border-bottom: 1px solid var(--border);
-    padding: 32px 48px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .header-left h1 {
-    font-size: 26px;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-    background: linear-gradient(135deg, #3b82f6, #8b5cf6);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-  }
-  .header-left p {
-    color: var(--muted);
-    font-size: 14px;
-    margin-top: 4px;
-  }
-  .header-badge {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 8px 16px;
-    font-size: 12px;
-    color: var(--muted);
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-  .badge-dot {
-    width: 6px;
-    height: 6px;
-    background: var(--accent-green);
-    border-radius: 50%;
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
-  }
+      /* Header */
+      .header {
+        background: linear-gradient(135deg, #0f1117 0%, #1a1f30 50%, #0f1117 100%);
+        border-bottom: 1px solid var(--border);
+        padding: 32px 48px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .header-left h1 {
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      .header-left p {
+        color: var(--muted);
+        font-size: 14px;
+        margin-top: 4px;
+      }
+      .header-badge {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 16px;
+        font-size: 12px;
+        color: var(--muted);
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .badge-dot {
+        width: 6px;
+        height: 6px;
+        background: var(--accent-green);
+        border-radius: 50%;
+        animation: pulse 2s infinite;
+      }
+      @keyframes pulse {
+        0%,
+        100% {
+          opacity: 1;
+        }
+        50% {
+          opacity: 0.4;
+        }
+      }
 
-  /* Nav Tabs */
-  .nav {
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    padding: 0 48px;
-    display: flex;
-    gap: 0;
-    overflow-x: auto;
-  }
-  .nav-tab {
-    padding: 16px 24px;
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--muted);
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    transition: all 0.2s;
-    white-space: nowrap;
-    background: none;
-    border-top: none;
-    border-left: none;
-    border-right: none;
-    outline: none;
-  }
-  .nav-tab:hover { color: var(--text); }
-  .nav-tab.active {
-    color: var(--accent-blue);
-    border-bottom-color: var(--accent-blue);
-  }
+      /* Nav Tabs */
+      .nav {
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        padding: 0 48px;
+        display: flex;
+        gap: 0;
+        overflow-x: auto;
+      }
+      .nav-tab {
+        padding: 16px 24px;
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--muted);
+        cursor: pointer;
+        border-bottom: 2px solid transparent;
+        transition: all 0.2s;
+        white-space: nowrap;
+        background: none;
+        border-top: none;
+        border-left: none;
+        border-right: none;
+        outline: none;
+      }
+      .nav-tab:hover {
+        color: var(--text);
+      }
+      .nav-tab.active {
+        color: var(--accent-blue);
+        border-bottom-color: var(--accent-blue);
+      }
 
-  /* Sections */
-  .section { display: none; padding: 40px 48px; max-width: 1400px; margin: 0 auto; }
-  .section.active { display: block; }
+      /* Sections */
+      .section {
+        display: none;
+        padding: 40px 48px;
+        max-width: 1400px;
+        margin: 0 auto;
+      }
+      .section.active {
+        display: block;
+      }
 
-  /* Section Header */
-  .section-header {
-    margin-bottom: 32px;
-  }
-  .section-header h2 {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--text);
-    margin-bottom: 6px;
-  }
-  .section-header p {
-    color: var(--muted);
-    font-size: 14px;
-  }
+      /* Section Header */
+      .section-header {
+        margin-bottom: 32px;
+      }
+      .section-header h2 {
+        font-size: 20px;
+        font-weight: 700;
+        color: var(--text);
+        margin-bottom: 6px;
+      }
+      .section-header p {
+        color: var(--muted);
+        font-size: 14px;
+      }
 
-  /* Flow Container */
-  .flow-container {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-  }
+      /* Flow Container */
+      .flow-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0;
+      }
 
-  /* Flow Step */
-  .flow-step {
-    display: flex;
-    align-items: stretch;
-    gap: 0;
-  }
+      /* Flow Step */
+      .flow-step {
+        display: flex;
+        align-items: stretch;
+        gap: 0;
+      }
 
-  /* Connector column */
-  .connector-col {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    width: 48px;
-    flex-shrink: 0;
-  }
-  .connector-dot {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    flex-shrink: 0;
-    margin-top: 20px;
-    border: 2px solid currentColor;
-    position: relative;
-    z-index: 1;
-  }
-  .connector-line {
-    width: 2px;
-    flex: 1;
-    background: var(--border);
-    min-height: 16px;
-  }
+      /* Connector column */
+      .connector-col {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 48px;
+        flex-shrink: 0;
+      }
+      .connector-dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        margin-top: 20px;
+        border: 2px solid currentColor;
+        position: relative;
+        z-index: 1;
+      }
+      .connector-line {
+        width: 2px;
+        flex: 1;
+        background: var(--border);
+        min-height: 16px;
+      }
 
-  /* Step Card */
-  .step-card {
-    flex: 1;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 18px 22px;
-    margin: 6px 0;
-    transition: border-color 0.2s, transform 0.2s;
-    cursor: default;
-  }
-  .step-card:hover {
-    border-color: var(--muted);
-    transform: translateX(2px);
-  }
+      /* Step Card */
+      .step-card {
+        flex: 1;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 18px 22px;
+        margin: 6px 0;
+        transition:
+          border-color 0.2s,
+          transform 0.2s;
+        cursor: default;
+      }
+      .step-card:hover {
+        border-color: var(--muted);
+        transform: translateX(2px);
+      }
 
-  .step-header {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
-  }
-  .step-icon {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    flex-shrink: 0;
-  }
-  .step-label {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
-    opacity: 0.7;
-  }
-  .step-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: var(--text);
-  }
-  .step-desc {
-    font-size: 13px;
-    color: var(--muted);
-    line-height: 1.55;
-    margin-top: 4px;
-  }
+      .step-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 8px;
+      }
+      .step-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        flex-shrink: 0;
+      }
+      .step-label {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        opacity: 0.7;
+      }
+      .step-title {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .step-desc {
+        font-size: 13px;
+        color: var(--muted);
+        line-height: 1.55;
+        margin-top: 4px;
+      }
 
-  /* Step Tags */
-  .step-tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 10px;
-  }
-  .tag {
-    font-size: 11px;
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-weight: 500;
-    border: 1px solid;
-  }
+      /* Step Tags */
+      .step-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .tag {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-weight: 500;
+        border: 1px solid;
+      }
 
-  /* Decision Box */
-  .decision-block {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px 18px;
-    margin-top: 10px;
-    font-size: 12px;
-  }
-  .decision-block .decision-title {
-    font-weight: 600;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.6px;
-    margin-bottom: 8px;
-    color: var(--accent-orange);
-  }
-  .decision-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 4px 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .decision-row:last-child { border-bottom: none; }
-  .decision-cond {
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 11px;
-    background: rgba(245,158,11,0.1);
-    border: 1px solid rgba(245,158,11,0.25);
-    border-radius: 3px;
-    padding: 1px 6px;
-    white-space: nowrap;
-    color: var(--accent-orange);
-  }
-  .decision-result { color: var(--muted); font-size: 12px; line-height: 1.4; }
+      /* Decision Box */
+      .decision-block {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 18px;
+        margin-top: 10px;
+        font-size: 12px;
+      }
+      .decision-block .decision-title {
+        font-weight: 600;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.6px;
+        margin-bottom: 8px;
+        color: var(--accent-orange);
+      }
+      .decision-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 4px 0;
+        border-bottom: 1px solid var(--border);
+      }
+      .decision-row:last-child {
+        border-bottom: none;
+      }
+      .decision-cond {
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 11px;
+        background: rgba(245, 158, 11, 0.1);
+        border: 1px solid rgba(245, 158, 11, 0.25);
+        border-radius: 3px;
+        padding: 1px 6px;
+        white-space: nowrap;
+        color: var(--accent-orange);
+      }
+      .decision-result {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.4;
+      }
 
-  /* Split flow (parallel / branching) */
-  .flow-split {
-    display: grid;
-    gap: 12px;
-    margin: 8px 0;
-  }
-  .flow-split-2 { grid-template-columns: 1fr 1fr; }
-  .flow-split-3 { grid-template-columns: 1fr 1fr 1fr; }
+      /* Split flow (parallel / branching) */
+      .flow-split {
+        display: grid;
+        gap: 12px;
+        margin: 8px 0;
+      }
+      .flow-split-2 {
+        grid-template-columns: 1fr 1fr;
+      }
+      .flow-split-3 {
+        grid-template-columns: 1fr 1fr 1fr;
+      }
 
-  .split-card {
-    background: var(--surface2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px 16px;
-  }
-  .split-card .split-label {
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.8px;
-    margin-bottom: 8px;
-    opacity: 0.7;
-  }
-  .split-card .split-title {
-    font-size: 13px;
-    font-weight: 600;
-    margin-bottom: 4px;
-  }
-  .split-card .split-desc { font-size: 12px; color: var(--muted); }
+      .split-card {
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px 16px;
+      }
+      .split-card .split-label {
+        font-size: 10px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+        margin-bottom: 8px;
+        opacity: 0.7;
+      }
+      .split-card .split-title {
+        font-size: 13px;
+        font-weight: 600;
+        margin-bottom: 4px;
+      }
+      .split-card .split-desc {
+        font-size: 12px;
+        color: var(--muted);
+      }
 
-  /* Data model grid */
-  .model-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 16px;
-  }
-  .model-card {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-  }
-  .model-header {
-    padding: 14px 18px;
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  .model-icon {
-    width: 30px;
-    height: 30px;
-    border-radius: 7px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-  }
-  .model-title { font-size: 14px; font-weight: 600; }
-  .model-subtitle { font-size: 11px; color: var(--muted); margin-top: 1px; }
-  .model-fields {
-    padding: 14px 18px;
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-  .field-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-  .field-name {
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 11.5px;
-    color: var(--accent-cyan);
-  }
-  .field-type {
-    font-size: 11px;
-    color: var(--muted);
-  }
-  .field-key {
-    font-size: 10px;
-    padding: 1px 5px;
-    border-radius: 3px;
-    font-weight: 600;
-  }
+      /* Data model grid */
+      .model-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+      }
+      .model-card {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .model-header {
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .model-icon {
+        width: 30px;
+        height: 30px;
+        border-radius: 7px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+      }
+      .model-title {
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .model-subtitle {
+        font-size: 11px;
+        color: var(--muted);
+        margin-top: 1px;
+      }
+      .model-fields {
+        padding: 14px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 5px;
+      }
+      .field-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+      .field-name {
+        font-family: 'SF Mono', 'Fira Code', monospace;
+        font-size: 11.5px;
+        color: var(--accent-cyan);
+      }
+      .field-type {
+        font-size: 11px;
+        color: var(--muted);
+      }
+      .field-key {
+        font-size: 10px;
+        padding: 1px 5px;
+        border-radius: 3px;
+        font-weight: 600;
+      }
 
-  /* Architecture overview */
-  .arch-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 20px;
-    margin-bottom: 32px;
-  }
-  .arch-container {
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    overflow: hidden;
-  }
-  .arch-header {
-    padding: 14px 20px;
-    border-bottom: 1px solid var(--border);
-    font-size: 13px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .arch-content {
-    padding: 16px 20px;
-  }
-  .arch-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 0;
-    border-bottom: 1px solid var(--border);
-    font-size: 13px;
-  }
-  .arch-item:last-child { border-bottom: none; }
-  .arch-item-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .arch-item-label { font-weight: 500; flex: 1; }
-  .arch-item-desc { color: var(--muted); font-size: 12px; text-align: right; }
+      /* Architecture overview */
+      .arch-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+        margin-bottom: 32px;
+      }
+      .arch-container {
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      .arch-header {
+        padding: 14px 20px;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .arch-content {
+        padding: 16px 20px;
+      }
+      .arch-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        border-bottom: 1px solid var(--border);
+        font-size: 13px;
+      }
+      .arch-item:last-child {
+        border-bottom: none;
+      }
+      .arch-item-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
+      .arch-item-label {
+        font-weight: 500;
+        flex: 1;
+      }
+      .arch-item-desc {
+        color: var(--muted);
+        font-size: 12px;
+        text-align: right;
+      }
 
-  /* Color themes per type */
-  .c-blue   { color: var(--accent-blue);   }
-  .c-purple { color: var(--accent-purple); }
-  .c-green  { color: var(--accent-green);  }
-  .c-orange { color: var(--accent-orange); }
-  .c-red    { color: var(--accent-red);    }
-  .c-cyan   { color: var(--accent-cyan);   }
-  .c-pink   { color: var(--accent-pink);   }
+      /* Color themes per type */
+      .c-blue {
+        color: var(--accent-blue);
+      }
+      .c-purple {
+        color: var(--accent-purple);
+      }
+      .c-green {
+        color: var(--accent-green);
+      }
+      .c-orange {
+        color: var(--accent-orange);
+      }
+      .c-red {
+        color: var(--accent-red);
+      }
+      .c-cyan {
+        color: var(--accent-cyan);
+      }
+      .c-pink {
+        color: var(--accent-pink);
+      }
 
-  .bg-blue   { background: rgba(59,130,246,0.12); border-color: rgba(59,130,246,0.3); }
-  .bg-purple { background: rgba(139,92,246,0.12); border-color: rgba(139,92,246,0.3); }
-  .bg-green  { background: rgba(16,185,129,0.12); border-color: rgba(16,185,129,0.3); }
-  .bg-orange { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.3); }
-  .bg-red    { background: rgba(239,68,68,0.12);  border-color: rgba(239,68,68,0.3);  }
-  .bg-cyan   { background: rgba(6,182,212,0.12);  border-color: rgba(6,182,212,0.3);  }
-  .bg-pink   { background: rgba(236,72,153,0.12); border-color: rgba(236,72,153,0.3); }
+      .bg-blue {
+        background: rgba(59, 130, 246, 0.12);
+        border-color: rgba(59, 130, 246, 0.3);
+      }
+      .bg-purple {
+        background: rgba(139, 92, 246, 0.12);
+        border-color: rgba(139, 92, 246, 0.3);
+      }
+      .bg-green {
+        background: rgba(16, 185, 129, 0.12);
+        border-color: rgba(16, 185, 129, 0.3);
+      }
+      .bg-orange {
+        background: rgba(245, 158, 11, 0.12);
+        border-color: rgba(245, 158, 11, 0.3);
+      }
+      .bg-red {
+        background: rgba(239, 68, 68, 0.12);
+        border-color: rgba(239, 68, 68, 0.3);
+      }
+      .bg-cyan {
+        background: rgba(6, 182, 212, 0.12);
+        border-color: rgba(6, 182, 212, 0.3);
+      }
+      .bg-pink {
+        background: rgba(236, 72, 153, 0.12);
+        border-color: rgba(236, 72, 153, 0.3);
+      }
 
-  .dot-blue   { background: var(--accent-blue);   color: var(--accent-blue);   }
-  .dot-purple { background: var(--accent-purple); color: var(--accent-purple); }
-  .dot-green  { background: var(--accent-green);  color: var(--accent-green);  }
-  .dot-orange { background: var(--accent-orange); color: var(--accent-orange); }
-  .dot-red    { background: var(--accent-red);    color: var(--accent-red);    }
-  .dot-cyan   { background: var(--accent-cyan);   color: var(--accent-cyan);   }
-  .dot-pink   { background: var(--accent-pink);   color: var(--accent-pink);   }
+      .dot-blue {
+        background: var(--accent-blue);
+        color: var(--accent-blue);
+      }
+      .dot-purple {
+        background: var(--accent-purple);
+        color: var(--accent-purple);
+      }
+      .dot-green {
+        background: var(--accent-green);
+        color: var(--accent-green);
+      }
+      .dot-orange {
+        background: var(--accent-orange);
+        color: var(--accent-orange);
+      }
+      .dot-red {
+        background: var(--accent-red);
+        color: var(--accent-red);
+      }
+      .dot-cyan {
+        background: var(--accent-cyan);
+        color: var(--accent-cyan);
+      }
+      .dot-pink {
+        background: var(--accent-pink);
+        color: var(--accent-pink);
+      }
 
-  /* Legend */
-  .legend {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
-    margin-bottom: 28px;
-    padding: 14px 20px;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-  }
-  .legend-item {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    font-size: 12px;
-    color: var(--muted);
-  }
-  .legend-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
+      /* Legend */
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 16px;
+        margin-bottom: 28px;
+        padding: 14px 20px;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+      .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .legend-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+      }
 
-  /* Scroll */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: var(--bg); }
-  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+      /* Scroll */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: var(--bg);
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 3px;
+      }
 
-  /* Responsive */
-  @media (max-width: 900px) {
-    .header { padding: 24px; }
-    .nav { padding: 0 16px; }
-    .section { padding: 24px 16px; }
-    .flow-split-2, .flow-split-3, .arch-grid { grid-template-columns: 1fr; }
-  }
-</style>
-</head>
-<body>
-
-<!-- HEADER -->
-<div class="header">
-  <div class="header-left">
-    <h1>Triolla Talent OS</h1>
-    <p>System Architecture &amp; Data Flow Diagrams &nbsp;·&nbsp; Backend v2.0</p>
-  </div>
-  <div class="header-badge">
-    <div class="badge-dot"></div>
-    NestJS 11 &nbsp;·&nbsp; BullMQ &nbsp;·&nbsp; PostgreSQL 16 &nbsp;·&nbsp; GPT-4o-mini
-  </div>
-</div>
-
-<!-- NAV -->
-<nav class="nav">
-  <button class="nav-tab active" onclick="showTab('overview')">System Overview</button>
-  <button class="nav-tab" onclick="showTab('ingestion')">Email Ingestion Pipeline</button>
-  <button class="nav-tab" onclick="showTab('candidates')">Candidates API</button>
-  <button class="nav-tab" onclick="showTab('jobs')">Jobs API</button>
-  <button class="nav-tab" onclick="showTab('data')">Data Models</button>
-  <button class="nav-tab" onclick="showTab('flowchart')">Pipeline Flowchart</button>
-</nav>
-
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- OVERVIEW TAB -->
-<!-- ═══════════════════════════════════════════════════════════ -->
-<div id="tab-overview" class="section active">
-  <div class="section-header">
-    <h2>System Overview</h2>
-    <p>Two services share one codebase. The API handles HTTP; the Worker processes background jobs.</p>
-  </div>
-
-  <div class="arch-grid">
-    <div class="arch-container">
-      <div class="arch-header">
-        <span style="font-size:16px">🌐</span> API Server &nbsp;<span style="color:var(--muted);font-weight:400;font-size:12px">src/main.ts</span>
+      /* Responsive */
+      @media (max-width: 900px) {
+        .header {
+          padding: 24px;
+        }
+        .nav {
+          padding: 0 16px;
+        }
+        .section {
+          padding: 24px 16px;
+        }
+        .flow-split-2,
+        .flow-split-3,
+        .arch-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- HEADER -->
+    <div class="header">
+      <div class="header-left">
+        <h1>Triolla Talent OS</h1>
+        <p>System Architecture &amp; Data Flow Diagrams &nbsp;·&nbsp; Backend v2.0</p>
       </div>
-      <div class="arch-content">
-        <div class="arch-item">
-          <div class="arch-item-dot" style="background:var(--accent-blue)"></div>
-          <div class="arch-item-label">POST /webhooks/email</div>
-          <div class="arch-item-desc">Postmark intake</div>
-        </div>
-        <div class="arch-item">
-          <div class="arch-item-dot" style="background:var(--accent-green)"></div>
-          <div class="arch-item-label">GET/POST /candidates</div>
-          <div class="arch-item-desc">Candidate CRUD</div>
-        </div>
-        <div class="arch-item">
-          <div class="arch-item-dot" style="background:var(--accent-purple)"></div>
-          <div class="arch-item-label">GET/POST /jobs</div>
-          <div class="arch-item-desc">Job listings</div>
-        </div>
-        <div class="arch-item">
-          <div class="arch-item-dot" style="background:var(--accent-cyan)"></div>
-          <div class="arch-item-label">GET /applications</div>
-          <div class="arch-item-desc">Application tracking</div>
-        </div>
-        <div class="arch-item">
-          <div class="arch-item-dot" style="background:var(--accent-orange)"></div>
-          <div class="arch-item-label">GET /health</div>
-          <div class="arch-item-desc">Service health</div>
-        </div>
-      </div>
-    </div>
-
-    <div class="arch-container">
-      <div class="arch-header">
-        <span style="font-size:16px">⚙️</span> Worker Process &nbsp;<span style="color:var(--muted);font-weight:400;font-size:12px">src/worker.ts</span>
-      </div>
-      <div class="arch-content">
-        <div class="arch-item">
-          <div class="arch-item-dot" style="background:var(--accent-red)"></div>
-          <div class="arch-item-label">BullMQ Consumer</div>
-          <div class="arch-item-desc">ingest-email queue</div>
-        </div>
-        <div class="arch-item">
-          <div class="arch-item-dot" style="background:var(--accent-orange)"></div>
-          <div class="arch-item-label">Spam Filter</div>
-          <div class="arch-item-desc">Early reject</div>
-        </div>
-        <div class="arch-item">
-          <div class="arch-item-dot" style="background:var(--accent-cyan)"></div>
-          <div class="arch-item-label">Text Extraction</div>
-          <div class="arch-item-desc">PDF + DOCX parsing</div>
-        </div>
-        <div class="arch-item">
-          <div class="arch-item-dot" style="background:var(--accent-purple)"></div>
-          <div class="arch-item-label">AI Extraction + Scoring</div>
-          <div class="arch-item-desc">GPT-4o-mini via OpenRouter</div>
-        </div>
-        <div class="arch-item">
-          <div class="arch-item-dot" style="background:var(--accent-green)"></div>
-          <div class="arch-item-label">Dedup + Upsert</div>
-          <div class="arch-item-desc">pg_trgm fuzzy match</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Infrastructure -->
-  <div class="arch-container" style="margin-bottom:20px">
-    <div class="arch-header">
-      <span style="font-size:16px">🏗️</span> Infrastructure &amp; Services
-    </div>
-    <div class="arch-content" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:0">
-      <div class="arch-item">
-        <div class="arch-item-dot" style="background:var(--accent-blue)"></div>
-        <div>
-          <div class="arch-item-label">PostgreSQL 16</div>
-          <div class="arch-item-desc">Primary store · Prisma ORM · pg_trgm dedup</div>
-        </div>
-      </div>
-      <div class="arch-item">
-        <div class="arch-item-dot" style="background:var(--accent-red)"></div>
-        <div>
-          <div class="arch-item-label">Redis 7</div>
-          <div class="arch-item-desc">BullMQ job queue broker</div>
-        </div>
-      </div>
-      <div class="arch-item">
-        <div class="arch-item-dot" style="background:var(--accent-orange)"></div>
-        <div>
-          <div class="arch-item-label">Cloudflare R2</div>
-          <div class="arch-item-desc">CV file storage · S3-compatible</div>
-        </div>
-      </div>
-      <div class="arch-item">
-        <div class="arch-item-dot" style="background:var(--accent-purple)"></div>
-        <div>
-          <div class="arch-item-label">OpenRouter</div>
-          <div class="arch-item-desc">GPT-4o-mini · Extraction + Scoring</div>
-        </div>
-      </div>
-      <div class="arch-item" style="border:none">
-        <div class="arch-item-dot" style="background:var(--accent-cyan)"></div>
-        <div>
-          <div class="arch-item-label">Postmark</div>
-          <div class="arch-item-desc">Inbound email webhook provider</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Core flow summary -->
-  <div class="arch-container">
-    <div class="arch-header"><span style="font-size:16px">🔄</span> Core Value Loop</div>
-    <div class="arch-content">
-      <div style="display:flex;align-items:center;flex-wrap:wrap;gap:0;padding:8px 0">
-        <div style="text-align:center;padding:10px 14px">
-          <div style="font-size:22px;margin-bottom:4px">📧</div>
-          <div style="font-size:12px;font-weight:600;color:var(--accent-blue)">Email Arrives</div>
-          <div style="font-size:11px;color:var(--muted)">via Postmark</div>
-        </div>
-        <div style="color:var(--border);font-size:20px;padding:0 4px">→</div>
-        <div style="text-align:center;padding:10px 14px">
-          <div style="font-size:22px;margin-bottom:4px">🔍</div>
-          <div style="font-size:12px;font-weight:600;color:var(--accent-orange)">Validate &amp; Queue</div>
-          <div style="font-size:11px;color:var(--muted)">Idempotent intake</div>
-        </div>
-        <div style="color:var(--border);font-size:20px;padding:0 4px">→</div>
-        <div style="text-align:center;padding:10px 14px">
-          <div style="font-size:22px;margin-bottom:4px">🤖</div>
-          <div style="font-size:12px;font-weight:600;color:var(--accent-purple)">AI Extraction</div>
-          <div style="font-size:11px;color:var(--muted)">GPT-4o-mini</div>
-        </div>
-        <div style="color:var(--border);font-size:20px;padding:0 4px">→</div>
-        <div style="text-align:center;padding:10px 14px">
-          <div style="font-size:22px;margin-bottom:4px">👥</div>
-          <div style="font-size:12px;font-weight:600;color:var(--accent-cyan)">Dedup Check</div>
-          <div style="font-size:11px;color:var(--muted)">Exact + fuzzy match</div>
-        </div>
-        <div style="color:var(--border);font-size:20px;padding:0 4px">→</div>
-        <div style="text-align:center;padding:10px 14px">
-          <div style="font-size:22px;margin-bottom:4px">📊</div>
-          <div style="font-size:12px;font-weight:600;color:var(--accent-green)">AI Scoring</div>
-          <div style="font-size:11px;color:var(--muted)">Fit 0–100 per job</div>
-        </div>
-        <div style="color:var(--border);font-size:20px;padding:0 4px">→</div>
-        <div style="text-align:center;padding:10px 14px">
-          <div style="font-size:22px;margin-bottom:4px">✅</div>
-          <div style="font-size:12px;font-weight:600;color:var(--accent-pink)">Ready in Dashboard</div>
-          <div style="font-size:11px;color:var(--muted)">Kanban board</div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- INGESTION PIPELINE TAB -->
-<!-- ═══════════════════════════════════════════════════════════ -->
-<div id="tab-ingestion" class="section">
-  <div class="section-header">
-    <h2>Email Ingestion Pipeline</h2>
-    <p>End-to-end automated flow: from Postmark webhook to a scored candidate record in the database.</p>
-  </div>
-
-  <div class="legend">
-    <div class="legend-item"><div class="legend-dot" style="background:var(--accent-blue)"></div> HTTP / Webhook</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--accent-red)"></div> Queue / Worker</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--accent-purple)"></div> AI Processing</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--accent-green)"></div> Database Write</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--accent-orange)"></div> Decision Point</div>
-    <div class="legend-item"><div class="legend-dot" style="background:var(--accent-cyan)"></div> File Storage</div>
-  </div>
-
-  <div class="flow-container">
-
-    <!-- STEP 1 -->
-    <div class="flow-step">
-      <div class="connector-col">
-        <div class="connector-dot dot-blue" style="background:var(--accent-blue);border-color:var(--accent-blue)"></div>
-        <div class="connector-line"></div>
-      </div>
-      <div class="step-card" style="border-color:rgba(59,130,246,0.3)">
-        <div class="step-header">
-          <div class="step-icon bg-blue"><span>📬</span></div>
-          <div>
-            <div class="step-label c-blue">Webhook Intake</div>
-            <div class="step-title">POST /webhooks/email</div>
-          </div>
-        </div>
-        <div class="step-desc">Postmark sends the inbound email as JSON. The request passes through two guards before reaching the handler.</div>
-        <div class="step-tags">
-          <span class="tag bg-blue c-blue">ThrottlerGuard — 100 req / 60s</span>
-          <span class="tag bg-blue c-blue">PostmarkAuthGuard — HMAC signature</span>
-          <span class="tag bg-blue c-blue">Zod payload validation</span>
-        </div>
+      <div class="header-badge">
+        <div class="badge-dot"></div>
+        NestJS 11 &nbsp;·&nbsp; BullMQ &nbsp;·&nbsp; PostgreSQL 16 &nbsp;·&nbsp; GPT-4o-mini
       </div>
     </div>
 
-    <!-- STEP 2 -->
-    <div class="flow-step">
-      <div class="connector-col">
-        <div class="connector-dot dot-orange" style="background:var(--accent-orange);border-color:var(--accent-orange)"></div>
-        <div class="connector-line"></div>
-      </div>
-      <div class="step-card" style="border-color:rgba(245,158,11,0.3)">
-        <div class="step-header">
-          <div class="step-icon bg-orange"><span>🔁</span></div>
-          <div>
-            <div class="step-label c-orange">Idempotency Guard</div>
-            <div class="step-title">Check &amp; Insert — emailIntakeLog</div>
-          </div>
-        </div>
-        <div class="step-desc">Prevents duplicate processing if Postmark retries the webhook or a crash left a job mid-flight.</div>
-        <div class="decision-block">
-          <div class="decision-title">Decision Logic</div>
-          <div class="decision-row">
-            <span class="decision-cond">messageId = test GUID</span>
-            <span class="decision-result">→ Return 200 immediately (Postmark ping, ignored)</span>
-          </div>
-          <div class="decision-row">
-            <span class="decision-cond">status = 'pending'</span>
-            <span class="decision-result">→ Re-enqueue (previous attempt crashed) </span>
-          </div>
-          <div class="decision-row">
-            <span class="decision-cond">status = 'completed' / 'spam'</span>
-            <span class="decision-result">→ Return 200, skip (already handled)</span>
-          </div>
-          <div class="decision-row">
-            <span class="decision-cond">not found</span>
-            <span class="decision-result">→ INSERT new row with status='pending', continue</span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- NAV -->
+    <nav class="nav">
+      <button class="nav-tab active" onclick="showTab('overview')">System Overview</button>
+      <button class="nav-tab" onclick="showTab('ingestion')">Email Ingestion Pipeline</button>
+      <button class="nav-tab" onclick="showTab('candidates')">Candidates API</button>
+      <button class="nav-tab" onclick="showTab('jobs')">Jobs API</button>
+      <button class="nav-tab" onclick="showTab('data')">Data Models</button>
+      <button class="nav-tab" onclick="showTab('flowchart')">Pipeline Flowchart</button>
+    </nav>
 
-    <!-- STEP 3 -->
-    <div class="flow-step">
-      <div class="connector-col">
-        <div class="connector-dot dot-red" style="background:var(--accent-red);border-color:var(--accent-red)"></div>
-        <div class="connector-line"></div>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- OVERVIEW TAB -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div id="tab-overview" class="section active">
+      <div class="section-header">
+        <h2>System Overview</h2>
+        <p>Two services share one codebase. The API handles HTTP; the Worker processes background jobs.</p>
       </div>
-      <div class="step-card" style="border-color:rgba(239,68,68,0.3)">
-        <div class="step-header">
-          <div class="step-icon bg-red"><span>📦</span></div>
-          <div>
-            <div class="step-label c-red">Queue</div>
-            <div class="step-title">Enqueue to BullMQ — "ingest-email"</div>
-          </div>
-        </div>
-        <div class="step-desc">The email payload (metadata only — CV file blobs stripped from the DB row) is pushed to Redis. BullMQ manages retries automatically.</div>
-        <div class="step-tags">
-          <span class="tag bg-red c-red">3 attempts max</span>
-          <span class="tag bg-red c-red">Exponential backoff — 5s base</span>
-          <span class="tag bg-red c-red">Lock renewed every 5s</span>
-          <span class="tag bg-red c-red">API returns 200 immediately</span>
-        </div>
-      </div>
-    </div>
 
-    <!-- DIVIDER -->
-    <div style="display:flex;align-items:center;gap:12px;margin:4px 0 4px 0;padding-left:48px">
-      <div style="flex:1;height:1px;background:var(--border)"></div>
-      <span style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:0.8px;white-space:nowrap">Worker Process picks up job ↓</span>
-      <div style="flex:1;height:1px;background:var(--border)"></div>
-    </div>
-
-    <!-- PHASE 0 -->
-    <div class="flow-step">
-      <div class="connector-col">
-        <div class="connector-dot dot-orange" style="background:var(--accent-orange);border-color:var(--accent-orange)"></div>
-        <div class="connector-line"></div>
-      </div>
-      <div class="step-card" style="border-color:rgba(245,158,11,0.3)">
-        <div class="step-header">
-          <div class="step-icon bg-orange"><span>🚫</span></div>
-          <div>
-            <div class="step-label c-orange">Phase 0</div>
-            <div class="step-title">Spam Filter</div>
+      <div class="arch-grid">
+        <div class="arch-container">
+          <div class="arch-header">
+            <span style="font-size: 16px">🌐</span> API Server &nbsp;<span
+              style="color: var(--muted); font-weight: 400; font-size: 12px"
+              >src/main.ts</span
+            >
           </div>
-        </div>
-        <div class="step-desc">Fast heuristic check before any expensive processing. Keyword-based rules on subject and body.</div>
-        <div class="decision-block">
-          <div class="decision-title">Spam Rules</div>
-          <div class="decision-row">
-            <span class="decision-cond">no attachment + body &lt; 100 chars</span>
-            <span class="decision-result">→ Mark spam, stop pipeline</span>
-          </div>
-          <div class="decision-row">
-            <span class="decision-cond">spam keyword + no attachment</span>
-            <span class="decision-result">→ Mark spam, stop pipeline</span>
-          </div>
-          <div class="decision-row">
-            <span class="decision-cond">spam keyword + has attachment</span>
-            <span class="decision-result">→ Flag as suspicious, continue (AI warned)</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- PHASE 1+2 -->
-    <div class="flow-step">
-      <div class="connector-col">
-        <div class="connector-dot dot-cyan" style="background:var(--accent-cyan);border-color:var(--accent-cyan)"></div>
-        <div class="connector-line"></div>
-      </div>
-      <div class="step-card" style="border-color:rgba(6,182,212,0.3)">
-        <div class="step-header">
-          <div class="step-icon bg-cyan"><span>📄</span></div>
-          <div>
-            <div class="step-label c-cyan">Phase 1–2</div>
-            <div class="step-title">Text Extraction — PDF &amp; DOCX</div>
-          </div>
-        </div>
-        <div class="step-desc">Attachment files (base64 in Postmark payload) are decoded and parsed into plain text. Combined with the email body to form the full CV context.</div>
-        <div class="flow-split flow-split-2" style="margin-top:10px">
-          <div class="split-card">
-            <div class="split-label c-cyan">PDF files</div>
-            <div class="split-title" style="font-size:12px">pdf-parse library</div>
-            <div class="split-desc">Extracts text layer from PDF</div>
-          </div>
-          <div class="split-card">
-            <div class="split-label c-cyan">DOCX files</div>
-            <div class="split-title" style="font-size:12px">mammoth → HTML → plain text</div>
-            <div class="split-desc">Converts Word format to stripped text</div>
-          </div>
-        </div>
-        <div class="step-tags" style="margin-top:10px">
-          <span class="tag bg-cyan c-cyan">Email body prepended</span>
-          <span class="tag bg-cyan c-cyan">Each file demarcated with header</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- PHASE 5 -->
-    <div class="flow-step">
-      <div class="connector-col">
-        <div class="connector-dot dot-cyan" style="background:var(--accent-cyan);border-color:var(--accent-cyan)"></div>
-        <div class="connector-line"></div>
-      </div>
-      <div class="step-card" style="border-color:rgba(6,182,212,0.3)">
-        <div class="step-header">
-          <div class="step-icon bg-cyan"><span>☁️</span></div>
-          <div>
-            <div class="step-label c-cyan">Phase 5</div>
-            <div class="step-title">Upload CV to Cloudflare R2</div>
-          </div>
-        </div>
-        <div class="step-desc">The largest PDF or DOCX attachment is uploaded to R2 before AI processing. The returned key is stored on the candidate later.</div>
-        <div class="step-tags">
-          <span class="tag bg-cyan c-cyan">Key: cvs/{tenantId}/{messageId}.pdf</span>
-          <span class="tag bg-cyan c-cyan">Explicit ContentType set</span>
-          <span class="tag bg-orange c-orange">Failure → BullMQ retries entire job</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- PHASE 4 -->
-    <div class="flow-step">
-      <div class="connector-col">
-        <div class="connector-dot dot-purple" style="background:var(--accent-purple);border-color:var(--accent-purple)"></div>
-        <div class="connector-line"></div>
-      </div>
-      <div class="step-card" style="border-color:rgba(139,92,246,0.3)">
-        <div class="step-header">
-          <div class="step-icon bg-purple"><span>🤖</span></div>
-          <div>
-            <div class="step-label c-purple">Phase 4</div>
-            <div class="step-title">AI Data Extraction — GPT-4o-mini</div>
-          </div>
-        </div>
-        <div class="step-desc">The full CV text is sent to OpenRouter. The model returns a structured JSON with the candidate's details.</div>
-        <div class="flow-split flow-split-2" style="margin-top:10px">
-          <div class="split-card">
-            <div class="split-label c-purple">Extracted Fields</div>
-            <div class="split-desc" style="font-size:12px;line-height:1.7">
-              full_name · email · phone<br>
-              current_role · years_experience<br>
-              location · skills[] · ai_summary<br>
-              source_hint · source_agency
+          <div class="arch-content">
+            <div class="arch-item">
+              <div class="arch-item-dot" style="background: var(--accent-blue)"></div>
+              <div class="arch-item-label">POST /webhooks/email</div>
+              <div class="arch-item-desc">Postmark intake</div>
+            </div>
+            <div class="arch-item">
+              <div class="arch-item-dot" style="background: var(--accent-green)"></div>
+              <div class="arch-item-label">GET/POST /candidates</div>
+              <div class="arch-item-desc">Candidate CRUD</div>
+            </div>
+            <div class="arch-item">
+              <div class="arch-item-dot" style="background: var(--accent-purple)"></div>
+              <div class="arch-item-label">GET/POST /jobs</div>
+              <div class="arch-item-desc">Job listings</div>
+            </div>
+            <div class="arch-item">
+              <div class="arch-item-dot" style="background: var(--accent-cyan)"></div>
+              <div class="arch-item-label">GET /applications</div>
+              <div class="arch-item-desc">Application tracking</div>
+            </div>
+            <div class="arch-item">
+              <div class="arch-item-dot" style="background: var(--accent-orange)"></div>
+              <div class="arch-item-label">GET /health</div>
+              <div class="arch-item-desc">Service health</div>
             </div>
           </div>
-          <div class="split-card">
-            <div class="split-label c-orange">Fallback Strategy</div>
-            <div class="split-desc" style="font-size:12px;line-height:1.7">
-              Attempt 1–2: AI fails → BullMQ retry<br>
-              Attempt 3 (final): try deterministic parser<br>
-              (first line = name, regex email/phone)<br>
-              Still fails → mark <code style="font-size:11px">failed</code>, stop
+        </div>
+
+        <div class="arch-container">
+          <div class="arch-header">
+            <span style="font-size: 16px">⚙️</span> Worker Process &nbsp;<span
+              style="color: var(--muted); font-weight: 400; font-size: 12px"
+              >src/worker.ts</span
+            >
+          </div>
+          <div class="arch-content">
+            <div class="arch-item">
+              <div class="arch-item-dot" style="background: var(--accent-red)"></div>
+              <div class="arch-item-label">BullMQ Consumer</div>
+              <div class="arch-item-desc">ingest-email queue</div>
+            </div>
+            <div class="arch-item">
+              <div class="arch-item-dot" style="background: var(--accent-orange)"></div>
+              <div class="arch-item-label">Spam Filter</div>
+              <div class="arch-item-desc">Early reject</div>
+            </div>
+            <div class="arch-item">
+              <div class="arch-item-dot" style="background: var(--accent-cyan)"></div>
+              <div class="arch-item-label">Text Extraction</div>
+              <div class="arch-item-desc">PDF + DOCX parsing</div>
+            </div>
+            <div class="arch-item">
+              <div class="arch-item-dot" style="background: var(--accent-purple)"></div>
+              <div class="arch-item-label">AI Extraction + Scoring</div>
+              <div class="arch-item-desc">GPT-4o-mini via OpenRouter</div>
+            </div>
+            <div class="arch-item">
+              <div class="arch-item-dot" style="background: var(--accent-green)"></div>
+              <div class="arch-item-label">Dedup + Insert</div>
+              <div class="arch-item-desc">Phone exact match (regexp_replace)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Infrastructure -->
+      <div class="arch-container" style="margin-bottom: 20px">
+        <div class="arch-header"><span style="font-size: 16px">🏗️</span> Infrastructure &amp; Services</div>
+        <div
+          class="arch-content"
+          style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0"
+        >
+          <div class="arch-item">
+            <div class="arch-item-dot" style="background: var(--accent-blue)"></div>
+            <div>
+              <div class="arch-item-label">PostgreSQL 16</div>
+              <div class="arch-item-desc">Primary store · Prisma ORM · advisory-lock dedup</div>
+            </div>
+          </div>
+          <div class="arch-item">
+            <div class="arch-item-dot" style="background: var(--accent-red)"></div>
+            <div>
+              <div class="arch-item-label">Redis 7</div>
+              <div class="arch-item-desc">BullMQ job queue broker</div>
+            </div>
+          </div>
+          <div class="arch-item">
+            <div class="arch-item-dot" style="background: var(--accent-orange)"></div>
+            <div>
+              <div class="arch-item-label">Cloudflare R2</div>
+              <div class="arch-item-desc">CV file storage · S3-compatible</div>
+            </div>
+          </div>
+          <div class="arch-item">
+            <div class="arch-item-dot" style="background: var(--accent-purple)"></div>
+            <div>
+              <div class="arch-item-label">OpenRouter</div>
+              <div class="arch-item-desc">GPT-4o-mini · Extraction + Scoring</div>
+            </div>
+          </div>
+          <div class="arch-item" style="border: none">
+            <div class="arch-item-dot" style="background: var(--accent-cyan)"></div>
+            <div>
+              <div class="arch-item-label">Postmark</div>
+              <div class="arch-item-desc">Inbound email webhook provider</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Core flow summary -->
+      <div class="arch-container">
+        <div class="arch-header"><span style="font-size: 16px">🔄</span> Core Value Loop</div>
+        <div class="arch-content">
+          <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 0; padding: 8px 0">
+            <div style="text-align: center; padding: 10px 14px">
+              <div style="font-size: 22px; margin-bottom: 4px">📧</div>
+              <div style="font-size: 12px; font-weight: 600; color: var(--accent-blue)">Email Arrives</div>
+              <div style="font-size: 11px; color: var(--muted)">via Postmark</div>
+            </div>
+            <div style="color: var(--border); font-size: 20px; padding: 0 4px">→</div>
+            <div style="text-align: center; padding: 10px 14px">
+              <div style="font-size: 22px; margin-bottom: 4px">🔍</div>
+              <div style="font-size: 12px; font-weight: 600; color: var(--accent-orange)">Validate &amp; Queue</div>
+              <div style="font-size: 11px; color: var(--muted)">Idempotent intake</div>
+            </div>
+            <div style="color: var(--border); font-size: 20px; padding: 0 4px">→</div>
+            <div style="text-align: center; padding: 10px 14px">
+              <div style="font-size: 22px; margin-bottom: 4px">🤖</div>
+              <div style="font-size: 12px; font-weight: 600; color: var(--accent-purple)">AI Extraction</div>
+              <div style="font-size: 11px; color: var(--muted)">GPT-4o-mini</div>
+            </div>
+            <div style="color: var(--border); font-size: 20px; padding: 0 4px">→</div>
+            <div style="text-align: center; padding: 10px 14px">
+              <div style="font-size: 22px; margin-bottom: 4px">👥</div>
+              <div style="font-size: 12px; font-weight: 600; color: var(--accent-cyan)">Dedup Check</div>
+              <div style="font-size: 11px; color: var(--muted)">Phone exact match</div>
+            </div>
+            <div style="color: var(--border); font-size: 20px; padding: 0 4px">→</div>
+            <div style="text-align: center; padding: 10px 14px">
+              <div style="font-size: 22px; margin-bottom: 4px">📊</div>
+              <div style="font-size: 12px; font-weight: 600; color: var(--accent-green)">AI Scoring</div>
+              <div style="font-size: 11px; color: var(--muted)">Fit 0–100 per job</div>
+            </div>
+            <div style="color: var(--border); font-size: 20px; padding: 0 4px">→</div>
+            <div style="text-align: center; padding: 10px 14px">
+              <div style="font-size: 22px; margin-bottom: 4px">✅</div>
+              <div style="font-size: 12px; font-weight: 600; color: var(--accent-pink)">Ready in Dashboard</div>
+              <div style="font-size: 11px; color: var(--muted)">Kanban board</div>
             </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- PHASE 6 -->
-    <div class="flow-step">
-      <div class="connector-col">
-        <div class="connector-dot dot-green" style="background:var(--accent-green);border-color:var(--accent-green)"></div>
-        <div class="connector-line"></div>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- INGESTION PIPELINE TAB -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div id="tab-ingestion" class="section">
+      <div class="section-header">
+        <h2>Email Ingestion Pipeline</h2>
+        <p>End-to-end automated flow: from Postmark webhook to a scored candidate record in the database.</p>
       </div>
-      <div class="step-card" style="border-color:rgba(16,185,129,0.3)">
-        <div class="step-header">
-          <div class="step-icon bg-green"><span>👥</span></div>
-          <div>
-            <div class="step-label c-green">Phase 6</div>
-            <div class="step-title">Dedup Check + Candidate Insert / Upsert</div>
-          </div>
-        </div>
-        <div class="step-desc">PostgreSQL pg_trgm extension finds near-duplicate candidates. The result drives whether a new record is created or an existing one updated.</div>
-        <div class="decision-block">
-          <div class="decision-title">Dedup Algorithm &amp; Action</div>
-          <div class="decision-row">
-            <span class="decision-cond">email matches exactly</span>
-            <span class="decision-result">→ Confidence 1.0 → UPSERT existing candidate (update name &amp; phone only)</span>
-          </div>
-          <div class="decision-row">
-            <span class="decision-cond">name similarity &gt; 0.7 (pg_trgm)</span>
-            <span class="decision-result">→ INSERT new candidate + CREATE DuplicateFlag for human review</span>
-          </div>
-          <div class="decision-row">
-            <span class="decision-cond">no match</span>
-            <span class="decision-result">→ INSERT new candidate record</span>
-          </div>
-        </div>
-        <div class="step-tags" style="margin-top:10px">
-          <span class="tag bg-green c-green">Atomic transaction</span>
-          <span class="tag bg-green c-green">Reversed name tokens checked (Smith John ↔ John Smith)</span>
-        </div>
-      </div>
-    </div>
 
-    <!-- PHASE 15 -->
-    <div class="flow-step">
-      <div class="connector-col">
-        <div class="connector-dot dot-blue" style="background:var(--accent-blue);border-color:var(--accent-blue)"></div>
-        <div class="connector-line"></div>
-      </div>
-      <div class="step-card" style="border-color:rgba(59,130,246,0.3)">
-        <div class="step-header">
-          <div class="step-icon bg-blue"><span>🔗</span></div>
-          <div>
-            <div class="step-label c-blue">Phase 7a</div>
-            <div class="step-title">Detect Matching Job(s) from Email Text</div>
-          </div>
+      <div class="legend">
+        <div class="legend-item">
+          <div class="legend-dot" style="background: var(--accent-blue)"></div>
+          HTTP / Webhook
         </div>
-        <div class="step-desc">Scans the email subject and body for job shortIDs (e.g. "103"). All open jobs are fetched and their shortIDs are regex-matched against the email text.</div>
-        <div class="step-tags">
-          <span class="tag bg-blue c-blue">Queries all open jobs first</span>
-          <span class="tag bg-blue c-blue">Word-boundary regex per shortId</span>
-          <span class="tag bg-blue c-blue">Multiple jobs can match one email</span>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: var(--accent-red)"></div>
+          Queue / Worker
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: var(--accent-purple)"></div>
+          AI Processing
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: var(--accent-green)"></div>
+          Database Write
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: var(--accent-orange)"></div>
+          Decision Point
+        </div>
+        <div class="legend-item">
+          <div class="legend-dot" style="background: var(--accent-cyan)"></div>
+          File Storage
         </div>
       </div>
-    </div>
 
-    <!-- PHASE 7 -->
-    <div class="flow-step">
-      <div class="connector-col">
-        <div class="connector-dot dot-purple" style="background:var(--accent-purple);border-color:var(--accent-purple)"></div>
-        <div class="connector-line"></div>
-      </div>
-      <div class="step-card" style="border-color:rgba(139,92,246,0.3)">
-        <div class="step-header">
-          <div class="step-icon bg-purple"><span>📊</span></div>
-          <div>
-            <div class="step-label c-purple">Phase 7b</div>
-            <div class="step-title">Enrich Candidate + Multi-Job AI Scoring</div>
+      <div class="flow-container">
+        <!-- STEP 1 -->
+        <div class="flow-step">
+          <div class="connector-col">
+            <div
+              class="connector-dot dot-blue"
+              style="background: var(--accent-blue); border-color: var(--accent-blue)"
+            ></div>
+            <div class="connector-line"></div>
           </div>
-        </div>
-        <div class="step-desc">Candidate fields (role, skills, CV text, R2 key) are written. Then, for each matched job, an Application is created and GPT-4o-mini scores the fit.</div>
-        <div class="flow-split flow-split-2" style="margin-top:10px">
-          <div class="split-card">
-            <div class="split-label c-green">DB Writes</div>
-            <div class="split-desc" style="font-size:12px;line-height:1.7">
-              UPDATE candidates (fields + cvFileUrl)<br>
-              UPSERT application per job<br>
-              CREATE CandidateJobScore per job<br>
-              UPDATE candidate.aiScore (max score)
+          <div class="step-card" style="border-color: rgba(59, 130, 246, 0.3)">
+            <div class="step-header">
+              <div class="step-icon bg-blue"><span>📬</span></div>
+              <div>
+                <div class="step-label c-blue">Webhook Intake</div>
+                <div class="step-title">POST /webhooks/email</div>
+              </div>
             </div>
-          </div>
-          <div class="split-card">
-            <div class="split-label c-purple">Scoring Output</div>
-            <div class="split-desc" style="font-size:12px;line-height:1.7">
-              score: 0–100<br>
-              reasoning: text explanation<br>
-              strengths: string[]<br>
-              gaps: string[]
+            <div class="step-desc">
+              Postmark sends the inbound email as JSON. The request passes through two guards before reaching the
+              handler.
+            </div>
+            <div class="step-tags">
+              <span class="tag bg-blue c-blue">ThrottlerGuard — 100 req / 60s</span>
+              <span class="tag bg-blue c-blue">PostmarkAuthGuard — HTTP Basic Auth</span>
+              <span class="tag bg-blue c-blue">Zod payload validation</span>
             </div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- COMPLETE -->
-    <div class="flow-step">
-      <div class="connector-col">
-        <div class="connector-dot dot-green" style="background:var(--accent-green);border-color:var(--accent-green)"></div>
-      </div>
-      <div class="step-card" style="border-color:rgba(16,185,129,0.4);background:rgba(16,185,129,0.04)">
-        <div class="step-header">
-          <div class="step-icon bg-green"><span>✅</span></div>
-          <div>
-            <div class="step-label c-green">Complete</div>
-            <div class="step-title">Candidate Ready — emailIntakeLog.status = "completed"</div>
+        <!-- STEP 2 -->
+        <div class="flow-step">
+          <div class="connector-col">
+            <div
+              class="connector-dot dot-orange"
+              style="background: var(--accent-orange); border-color: var(--accent-orange)"
+            ></div>
+            <div class="connector-line"></div>
           </div>
-        </div>
-        <div class="step-desc">The candidate appears in the recruiter dashboard with a score, summary, and CV link. If no job was detected, they appear in the unassigned queue.</div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- CANDIDATES API TAB -->
-<!-- ═══════════════════════════════════════════════════════════ -->
-<div id="tab-candidates" class="section">
-  <div class="section-header">
-    <h2>Candidates API</h2>
-    <p>HTTP endpoints for reading and managing candidate records, stage transitions, and manual adds.</p>
-  </div>
-
-  <div style="display:flex;flex-direction:column;gap:12px">
-
-    <!-- GET /candidates -->
-    <div class="arch-container">
-      <div class="arch-header" style="justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="background:rgba(16,185,129,0.15);color:var(--accent-green);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.3)">GET</span>
-          <code style="font-size:13px">/candidates</code>
-        </div>
-        <span style="font-size:12px;color:var(--muted)">List with search &amp; filters</span>
-      </div>
-      <div class="arch-content">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-          <div>
-            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--muted);margin-bottom:8px">Query Params</div>
-            <div style="font-size:12px;color:var(--text);line-height:2">
-              <code style="color:var(--accent-cyan)">q</code> — full-text search (name / email / role)<br>
-              <code style="color:var(--accent-cyan)">job_id</code> — filter by job<br>
-              <code style="color:var(--accent-cyan)">filter=duplicates</code> — only unreviewed dups<br>
-              <code style="color:var(--accent-cyan)">unassigned=true</code> — no job yet
+          <div class="step-card" style="border-color: rgba(245, 158, 11, 0.3)">
+            <div class="step-header">
+              <div class="step-icon bg-orange"><span>🔁</span></div>
+              <div>
+                <div class="step-label c-orange">Idempotency Guard</div>
+                <div class="step-title">Check &amp; Insert — emailIntakeLog</div>
+              </div>
             </div>
-          </div>
-          <div>
-            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.6px;color:var(--muted);margin-bottom:8px">Response</div>
-            <div style="font-size:12px;color:var(--text);line-height:2">
-              <code style="color:var(--accent-cyan)">candidates[]</code> — full profiles<br>
-              <code style="color:var(--accent-cyan)">total</code> — count<br>
-              Includes: hiring stage, job title, duplicate flags
+            <div class="step-desc">
+              Prevents duplicate processing if Postmark retries the webhook or a crash left a job mid-flight.
+            </div>
+            <div class="decision-block">
+              <div class="decision-title">Decision Logic</div>
+              <div class="decision-row">
+                <span class="decision-cond">messageId = test GUID</span>
+                <span class="decision-result">→ Return 200 immediately (Postmark ping, ignored)</span>
+              </div>
+              <div class="decision-row">
+                <span class="decision-cond">status = 'pending'</span>
+                <span class="decision-result">→ Re-enqueue (previous attempt crashed) </span>
+              </div>
+              <div class="decision-row">
+                <span class="decision-cond">status = 'completed' / 'spam'</span>
+                <span class="decision-result">→ Return 200, skip (already handled)</span>
+              </div>
+              <div class="decision-row">
+                <span class="decision-cond">not found</span>
+                <span class="decision-result">→ INSERT new row with status='pending', continue</span>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- GET /candidates/:id -->
-    <div class="arch-container">
-      <div class="arch-header" style="justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="background:rgba(16,185,129,0.15);color:var(--accent-green);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.3)">GET</span>
-          <code style="font-size:13px">/candidates/:id</code>
-        </div>
-        <span style="font-size:12px;color:var(--muted)">Full candidate detail</span>
-      </div>
-      <div class="arch-content" style="font-size:12px;color:var(--muted);line-height:1.8">
-        Returns candidate profile + all applications + AI scores per job + stage summaries + duplicate flags
-      </div>
-    </div>
-
-    <!-- POST /candidates -->
-    <div class="arch-container">
-      <div class="arch-header" style="justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="background:rgba(59,130,246,0.15);color:var(--accent-blue);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(59,130,246,0.3)">POST</span>
-          <code style="font-size:13px">/candidates</code>
-        </div>
-        <span style="font-size:12px;color:var(--muted)">Manual candidate add (multipart/form-data)</span>
-      </div>
-      <div class="arch-content">
-        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)">
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="color:var(--accent-blue)">1.</span> Validate email uniqueness within tenant
+        <!-- STEP 3 -->
+        <div class="flow-step">
+          <div class="connector-col">
+            <div
+              class="connector-dot dot-red"
+              style="background: var(--accent-red); border-color: var(--accent-red)"
+            ></div>
+            <div class="connector-line"></div>
           </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="color:var(--accent-blue)">2.</span> Upload CV file to Cloudflare R2
-          </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="color:var(--accent-blue)">3.</span> Generate AI summary (non-blocking — continues even if AI fails)
-          </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <span style="color:var(--accent-blue)">4.</span> Create Candidate + Application in atomic transaction
+          <div class="step-card" style="border-color: rgba(239, 68, 68, 0.3)">
+            <div class="step-header">
+              <div class="step-icon bg-red"><span>📦</span></div>
+              <div>
+                <div class="step-label c-red">Queue</div>
+                <div class="step-title">Enqueue to BullMQ — "ingest-email"</div>
+              </div>
+            </div>
+            <div class="step-desc">
+              The email payload (metadata only — CV file blobs stripped from the DB row) is pushed to Redis. BullMQ
+              manages retries automatically.
+            </div>
+            <div class="step-tags">
+              <span class="tag bg-red c-red">3 attempts max</span>
+              <span class="tag bg-red c-red">Exponential backoff — 5s base</span>
+              <span class="tag bg-red c-red">Lock renewed every 5s</span>
+              <span class="tag bg-red c-red">API returns 200 immediately</span>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- PATCH /candidates/:id -->
-    <div class="arch-container">
-      <div class="arch-header" style="justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="background:rgba(245,158,11,0.15);color:var(--accent-orange);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.3)">PATCH</span>
-          <code style="font-size:13px">/candidates/:id</code>
+        <!-- DIVIDER -->
+        <div style="display: flex; align-items: center; gap: 12px; margin: 4px 0 4px 0; padding-left: 48px">
+          <div style="flex: 1; height: 1px; background: var(--border)"></div>
+          <span
+            style="
+              font-size: 11px;
+              color: var(--muted);
+              font-weight: 600;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              white-space: nowrap;
+            "
+            >Worker Process picks up job ↓</span
+          >
+          <div style="flex: 1; height: 1px; background: var(--border)"></div>
         </div>
-        <span style="font-size:12px;color:var(--muted)">Update profile &amp; job assignment</span>
-      </div>
-      <div class="arch-content">
-        <div class="decision-block" style="margin:0">
-          <div class="decision-title">Job Assignment Logic</div>
-          <div class="decision-row">
-            <span class="decision-cond">same job_id</span>
-            <span class="decision-result">→ Update profile fields only, no new Application</span>
+
+        <!-- PHASE 0 -->
+        <div class="flow-step">
+          <div class="connector-col">
+            <div
+              class="connector-dot dot-orange"
+              style="background: var(--accent-orange); border-color: var(--accent-orange)"
+            ></div>
+            <div class="connector-line"></div>
           </div>
-          <div class="decision-row">
-            <span class="decision-cond">different job_id</span>
-            <span class="decision-result">→ Create new Application + trigger AI scoring for new job</span>
-          </div>
-          <div class="decision-row">
-            <span class="decision-cond">no job_id currently</span>
-            <span class="decision-result">→ Assign job: create Application + score</span>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- PATCH /candidates/:id/stage -->
-    <div class="arch-container">
-      <div class="arch-header" style="justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="background:rgba(245,158,11,0.15);color:var(--accent-orange);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.3)">PATCH</span>
-          <code style="font-size:13px">/candidates/:id/stage</code>
-        </div>
-        <span style="font-size:12px;color:var(--muted)">Kanban stage move</span>
-      </div>
-      <div class="arch-content" style="font-size:12px;color:var(--muted)">
-        Atomically updates <code>candidate.hiringStageId</code> + <code>application.jobStageId</code> to the new stage.
-      </div>
-    </div>
-
-    <!-- Stage Summary -->
-    <div class="arch-container">
-      <div class="arch-header" style="justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="background:rgba(59,130,246,0.15);color:var(--accent-blue);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(59,130,246,0.3)">POST</span>
-          <code style="font-size:13px">/candidates/:id/stages/:stage_id/summary</code>
-          &nbsp;&amp;&nbsp;
-          <code style="font-size:13px">/advance</code>
-        </div>
-        <span style="font-size:12px;color:var(--muted)">Stage notes &amp; advance</span>
-      </div>
-      <div class="arch-content" style="font-size:12px;color:var(--muted)">
-        <code>/summary</code> — Upsert a text note for this candidate at this stage.<br>
-        <code>/advance</code> — Save the summary AND move the candidate to the next enabled stage in one call.
-      </div>
-    </div>
-
-    <!-- CV URL -->
-    <div class="arch-container">
-      <div class="arch-header" style="justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="background:rgba(16,185,129,0.15);color:var(--accent-green);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.3)">GET</span>
-          <code style="font-size:13px">/candidates/:id/cv-url</code>
-        </div>
-        <span style="font-size:12px;color:var(--muted)">Presigned download URL</span>
-      </div>
-      <div class="arch-content" style="font-size:12px;color:var(--muted)">
-        Calls Cloudflare R2 to generate a time-limited presigned URL (1 hour expiry). The client uses this URL to download the CV directly from R2.
-      </div>
-    </div>
-
-    <!-- Reject & Delete -->
-    <div class="flow-split flow-split-2">
-      <div class="arch-container">
-        <div class="arch-header">
-          <span style="background:rgba(239,68,68,0.15);color:var(--accent-red);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.3)">POST</span>
-          <code style="font-size:13px">/candidates/:id/reject</code>
-        </div>
-        <div class="arch-content" style="font-size:12px;color:var(--muted)">
-          Sets <code>candidate.status = 'rejected'</code> and all linked applications to <code>stage = 'rejected'</code>.
-        </div>
-      </div>
-      <div class="arch-container">
-        <div class="arch-header">
-          <span style="background:rgba(239,68,68,0.15);color:var(--accent-red);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.3)">DELETE</span>
-          <code style="font-size:13px">/candidates/:id</code>
-        </div>
-        <div class="arch-content" style="font-size:12px;color:var(--muted)">
-          Hard delete. Removes duplicate flags, nullifies intake log reference, cascades to applications and scores.
-        </div>
-      </div>
-    </div>
-
-  </div>
-</div>
-
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- JOBS API TAB -->
-<!-- ═══════════════════════════════════════════════════════════ -->
-<div id="tab-jobs" class="section">
-  <div class="section-header">
-    <h2>Jobs API</h2>
-    <p>Manage job listings including their hiring pipeline stages and screening questions.</p>
-  </div>
-
-  <div style="display:flex;flex-direction:column;gap:12px">
-
-    <div class="arch-container">
-      <div class="arch-header" style="justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span style="background:rgba(59,130,246,0.15);color:var(--accent-blue);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(59,130,246,0.3)">POST</span>
-          <code style="font-size:13px">/jobs</code>
-        </div>
-        <span style="font-size:12px;color:var(--muted)">Create job — atomic with stages &amp; questions</span>
-      </div>
-      <div class="arch-content">
-        <div style="display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)">
-          <div style="display:flex;align-items:flex-start;gap:8px">
-            <span style="color:var(--accent-blue);flex-shrink:0">1.</span>
-            <span>Auto-generate <code>shortId</code>: advisory lock on tenant → query MAX(short_id) → increment (starts at 100)</span>
-          </div>
-          <div style="display:flex;align-items:flex-start;gap:8px">
-            <span style="color:var(--accent-blue);flex-shrink:0">2.</span>
-            <span>Default hiring stages created if none provided: <em>Application Review → Screening → Interview → Offer → Hired / Rejected</em></span>
-          </div>
-          <div style="display:flex;align-items:flex-start;gap:8px">
-            <span style="color:var(--accent-blue);flex-shrink:0">3.</span>
-            <span>Screening questions created (if provided)</span>
-          </div>
-          <div style="display:flex;align-items:flex-start;gap:8px">
-            <span style="color:var(--accent-blue);flex-shrink:0">4.</span>
-            <span>All created atomically in a single transaction</span>
+          <div class="step-card" style="border-color: rgba(245, 158, 11, 0.3)">
+            <div class="step-header">
+              <div class="step-icon bg-orange"><span>🚫</span></div>
+              <div>
+                <div class="step-label c-orange">Phase 0</div>
+                <div class="step-title">Spam Filter</div>
+              </div>
+            </div>
+            <div class="step-desc">
+              Fast heuristic check before any expensive processing. Keyword-based rules on subject and body.
+            </div>
+            <div class="decision-block">
+              <div class="decision-title">Spam Rules</div>
+              <div class="decision-row">
+                <span class="decision-cond">no attachment + body &lt; 100 chars</span>
+                <span class="decision-result">→ Mark spam, stop pipeline</span>
+              </div>
+              <div class="decision-row">
+                <span class="decision-cond">spam keyword + no attachment</span>
+                <span class="decision-result">→ Mark spam, stop pipeline</span>
+              </div>
+              <div class="decision-row">
+                <span class="decision-cond">spam keyword + has attachment</span>
+                <span class="decision-result">→ Flag as suspicious, continue (AI warned)</span>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <div class="flow-split flow-split-2">
-      <div class="arch-container">
-        <div class="arch-header">
-          <span style="background:rgba(16,185,129,0.15);color:var(--accent-green);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.3)">GET</span>
-          <code style="font-size:13px">/jobs</code>
+        <!-- PHASE 1+2 -->
+        <div class="flow-step">
+          <div class="connector-col">
+            <div
+              class="connector-dot dot-cyan"
+              style="background: var(--accent-cyan); border-color: var(--accent-cyan)"
+            ></div>
+            <div class="connector-line"></div>
+          </div>
+          <div class="step-card" style="border-color: rgba(6, 182, 212, 0.3)">
+            <div class="step-header">
+              <div class="step-icon bg-cyan"><span>📄</span></div>
+              <div>
+                <div class="step-label c-cyan">Phase 1–2</div>
+                <div class="step-title">Text Extraction — PDF &amp; DOCX</div>
+              </div>
+            </div>
+            <div class="step-desc">
+              Attachment files (base64 in Postmark payload) are decoded and parsed into plain text. Combined with the
+              email body to form the full CV context.
+            </div>
+            <div class="flow-split flow-split-2" style="margin-top: 10px">
+              <div class="split-card">
+                <div class="split-label c-cyan">PDF files</div>
+                <div class="split-title" style="font-size: 12px">pdf-parse library</div>
+                <div class="split-desc">Extracts text layer from PDF</div>
+              </div>
+              <div class="split-card">
+                <div class="split-label c-cyan">DOCX files</div>
+                <div class="split-title" style="font-size: 12px">mammoth → HTML → plain text</div>
+                <div class="split-desc">Converts Word format to stripped text</div>
+              </div>
+            </div>
+            <div class="step-tags" style="margin-top: 10px">
+              <span class="tag bg-cyan c-cyan">Email body prepended</span>
+              <span class="tag bg-cyan c-cyan">Each file demarcated with header</span>
+            </div>
+          </div>
         </div>
-        <div class="arch-content" style="font-size:12px;color:var(--muted)">
-          List all jobs with optional <code>status</code> filter (open / closed). Returns job metadata and candidate count.
-        </div>
-      </div>
-      <div class="arch-container">
-        <div class="arch-header">
-          <span style="background:rgba(16,185,129,0.15);color:var(--accent-green);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(16,185,129,0.3)">GET</span>
-          <code style="font-size:13px">/jobs/:id</code>
-        </div>
-        <div class="arch-content" style="font-size:12px;color:var(--muted)">
-          Full job detail including <code>hiringStages[]</code>, <code>screeningQuestions[]</code>, and candidate count.
-        </div>
-      </div>
-    </div>
 
-    <div class="flow-split flow-split-2">
-      <div class="arch-container">
-        <div class="arch-header">
-          <span style="background:rgba(245,158,11,0.15);color:var(--accent-orange);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(245,158,11,0.3)">PUT</span>
-          <code style="font-size:13px">/jobs/:id</code>
+        <!-- PHASE 5 -->
+        <div class="flow-step">
+          <div class="connector-col">
+            <div
+              class="connector-dot dot-cyan"
+              style="background: var(--accent-cyan); border-color: var(--accent-cyan)"
+            ></div>
+            <div class="connector-line"></div>
+          </div>
+          <div class="step-card" style="border-color: rgba(6, 182, 212, 0.3)">
+            <div class="step-header">
+              <div class="step-icon bg-cyan"><span>☁️</span></div>
+              <div>
+                <div class="step-label c-cyan">Phase 5</div>
+                <div class="step-title">Upload CV to Cloudflare R2</div>
+              </div>
+            </div>
+            <div class="step-desc">
+              The largest PDF or DOCX attachment is uploaded to R2 <strong>before AI processing</strong>. This ordering
+              is intentional — if AI extraction fails, the raw CV file is already persisted and can be recovered. The
+              returned R2 key is stored on the candidate in Phase 7.
+            </div>
+            <div class="step-tags">
+              <span class="tag bg-cyan c-cyan">Key: cvs/{tenantId}/{messageId}.pdf</span>
+              <span class="tag bg-cyan c-cyan">Explicit ContentType set</span>
+              <span class="tag bg-orange c-orange">Failure → BullMQ retries entire job</span>
+            </div>
+          </div>
         </div>
-        <div class="arch-content" style="font-size:12px;color:var(--muted)">
-          Full replace of job fields, hiring stages, and screening questions.
-        </div>
-      </div>
-      <div class="arch-container">
-        <div class="arch-header">
-          <span style="background:rgba(239,68,68,0.15);color:var(--accent-red);font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px;border:1px solid rgba(239,68,68,0.3)">DELETE</span>
-          <code style="font-size:13px">/jobs/:id</code>
-        </div>
-        <div class="arch-content" style="font-size:12px;color:var(--muted)">
-          Soft delete — sets <code>status = 'closed'</code>. Candidates and applications are preserved.
-        </div>
-      </div>
-    </div>
 
-    <!-- ShortID explanation -->
-    <div class="arch-container">
-      <div class="arch-header">
-        <span style="font-size:16px">🔑</span> How Job ShortIDs Work
-      </div>
-      <div class="arch-content">
-        <div style="font-size:13px;color:var(--muted);line-height:1.8">
-          Each job gets a numeric shortId (e.g. <code style="color:var(--accent-cyan)">103</code>) scoped to the tenant. When a candidate emails their CV, the system scans the email text for these shortIds using word-boundary regex. A match links the candidate to that specific job and triggers AI scoring for it.
-          <br><br>
-          <strong style="color:var(--text)">Example:</strong> Email subject "Application for role 103" → candidate is scored against Job #103.
+        <!-- PHASE 4 -->
+        <div class="flow-step">
+          <div class="connector-col">
+            <div
+              class="connector-dot dot-purple"
+              style="background: var(--accent-purple); border-color: var(--accent-purple)"
+            ></div>
+            <div class="connector-line"></div>
+          </div>
+          <div class="step-card" style="border-color: rgba(139, 92, 246, 0.3)">
+            <div class="step-header">
+              <div class="step-icon bg-purple"><span>🤖</span></div>
+              <div>
+                <div class="step-label c-purple">Phase 4</div>
+                <div class="step-title">AI Data Extraction — GPT-4o-mini</div>
+              </div>
+            </div>
+            <div class="step-desc">
+              The full CV text is sent to OpenRouter. The model returns a structured JSON with the candidate's details.
+            </div>
+            <div class="flow-split flow-split-2" style="margin-top: 10px">
+              <div class="split-card">
+                <div class="split-label c-purple">Extracted Fields</div>
+                <div class="split-desc" style="font-size: 12px; line-height: 1.7">
+                  full_name · email · phone<br />
+                  current_role · years_experience<br />
+                  location · skills[] · ai_summary<br />
+                  source_hint · source_agency
+                </div>
+              </div>
+              <div class="split-card">
+                <div class="split-label c-orange">Fallback Strategy</div>
+                <div class="split-desc" style="font-size: 12px; line-height: 1.7">
+                  Attempt 1–2: AI fails → BullMQ retry<br />
+                  Attempt 3 (final): try deterministic parser<br />
+                  (first line = name, regex email/phone)<br />
+                  Still fails → mark <code style="font-size: 11px">failed</code>, stop
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
 
-  </div>
-</div>
+        <!-- PHASE 6 -->
+        <div class="flow-step">
+          <div class="connector-col">
+            <div
+              class="connector-dot dot-green"
+              style="background: var(--accent-green); border-color: var(--accent-green)"
+            ></div>
+            <div class="connector-line"></div>
+          </div>
+          <div class="step-card" style="border-color: rgba(16, 185, 129, 0.3)">
+            <div class="step-header">
+              <div class="step-icon bg-green"><span>👥</span></div>
+              <div>
+                <div class="step-label c-green">Phase 6</div>
+                <div class="step-title">Dedup Check + Candidate Insert / Upsert</div>
+              </div>
+            </div>
+            <div class="step-desc">
+              Phone number exact match via <code>regexp_replace(phone, '[^0-9]', '', 'g')</code> identifies known
+              candidates. An advisory lock on the phone value serializes concurrent workers.
+            </div>
+            <div class="decision-block">
+              <div class="decision-title">Dedup Algorithm &amp; Action</div>
+              <div class="decision-row">
+                <span class="decision-cond">phone matches exactly (digits-only comparison)</span>
+                <span class="decision-result"
+                  >→ Confidence 1.0 → INSERT new candidate row + CREATE DuplicateFlag linking to existing
+                  (first-submission preserved)</span
+                >
+              </div>
+              <div class="decision-row">
+                <span class="decision-cond">no phone in CV (phone_missing)</span>
+                <span class="decision-result"
+                  >→ INSERT new candidate + CREATE DuplicateFlag (confidence=0, matchFields=['phone_missing']) for HR
+                  review</span
+                >
+              </div>
+              <div class="decision-row">
+                <span class="decision-cond">no match</span>
+                <span class="decision-result">→ INSERT new candidate record</span>
+              </div>
+            </div>
+            <div class="step-tags" style="margin-top: 10px">
+              <span class="tag bg-green c-green">Atomic transaction</span>
+              <span class="tag bg-green c-green">pg_advisory_xact_lock on phone hash</span>
+            </div>
+          </div>
+        </div>
 
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- DATA MODELS TAB -->
-<!-- ═══════════════════════════════════════════════════════════ -->
-<div id="tab-data" class="section">
-  <div class="section-header">
-    <h2>Data Models</h2>
-    <p>Core PostgreSQL tables managed via Prisma. Every table includes <code>tenantId</code> for multi-tenancy.</p>
-  </div>
+        <!-- PHASE 15 -->
+        <div class="flow-step">
+          <div class="connector-col">
+            <div
+              class="connector-dot dot-blue"
+              style="background: var(--accent-blue); border-color: var(--accent-blue)"
+            ></div>
+            <div class="connector-line"></div>
+          </div>
+          <div class="step-card" style="border-color: rgba(59, 130, 246, 0.3)">
+            <div class="step-header">
+              <div class="step-icon bg-blue"><span>🔗</span></div>
+              <div>
+                <div class="step-label c-blue">Phase 7a</div>
+                <div class="step-title">Detect Matching Job(s) from Email Text</div>
+              </div>
+            </div>
+            <div class="step-desc">
+              Scans the email subject and body for job shortIDs (e.g. "103"). All open jobs are fetched and their
+              shortIDs are regex-matched against the email text.
+            </div>
+            <div class="step-tags">
+              <span class="tag bg-blue c-blue">Queries all open jobs first</span>
+              <span class="tag bg-blue c-blue">Word-boundary regex per shortId</span>
+              <span class="tag bg-blue c-blue">Multiple jobs can match one email</span>
+            </div>
+          </div>
+        </div>
 
-  <div class="model-grid">
+        <!-- PHASE 7 -->
+        <div class="flow-step">
+          <div class="connector-col">
+            <div
+              class="connector-dot dot-purple"
+              style="background: var(--accent-purple); border-color: var(--accent-purple)"
+            ></div>
+            <div class="connector-line"></div>
+          </div>
+          <div class="step-card" style="border-color: rgba(139, 92, 246, 0.3)">
+            <div class="step-header">
+              <div class="step-icon bg-purple"><span>📊</span></div>
+              <div>
+                <div class="step-label c-purple">Phase 7b</div>
+                <div class="step-title">Enrich Candidate + Multi-Job AI Scoring</div>
+              </div>
+            </div>
+            <div class="step-desc">
+              Candidate fields (role, skills, CV text, R2 key) are written. Then, for each matched job, an Application
+              is created and GPT-4o-mini scores the fit.
+            </div>
+            <div class="flow-split flow-split-2" style="margin-top: 10px">
+              <div class="split-card">
+                <div class="split-label c-green">DB Writes</div>
+                <div class="split-desc" style="font-size: 12px; line-height: 1.7">
+                  UPDATE candidates (fields + cvFileUrl)<br />
+                  UPSERT application per job<br />
+                  CREATE CandidateJobScore per job<br />
+                  UPDATE candidate.aiScore (max score)
+                </div>
+              </div>
+              <div class="split-card">
+                <div class="split-label c-purple">Scoring Output</div>
+                <div class="split-desc" style="font-size: 12px; line-height: 1.7">
+                  score: 0–100<br />
+                  reasoning: text explanation<br />
+                  strengths: string[]<br />
+                  gaps: string[]
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-    <div class="model-card">
-      <div class="model-header">
-        <div class="model-icon bg-green"><span>👤</span></div>
-        <div>
-          <div class="model-title">Candidate</div>
-          <div class="model-subtitle">Applicant profile</div>
-        </div>
-      </div>
-      <div class="model-fields">
-        <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
-        <div class="field-row"><span class="field-name">tenantId</span><span class="field-type">UUID FK</span></div>
-        <div class="field-row"><span class="field-name">fullName</span><span class="field-type">text</span></div>
-        <div class="field-row"><span class="field-name">email</span><span class="field-type">text?</span></div>
-        <div class="field-row"><span class="field-name">phone</span><span class="field-type">text?</span></div>
-        <div class="field-row"><span class="field-name">currentRole</span><span class="field-type">text?</span></div>
-        <div class="field-row"><span class="field-name">yearsExperience</span><span class="field-type">int?</span></div>
-        <div class="field-row"><span class="field-name">skills</span><span class="field-type">text[]</span></div>
-        <div class="field-row"><span class="field-name">cvText</span><span class="field-type">text?</span></div>
-        <div class="field-row"><span class="field-name">cvFileUrl</span><span class="field-type">text? (R2 key)</span></div>
-        <div class="field-row"><span class="field-name">aiSummary</span><span class="field-type">text?</span></div>
-        <div class="field-row"><span class="field-name">aiScore</span><span class="field-type">int? (max)</span></div>
-        <div class="field-row"><span class="field-name">source</span><span class="field-type">direct|linkedin|agency…</span></div>
-        <div class="field-row"><span class="field-name">status</span><span class="field-type">active|rejected</span></div>
-        <div class="field-row"><span class="field-name">jobId</span><span class="field-type">UUID? FK</span></div>
-        <div class="field-row"><span class="field-name">hiringStageId</span><span class="field-type">UUID? FK</span></div>
-      </div>
-    </div>
-
-    <div class="model-card">
-      <div class="model-header">
-        <div class="model-icon bg-purple"><span>💼</span></div>
-        <div>
-          <div class="model-title">Job</div>
-          <div class="model-subtitle">Position listing</div>
-        </div>
-      </div>
-      <div class="model-fields">
-        <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
-        <div class="field-row"><span class="field-name">tenantId</span><span class="field-type">UUID FK</span></div>
-        <div class="field-row"><span class="field-name">shortId</span><span class="field-type">text (e.g. "103")</span></div>
-        <div class="field-row"><span class="field-name">title</span><span class="field-type">text</span></div>
-        <div class="field-row"><span class="field-name">description</span><span class="field-type">text?</span></div>
-        <div class="field-row"><span class="field-name">requirements</span><span class="field-type">text[]</span></div>
-        <div class="field-row"><span class="field-name">mustHaveSkills</span><span class="field-type">text[]</span></div>
-        <div class="field-row"><span class="field-name">niceToHaveSkills</span><span class="field-type">text[]</span></div>
-        <div class="field-row"><span class="field-name">expYearsMin/Max</span><span class="field-type">int?</span></div>
-        <div class="field-row"><span class="field-name">jobType</span><span class="field-type">text</span></div>
-        <div class="field-row"><span class="field-name">status</span><span class="field-type">open|closed</span></div>
-        <div class="field-row"><span class="field-name">department</span><span class="field-type">text?</span></div>
-        <div class="field-row"><span class="field-name">hiringManager</span><span class="field-type">text?</span></div>
-      </div>
-    </div>
-
-    <div class="model-card">
-      <div class="model-header">
-        <div class="model-icon bg-cyan"><span>📋</span></div>
-        <div>
-          <div class="model-title">Application</div>
-          <div class="model-subtitle">Candidate ↔ Job link</div>
-        </div>
-      </div>
-      <div class="model-fields">
-        <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
-        <div class="field-row"><span class="field-name">tenantId</span><span class="field-type">UUID FK</span></div>
-        <div class="field-row"><span class="field-name">candidateId</span><span class="field-type">UUID FK</span></div>
-        <div class="field-row"><span class="field-name">jobId</span><span class="field-type">UUID FK</span></div>
-        <div class="field-row"><span class="field-name">stage</span><span class="field-type">new|processing|rejected|hired</span></div>
-        <div class="field-row"><span class="field-name">jobStageId</span><span class="field-type">UUID? FK</span></div>
-        <div class="field-row"><span class="field-name">appliedAt</span><span class="field-type">DateTime</span></div>
-        <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">
-          Unique: (tenantId, candidateId, jobId)
-        </div>
-      </div>
-    </div>
-
-    <div class="model-card">
-      <div class="model-header">
-        <div class="model-icon bg-purple"><span>🎯</span></div>
-        <div>
-          <div class="model-title">CandidateJobScore</div>
-          <div class="model-subtitle">AI fit score (append-only)</div>
-        </div>
-      </div>
-      <div class="model-fields">
-        <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
-        <div class="field-row"><span class="field-name">applicationId</span><span class="field-type">UUID FK (cascade)</span></div>
-        <div class="field-row"><span class="field-name">score</span><span class="field-type">int 0–100</span></div>
-        <div class="field-row"><span class="field-name">reasoning</span><span class="field-type">text</span></div>
-        <div class="field-row"><span class="field-name">strengths</span><span class="field-type">text[]</span></div>
-        <div class="field-row"><span class="field-name">gaps</span><span class="field-type">text[]</span></div>
-        <div class="field-row"><span class="field-name">modelUsed</span><span class="field-type">text</span></div>
-        <div class="field-row"><span class="field-name">scoredAt</span><span class="field-type">DateTime</span></div>
-        <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">
-          Never updated — only INSERT
-        </div>
-      </div>
-    </div>
-
-    <div class="model-card">
-      <div class="model-header">
-        <div class="model-icon bg-orange"><span>🔀</span></div>
-        <div>
-          <div class="model-title">DuplicateFlag</div>
-          <div class="model-subtitle">Dedup review queue</div>
-        </div>
-      </div>
-      <div class="model-fields">
-        <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
-        <div class="field-row"><span class="field-name">candidateId</span><span class="field-type">UUID FK</span></div>
-        <div class="field-row"><span class="field-name">matchedCandidateId</span><span class="field-type">UUID FK</span></div>
-        <div class="field-row"><span class="field-name">confidence</span><span class="field-type">Decimal 0–1</span></div>
-        <div class="field-row"><span class="field-name">matchFields</span><span class="field-type">text[] (email|name)</span></div>
-        <div class="field-row"><span class="field-name">reviewed</span><span class="field-type">bool (default false)</span></div>
-        <div class="field-row"><span class="field-name">createdAt</span><span class="field-type">DateTime</span></div>
-      </div>
-    </div>
-
-    <div class="model-card">
-      <div class="model-header">
-        <div class="model-icon bg-blue"><span>📬</span></div>
-        <div>
-          <div class="model-title">EmailIntakeLog</div>
-          <div class="model-subtitle">Webhook idempotency log</div>
-        </div>
-      </div>
-      <div class="model-fields">
-        <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
-        <div class="field-row"><span class="field-name">tenantId</span><span class="field-type">UUID FK</span></div>
-        <div class="field-row"><span class="field-name">messageId</span><span class="field-type">text (Postmark GUID)</span></div>
-        <div class="field-row"><span class="field-name">fromEmail</span><span class="field-type">text</span></div>
-        <div class="field-row"><span class="field-name">subject</span><span class="field-type">text?</span></div>
-        <div class="field-row"><span class="field-name">processingStatus</span><span class="field-type">pending|processing|completed|failed|spam</span></div>
-        <div class="field-row"><span class="field-name">errorMessage</span><span class="field-type">text?</span></div>
-        <div class="field-row"><span class="field-name">candidateId</span><span class="field-type">UUID? FK</span></div>
-        <div class="field-row"><span class="field-name">rawPayload</span><span class="field-type">JSON (no blobs)</span></div>
-        <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">
-          Unique: (tenantId, messageId)
-        </div>
-      </div>
-    </div>
-
-    <div class="model-card">
-      <div class="model-header">
-        <div class="model-icon bg-pink"><span>🏷️</span></div>
-        <div>
-          <div class="model-title">JobStage</div>
-          <div class="model-subtitle">Hiring pipeline stage</div>
-        </div>
-      </div>
-      <div class="model-fields">
-        <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
-        <div class="field-row"><span class="field-name">jobId</span><span class="field-type">UUID FK (cascade)</span></div>
-        <div class="field-row"><span class="field-name">name</span><span class="field-type">text (e.g. "Screening")</span></div>
-        <div class="field-row"><span class="field-name">order</span><span class="field-type">int</span></div>
-        <div class="field-row"><span class="field-name">isEnabled</span><span class="field-type">bool</span></div>
-        <div class="field-row"><span class="field-name">color</span><span class="field-type">text?</span></div>
-        <div class="field-row"><span class="field-name">interviewer</span><span class="field-type">text?</span></div>
-        <div class="field-row"><span class="field-name">isCustom</span><span class="field-type">bool</span></div>
-      </div>
-    </div>
-
-    <div class="model-card">
-      <div class="model-header">
-        <div class="model-icon bg-cyan"><span>📝</span></div>
-        <div>
-          <div class="model-title">CandidateStageSummary</div>
-          <div class="model-subtitle">Per-stage recruiter notes</div>
-        </div>
-      </div>
-      <div class="model-fields">
-        <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
-        <div class="field-row"><span class="field-name">candidateId</span><span class="field-type">UUID FK (cascade)</span></div>
-        <div class="field-row"><span class="field-name">jobStageId</span><span class="field-type">UUID FK (cascade)</span></div>
-        <div class="field-row"><span class="field-name">summary</span><span class="field-type">text</span></div>
-        <div class="field-row"><span class="field-name">createdAt</span><span class="field-type">DateTime</span></div>
-        <div class="field-row"><span class="field-name">updatedAt</span><span class="field-type">DateTime @updatedAt</span></div>
-        <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">
-          Unique: (candidateId, jobStageId)
+        <!-- COMPLETE -->
+        <div class="flow-step">
+          <div class="connector-col">
+            <div
+              class="connector-dot dot-green"
+              style="background: var(--accent-green); border-color: var(--accent-green)"
+            ></div>
+          </div>
+          <div class="step-card" style="border-color: rgba(16, 185, 129, 0.4); background: rgba(16, 185, 129, 0.04)">
+            <div class="step-header">
+              <div class="step-icon bg-green"><span>✅</span></div>
+              <div>
+                <div class="step-label c-green">Complete</div>
+                <div class="step-title">Candidate Ready — emailIntakeLog.status = "completed"</div>
+              </div>
+            </div>
+            <div class="step-desc">
+              The candidate appears in the recruiter dashboard with a score, summary, and CV link. If no job was
+              detected, they appear in the unassigned queue.
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-  </div>
-</div>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- CANDIDATES API TAB -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div id="tab-candidates" class="section">
+      <div class="section-header">
+        <h2>Candidates API</h2>
+        <p>HTTP endpoints for reading and managing candidate records, stage transitions, and manual adds.</p>
+      </div>
 
-<!-- ═══════════════════════════════════════════════════════════ -->
-<!-- PIPELINE FLOWCHART TAB -->
-<!-- ═══════════════════════════════════════════════════════════ -->
-<div id="tab-flowchart" class="section">
-  <div class="section-header">
-    <h2>Pipeline Flowchart</h2>
-    <p>End-to-end email-to-database flow: from Postmark inbound webhook to scored candidate record in PostgreSQL.</p>
-  </div>
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <!-- GET /candidates -->
+        <div class="arch-container">
+          <div class="arch-header" style="justify-content: space-between">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span
+                style="
+                  background: rgba(16, 185, 129, 0.15);
+                  color: var(--accent-green);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(16, 185, 129, 0.3);
+                "
+                >GET</span
+              >
+              <code style="font-size: 13px">/candidates</code>
+            </div>
+            <span style="font-size: 12px; color: var(--muted)">List with search &amp; filters</span>
+          </div>
+          <div class="arch-content">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px">
+              <div>
+                <div
+                  style="
+                    font-size: 11px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.6px;
+                    color: var(--muted);
+                    margin-bottom: 8px;
+                  "
+                >
+                  Query Params
+                </div>
+                <div style="font-size: 12px; color: var(--text); line-height: 2">
+                  <code style="color: var(--accent-cyan)">q</code> — full-text search (name / email / role)<br />
+                  <code style="color: var(--accent-cyan)">job_id</code> — filter by job<br />
+                  <code style="color: var(--accent-cyan)">filter=duplicates</code> — only unreviewed dups<br />
+                  <code style="color: var(--accent-cyan)">unassigned=true</code> — no job yet
+                </div>
+              </div>
+              <div>
+                <div
+                  style="
+                    font-size: 11px;
+                    font-weight: 600;
+                    text-transform: uppercase;
+                    letter-spacing: 0.6px;
+                    color: var(--muted);
+                    margin-bottom: 8px;
+                  "
+                >
+                  Response
+                </div>
+                <div style="font-size: 12px; color: var(--text); line-height: 2">
+                  <code style="color: var(--accent-cyan)">candidates[]</code> — full profiles<br />
+                  <code style="color: var(--accent-cyan)">total</code> — count<br />
+                  Includes: hiring stage, job title, duplicate flags
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
-  <div style="max-width:520px;margin:0 auto;font-family:inherit">
+        <!-- GET /candidates/counts -->
+        <div class="arch-container">
+          <div class="arch-header" style="justify-content: space-between">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span
+                style="
+                  background: rgba(16, 185, 129, 0.15);
+                  color: var(--accent-green);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(16, 185, 129, 0.3);
+                "
+                >GET</span
+              >
+              <code style="font-size: 13px">/candidates/counts</code>
+            </div>
+            <span style="font-size: 12px; color: var(--muted)">Dashboard counts</span>
+          </div>
+          <div class="arch-content" style="font-size: 12px; color: var(--muted)">
+            Returns <code>{ total, duplicates, unassigned }</code> — lightweight aggregate for dashboard alert badges.
+            Declared before <code>/candidates/:id</code> in the router to avoid route shadowing.
+          </div>
+        </div>
 
-    <!-- Step 1: Postmark -->
-    <div style="background:var(--surface);border:2px solid var(--accent-blue);border-radius:10px;padding:14px 20px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-blue);margin-bottom:4px">Trigger</div>
-      <div style="font-weight:600;color:var(--text);font-size:14px">Postmark Inbound Email</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">POST /api/webhooks/email &nbsp;·&nbsp; HTTP Basic Auth</div>
-    </div>
+        <!-- GET /candidates/:id -->
+        <div class="arch-container">
+          <div class="arch-header" style="justify-content: space-between">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span
+                style="
+                  background: rgba(16, 185, 129, 0.15);
+                  color: var(--accent-green);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(16, 185, 129, 0.3);
+                "
+                >GET</span
+              >
+              <code style="font-size: 13px">/candidates/:id</code>
+            </div>
+            <span style="font-size: 12px; color: var(--muted)">Full candidate detail</span>
+          </div>
+          <div class="arch-content" style="font-size: 12px; color: var(--muted); line-height: 1.8">
+            Returns candidate profile + all applications + AI scores per job + stage summaries + duplicate flags
+          </div>
+        </div>
 
-    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
-      <div style="width:2px;height:20px;background:var(--border)"></div>
-      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
-    </div>
+        <!-- POST /candidates -->
+        <div class="arch-container">
+          <div class="arch-header" style="justify-content: space-between">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span
+                style="
+                  background: rgba(59, 130, 246, 0.15);
+                  color: var(--accent-blue);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(59, 130, 246, 0.3);
+                "
+                >POST</span
+              >
+              <code style="font-size: 13px">/candidates</code>
+            </div>
+            <span style="font-size: 12px; color: var(--muted)">Manual candidate add (multipart/form-data)</span>
+          </div>
+          <div class="arch-content">
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted)">
+              <div style="display: flex; align-items: center; gap: 8px">
+                <span style="color: var(--accent-blue)">1.</span> Validate email uniqueness within tenant
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px">
+                <span style="color: var(--accent-blue)">2.</span> Upload CV file to Cloudflare R2
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px">
+                <span style="color: var(--accent-blue)">3.</span> Generate AI summary (non-blocking — continues even if
+                AI fails)
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px">
+                <span style="color: var(--accent-blue)">4.</span> Create Candidate + Application in atomic transaction
+              </div>
+            </div>
+          </div>
+        </div>
 
-    <!-- Decision: Idempotency -->
-    <div style="background:var(--surface2);border:2px solid var(--accent-orange);border-radius:10px;padding:14px 20px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-orange);margin-bottom:4px">Decision</div>
-      <div style="font-weight:600;color:var(--text);font-size:14px">Idempotency Check</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">emailIntakeLog — already seen this messageId?</div>
-      <div style="margin-top:10px;padding:8px 12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;font-size:12px;color:var(--accent-red)">
-        duplicate → return 200 OK (skip silently)
+        <!-- PATCH /candidates/:id -->
+        <div class="arch-container">
+          <div class="arch-header" style="justify-content: space-between">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span
+                style="
+                  background: rgba(245, 158, 11, 0.15);
+                  color: var(--accent-orange);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(245, 158, 11, 0.3);
+                "
+                >PATCH</span
+              >
+              <code style="font-size: 13px">/candidates/:id</code>
+            </div>
+            <span style="font-size: 12px; color: var(--muted)">Update profile &amp; job assignment</span>
+          </div>
+          <div class="arch-content">
+            <div class="decision-block" style="margin: 0">
+              <div class="decision-title">Job Assignment Logic</div>
+              <div class="decision-row">
+                <span class="decision-cond">same job_id</span>
+                <span class="decision-result">→ Update profile fields only, no new Application</span>
+              </div>
+              <div class="decision-row">
+                <span class="decision-cond">different job_id</span>
+                <span class="decision-result">→ Create new Application + trigger AI scoring for new job</span>
+              </div>
+              <div class="decision-row">
+                <span class="decision-cond">no job_id currently</span>
+                <span class="decision-result">→ Assign job: create Application + score</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PATCH /candidates/:id/stage -->
+        <div class="arch-container">
+          <div class="arch-header" style="justify-content: space-between">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span
+                style="
+                  background: rgba(245, 158, 11, 0.15);
+                  color: var(--accent-orange);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(245, 158, 11, 0.3);
+                "
+                >PATCH</span
+              >
+              <code style="font-size: 13px">/candidates/:id/stage</code>
+            </div>
+            <span style="font-size: 12px; color: var(--muted)">Kanban stage move</span>
+          </div>
+          <div class="arch-content" style="font-size: 12px; color: var(--muted)">
+            Atomically updates <code>candidate.hiringStageId</code> + <code>application.jobStageId</code> to the new
+            stage.
+          </div>
+        </div>
+
+        <!-- Stage Summary -->
+        <div class="arch-container">
+          <div class="arch-header" style="justify-content: space-between">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span
+                style="
+                  background: rgba(59, 130, 246, 0.15);
+                  color: var(--accent-blue);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(59, 130, 246, 0.3);
+                "
+                >POST</span
+              >
+              <code style="font-size: 13px">/candidates/:id/stages/:stage_id/summary</code>
+              &nbsp;&amp;&nbsp;
+              <code style="font-size: 13px">/advance</code>
+            </div>
+            <span style="font-size: 12px; color: var(--muted)">Stage notes &amp; advance</span>
+          </div>
+          <div class="arch-content" style="font-size: 12px; color: var(--muted)">
+            <code>/summary</code> — Upsert a text note for this candidate at this stage.<br />
+            <code>/advance</code> — Save the summary AND move the candidate to the next enabled stage in one call.
+          </div>
+        </div>
+
+        <!-- CV URL -->
+        <div class="arch-container">
+          <div class="arch-header" style="justify-content: space-between">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span
+                style="
+                  background: rgba(16, 185, 129, 0.15);
+                  color: var(--accent-green);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(16, 185, 129, 0.3);
+                "
+                >GET</span
+              >
+              <code style="font-size: 13px">/candidates/:id/cv-url</code>
+            </div>
+            <span style="font-size: 12px; color: var(--muted)">Presigned download URL</span>
+          </div>
+          <div class="arch-content" style="font-size: 12px; color: var(--muted)">
+            Calls Cloudflare R2 to generate a time-limited presigned URL (1 hour expiry). The client uses this URL to
+            download the CV directly from R2.
+          </div>
+        </div>
+
+        <!-- Reject & Delete -->
+        <div class="flow-split flow-split-2">
+          <div class="arch-container">
+            <div class="arch-header">
+              <span
+                style="
+                  background: rgba(239, 68, 68, 0.15);
+                  color: var(--accent-red);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(239, 68, 68, 0.3);
+                "
+                >POST</span
+              >
+              <code style="font-size: 13px">/candidates/:id/reject</code>
+            </div>
+            <div class="arch-content" style="font-size: 12px; color: var(--muted)">
+              Sets <code>candidate.status = 'rejected'</code> and all linked applications to
+              <code>stage = 'rejected'</code>.
+            </div>
+          </div>
+          <div class="arch-container">
+            <div class="arch-header">
+              <span
+                style="
+                  background: rgba(239, 68, 68, 0.15);
+                  color: var(--accent-red);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(239, 68, 68, 0.3);
+                "
+                >DELETE</span
+              >
+              <code style="font-size: 13px">/candidates/:id</code>
+            </div>
+            <div class="arch-content" style="font-size: 12px; color: var(--muted)">
+              Hard delete. Removes duplicate flags, nullifies intake log reference, cascades to applications and scores.
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
-      <div style="width:2px;height:20px;background:var(--border)"></div>
-      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
-    </div>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- JOBS API TAB -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div id="tab-jobs" class="section">
+      <div class="section-header">
+        <h2>Jobs API</h2>
+        <p>Manage job listings including their hiring pipeline stages and screening questions.</p>
+      </div>
 
-    <!-- Step 2: Enqueue -->
-    <div style="background:var(--surface);border:2px solid var(--accent-blue);border-radius:10px;padding:14px 20px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-blue);margin-bottom:4px">API</div>
-      <div style="font-weight:600;color:var(--text);font-size:14px">Enqueue to BullMQ Redis</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">Queue: "ingest-email" &nbsp;·&nbsp; return 200 immediately</div>
-    </div>
+      <div style="display: flex; flex-direction: column; gap: 12px">
+        <div class="arch-container">
+          <div class="arch-header" style="justify-content: space-between">
+            <div style="display: flex; align-items: center; gap: 10px">
+              <span
+                style="
+                  background: rgba(59, 130, 246, 0.15);
+                  color: var(--accent-blue);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(59, 130, 246, 0.3);
+                "
+                >POST</span
+              >
+              <code style="font-size: 13px">/jobs</code>
+            </div>
+            <span style="font-size: 12px; color: var(--muted)">Create job — atomic with stages &amp; questions</span>
+          </div>
+          <div class="arch-content">
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted)">
+              <div style="display: flex; align-items: flex-start; gap: 8px">
+                <span style="color: var(--accent-blue); flex-shrink: 0">1.</span>
+                <span
+                  >Auto-generate <code>shortId</code>: advisory lock on tenant → query MAX(short_id) → increment (starts
+                  at 100)</span
+                >
+              </div>
+              <div style="display: flex; align-items: flex-start; gap: 8px">
+                <span style="color: var(--accent-blue); flex-shrink: 0">2.</span>
+                <span
+                  >Default hiring stages created if none provided:
+                  <em
+                    >Application Review → Screening → Interview → Offer → Hired → Rejected → Pending Decision → On
+                    Hold</em
+                  >
+                  (8 stages; Hired, Rejected, Pending Decision, On Hold are disabled by default)</span
+                >
+              </div>
+              <div style="display: flex; align-items: flex-start; gap: 8px">
+                <span style="color: var(--accent-blue); flex-shrink: 0">3.</span>
+                <span>Screening questions created (if provided)</span>
+              </div>
+              <div style="display: flex; align-items: flex-start; gap: 8px">
+                <span style="color: var(--accent-blue); flex-shrink: 0">4.</span>
+                <span>All created atomically in a single transaction</span>
+              </div>
+            </div>
+          </div>
+        </div>
 
-    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
-      <div style="width:2px;height:20px;background:var(--border)"></div>
-      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
-    </div>
+        <div class="flow-split flow-split-2">
+          <div class="arch-container">
+            <div class="arch-header">
+              <span
+                style="
+                  background: rgba(16, 185, 129, 0.15);
+                  color: var(--accent-green);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(16, 185, 129, 0.3);
+                "
+                >GET</span
+              >
+              <code style="font-size: 13px">/jobs</code>
+            </div>
+            <div class="arch-content" style="font-size: 12px; color: var(--muted)">
+              List all jobs with optional <code>status</code> filter (open / closed). Returns job metadata and candidate
+              count.
+            </div>
+          </div>
+          <div class="arch-container">
+            <div class="arch-header">
+              <span
+                style="
+                  background: rgba(16, 185, 129, 0.15);
+                  color: var(--accent-green);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(16, 185, 129, 0.3);
+                "
+                >GET</span
+              >
+              <code style="font-size: 13px">/jobs/:id</code>
+            </div>
+            <div class="arch-content" style="font-size: 12px; color: var(--muted)">
+              Full job detail including <code>hiringStages[]</code>, <code>screeningQuestions[]</code>, and candidate
+              count.
+            </div>
+          </div>
+        </div>
 
-    <!-- Step 3: SpamFilter -->
-    <div style="background:var(--surface);border:2px solid var(--accent-purple);border-radius:10px;padding:14px 20px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-purple);margin-bottom:4px">Worker</div>
-      <div style="font-weight:600;color:var(--text);font-size:14px">SpamFilter</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">Detect spam or missing CV attachment</div>
-      <div style="margin-top:10px;padding:8px 12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;font-size:12px;color:var(--accent-red)">
-        spam / no CV → reject job
+        <div class="flow-split flow-split-2">
+          <div class="arch-container">
+            <div class="arch-header">
+              <span
+                style="
+                  background: rgba(245, 158, 11, 0.15);
+                  color: var(--accent-orange);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(245, 158, 11, 0.3);
+                "
+                >PUT</span
+              >
+              <code style="font-size: 13px">/jobs/:id</code>
+            </div>
+            <div class="arch-content" style="font-size: 12px; color: var(--muted)">
+              Full replace of job fields, hiring stages, and screening questions.
+            </div>
+          </div>
+          <div class="arch-container">
+            <div class="arch-header">
+              <span
+                style="
+                  background: rgba(239, 68, 68, 0.15);
+                  color: var(--accent-red);
+                  font-size: 11px;
+                  font-weight: 700;
+                  padding: 2px 8px;
+                  border-radius: 4px;
+                  border: 1px solid rgba(239, 68, 68, 0.3);
+                "
+                >DELETE</span
+              >
+              <code style="font-size: 13px">/jobs/:id</code>
+            </div>
+            <div class="arch-content" style="font-size: 12px; color: var(--muted)">
+              Soft delete — sets <code>status = 'closed'</code>. Candidates and applications are preserved.
+            </div>
+          </div>
+        </div>
+
+        <!-- ShortID explanation -->
+        <div class="arch-container">
+          <div class="arch-header"><span style="font-size: 16px">🔑</span> How Job ShortIDs Work</div>
+          <div class="arch-content">
+            <div style="font-size: 13px; color: var(--muted); line-height: 1.8">
+              Each job gets a numeric shortId (e.g. <code style="color: var(--accent-cyan)">103</code>) scoped to the
+              tenant. When a candidate emails their CV, the system scans the email text for these shortIds using
+              word-boundary regex. A match links the candidate to that specific job and triggers AI scoring for it.
+              <br /><br />
+              <strong style="color: var(--text)">Example:</strong> Email subject "Application for role 103" → candidate
+              is scored against Job #103.
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
-      <div style="width:2px;height:20px;background:var(--border)"></div>
-      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
-    </div>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- DATA MODELS TAB -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div id="tab-data" class="section">
+      <div class="section-header">
+        <h2>Data Models</h2>
+        <p>Core PostgreSQL tables managed via Prisma. Every table includes <code>tenantId</code> for multi-tenancy.</p>
+      </div>
 
-    <!-- Step 4: AttachmentExtractor -->
-    <div style="background:var(--surface);border:2px solid var(--accent-purple);border-radius:10px;padding:14px 20px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-purple);margin-bottom:4px">Worker</div>
-      <div style="font-weight:600;color:var(--text);font-size:14px">AttachmentExtractor</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">PDF / DOCX → plain text</div>
-    </div>
+      <div class="model-grid">
+        <div class="model-card">
+          <div class="model-header">
+            <div class="model-icon bg-green"><span>👤</span></div>
+            <div>
+              <div class="model-title">Candidate</div>
+              <div class="model-subtitle">Applicant profile</div>
+            </div>
+          </div>
+          <div class="model-fields">
+            <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
+            <div class="field-row"><span class="field-name">tenantId</span><span class="field-type">UUID FK</span></div>
+            <div class="field-row"><span class="field-name">fullName</span><span class="field-type">text</span></div>
+            <div class="field-row"><span class="field-name">email</span><span class="field-type">text?</span></div>
+            <div class="field-row"><span class="field-name">phone</span><span class="field-type">text?</span></div>
+            <div class="field-row">
+              <span class="field-name">currentRole</span><span class="field-type">text?</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">yearsExperience</span><span class="field-type">int?</span>
+            </div>
+            <div class="field-row"><span class="field-name">skills</span><span class="field-type">text[]</span></div>
+            <div class="field-row"><span class="field-name">cvText</span><span class="field-type">text?</span></div>
+            <div class="field-row">
+              <span class="field-name">cvFileUrl</span><span class="field-type">text? (R2 key)</span>
+            </div>
+            <div class="field-row"><span class="field-name">aiSummary</span><span class="field-type">text?</span></div>
+            <div class="field-row">
+              <span class="field-name">aiScore</span><span class="field-type">int? (max)</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">source</span><span class="field-type">direct|linkedin|agency…</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">status</span><span class="field-type">active|rejected</span>
+            </div>
+            <div class="field-row"><span class="field-name">jobId</span><span class="field-type">UUID? FK</span></div>
+            <div class="field-row">
+              <span class="field-name">hiringStageId</span><span class="field-type">UUID? FK</span>
+            </div>
+          </div>
+        </div>
 
-    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
-      <div style="width:2px;height:20px;background:var(--border)"></div>
-      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
-    </div>
+        <div class="model-card">
+          <div class="model-header">
+            <div class="model-icon bg-purple"><span>💼</span></div>
+            <div>
+              <div class="model-title">Job</div>
+              <div class="model-subtitle">Position listing</div>
+            </div>
+          </div>
+          <div class="model-fields">
+            <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
+            <div class="field-row"><span class="field-name">tenantId</span><span class="field-type">UUID FK</span></div>
+            <div class="field-row">
+              <span class="field-name">shortId</span><span class="field-type">text (e.g. "103")</span>
+            </div>
+            <div class="field-row"><span class="field-name">title</span><span class="field-type">text</span></div>
+            <div class="field-row">
+              <span class="field-name">description</span><span class="field-type">text?</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">requirements</span><span class="field-type">text[]</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">mustHaveSkills</span><span class="field-type">text[]</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">niceToHaveSkills</span><span class="field-type">text[]</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">expYearsMin/Max</span><span class="field-type">int?</span>
+            </div>
+            <div class="field-row"><span class="field-name">jobType</span><span class="field-type">text</span></div>
+            <div class="field-row">
+              <span class="field-name">status</span><span class="field-type">open|closed</span>
+            </div>
+            <div class="field-row"><span class="field-name">department</span><span class="field-type">text?</span></div>
+            <div class="field-row">
+              <span class="field-name">hiringManager</span><span class="field-type">text?</span>
+            </div>
+          </div>
+        </div>
 
-    <!-- Step 5: R2 Upload -->
-    <div style="background:var(--surface);border:2px solid var(--accent-cyan);border-radius:10px;padding:14px 20px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-cyan);margin-bottom:4px">Worker</div>
-      <div style="font-weight:600;color:var(--text);font-size:14px">R2 Upload</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">Store original CV file in Cloudflare R2</div>
-    </div>
+        <div class="model-card">
+          <div class="model-header">
+            <div class="model-icon bg-cyan"><span>📋</span></div>
+            <div>
+              <div class="model-title">Application</div>
+              <div class="model-subtitle">Candidate ↔ Job link</div>
+            </div>
+          </div>
+          <div class="model-fields">
+            <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
+            <div class="field-row"><span class="field-name">tenantId</span><span class="field-type">UUID FK</span></div>
+            <div class="field-row">
+              <span class="field-name">candidateId</span><span class="field-type">UUID FK</span>
+            </div>
+            <div class="field-row"><span class="field-name">jobId</span><span class="field-type">UUID FK</span></div>
+            <div class="field-row">
+              <span class="field-name">stage</span><span class="field-type">new|processing|rejected|hired</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">jobStageId</span><span class="field-type">UUID? FK</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">appliedAt</span><span class="field-type">DateTime</span>
+            </div>
+            <div
+              style="
+                margin-top: 6px;
+                padding-top: 6px;
+                border-top: 1px solid var(--border);
+                font-size: 11px;
+                color: var(--muted);
+              "
+            >
+              Unique: (tenantId, candidateId, jobId)
+            </div>
+          </div>
+        </div>
 
-    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
-      <div style="width:2px;height:20px;background:var(--border)"></div>
-      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
-    </div>
+        <div class="model-card">
+          <div class="model-header">
+            <div class="model-icon bg-purple"><span>🎯</span></div>
+            <div>
+              <div class="model-title">CandidateJobScore</div>
+              <div class="model-subtitle">AI fit score (append-only)</div>
+            </div>
+          </div>
+          <div class="model-fields">
+            <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
+            <div class="field-row">
+              <span class="field-name">applicationId</span><span class="field-type">UUID FK (cascade)</span>
+            </div>
+            <div class="field-row"><span class="field-name">score</span><span class="field-type">int 0–100</span></div>
+            <div class="field-row"><span class="field-name">reasoning</span><span class="field-type">text</span></div>
+            <div class="field-row"><span class="field-name">strengths</span><span class="field-type">text[]</span></div>
+            <div class="field-row"><span class="field-name">gaps</span><span class="field-type">text[]</span></div>
+            <div class="field-row"><span class="field-name">modelUsed</span><span class="field-type">text</span></div>
+            <div class="field-row">
+              <span class="field-name">scoredAt</span><span class="field-type">DateTime</span>
+            </div>
+            <div
+              style="
+                margin-top: 6px;
+                padding-top: 6px;
+                border-top: 1px solid var(--border);
+                font-size: 11px;
+                color: var(--muted);
+              "
+            >
+              Never updated — only INSERT
+            </div>
+          </div>
+        </div>
 
-    <!-- Step 6: ExtractionAgent -->
-    <div style="background:var(--surface);border:2px solid var(--accent-green);border-radius:10px;padding:14px 20px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-green);margin-bottom:4px">Worker · AI</div>
-      <div style="font-weight:600;color:var(--text);font-size:14px">ExtractionAgent</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">gpt-4o-mini via OpenRouter &nbsp;·&nbsp; plain text → CandidateExtract JSON</div>
-    </div>
+        <div class="model-card">
+          <div class="model-header">
+            <div class="model-icon bg-orange"><span>🔀</span></div>
+            <div>
+              <div class="model-title">DuplicateFlag</div>
+              <div class="model-subtitle">Dedup review queue</div>
+            </div>
+          </div>
+          <div class="model-fields">
+            <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
+            <div class="field-row">
+              <span class="field-name">candidateId</span><span class="field-type">UUID FK</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">matchedCandidateId</span><span class="field-type">UUID FK</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">confidence</span><span class="field-type">Decimal 0–1</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">matchFields</span><span class="field-type">text[] (phone|phone_missing)</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">reviewed</span><span class="field-type">bool (default false)</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">createdAt</span><span class="field-type">DateTime</span>
+            </div>
+          </div>
+        </div>
 
-    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
-      <div style="width:2px;height:20px;background:var(--border)"></div>
-      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
-    </div>
+        <div class="model-card">
+          <div class="model-header">
+            <div class="model-icon bg-blue"><span>📬</span></div>
+            <div>
+              <div class="model-title">EmailIntakeLog</div>
+              <div class="model-subtitle">Webhook idempotency log</div>
+            </div>
+          </div>
+          <div class="model-fields">
+            <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
+            <div class="field-row"><span class="field-name">tenantId</span><span class="field-type">UUID FK</span></div>
+            <div class="field-row">
+              <span class="field-name">messageId</span><span class="field-type">text (Postmark GUID)</span>
+            </div>
+            <div class="field-row"><span class="field-name">fromEmail</span><span class="field-type">text</span></div>
+            <div class="field-row"><span class="field-name">subject</span><span class="field-type">text?</span></div>
+            <div class="field-row">
+              <span class="field-name">processingStatus</span
+              ><span class="field-type">pending|processing|completed|failed|spam</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">errorMessage</span><span class="field-type">text?</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">candidateId</span><span class="field-type">UUID? FK</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">rawPayload</span><span class="field-type">JSON (no blobs)</span>
+            </div>
+            <div
+              style="
+                margin-top: 6px;
+                padding-top: 6px;
+                border-top: 1px solid var(--border);
+                font-size: 11px;
+                color: var(--muted);
+              "
+            >
+              Unique: (tenantId, messageId)
+            </div>
+          </div>
+        </div>
 
-    <!-- Decision: DedupService -->
-    <div style="background:var(--surface2);border:2px solid var(--accent-orange);border-radius:10px;padding:14px 20px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-orange);margin-bottom:4px">Decision</div>
-      <div style="font-weight:600;color:var(--text);font-size:14px">DedupService</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">pg_trgm phone-exact match — is this a known candidate?</div>
-      <div style="margin-top:10px;padding:8px 12px;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:6px;font-size:12px;color:var(--accent-red)">
-        duplicate → flag for HR review, skip insert
+        <div class="model-card">
+          <div class="model-header">
+            <div class="model-icon bg-pink"><span>🏷️</span></div>
+            <div>
+              <div class="model-title">JobStage</div>
+              <div class="model-subtitle">Hiring pipeline stage</div>
+            </div>
+          </div>
+          <div class="model-fields">
+            <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
+            <div class="field-row">
+              <span class="field-name">jobId</span><span class="field-type">UUID FK (cascade)</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">name</span><span class="field-type">text (e.g. "Screening")</span>
+            </div>
+            <div class="field-row"><span class="field-name">order</span><span class="field-type">int</span></div>
+            <div class="field-row"><span class="field-name">isEnabled</span><span class="field-type">bool</span></div>
+            <div class="field-row"><span class="field-name">color</span><span class="field-type">text?</span></div>
+            <div class="field-row">
+              <span class="field-name">interviewer</span><span class="field-type">text?</span>
+            </div>
+            <div class="field-row"><span class="field-name">isCustom</span><span class="field-type">bool</span></div>
+          </div>
+        </div>
+
+        <div class="model-card">
+          <div class="model-header">
+            <div class="model-icon bg-cyan"><span>📝</span></div>
+            <div>
+              <div class="model-title">CandidateStageSummary</div>
+              <div class="model-subtitle">Per-stage recruiter notes</div>
+            </div>
+          </div>
+          <div class="model-fields">
+            <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
+            <div class="field-row">
+              <span class="field-name">candidateId</span><span class="field-type">UUID FK (cascade)</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">jobStageId</span><span class="field-type">UUID FK (cascade)</span>
+            </div>
+            <div class="field-row"><span class="field-name">summary</span><span class="field-type">text</span></div>
+            <div class="field-row">
+              <span class="field-name">createdAt</span><span class="field-type">DateTime</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">updatedAt</span><span class="field-type">DateTime @updatedAt</span>
+            </div>
+            <div
+              style="
+                margin-top: 6px;
+                padding-top: 6px;
+                border-top: 1px solid var(--border);
+                font-size: 11px;
+                color: var(--muted);
+              "
+            >
+              Unique: (candidateId, jobStageId)
+            </div>
+          </div>
+        </div>
+
+        <div class="model-card">
+          <div class="model-header">
+            <div class="model-icon bg-orange"><span>❓</span></div>
+            <div>
+              <div class="model-title">ScreeningQuestion</div>
+              <div class="model-subtitle">Per-job screening form</div>
+            </div>
+          </div>
+          <div class="model-fields">
+            <div class="field-row"><span class="field-name">id</span><span class="field-type">UUID PK</span></div>
+            <div class="field-row"><span class="field-name">tenantId</span><span class="field-type">UUID FK</span></div>
+            <div class="field-row">
+              <span class="field-name">jobId</span><span class="field-type">UUID FK (cascade)</span>
+            </div>
+            <div class="field-row"><span class="field-name">text</span><span class="field-type">text</span></div>
+            <div class="field-row">
+              <span class="field-name">answerType</span><span class="field-type">text</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">expectedAnswer</span><span class="field-type">text?</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">required</span><span class="field-type">bool (default false)</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">knockout</span><span class="field-type">bool (default false)</span>
+            </div>
+            <div class="field-row">
+              <span class="field-name">order</span><span class="field-type">smallint</span>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
-    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
-      <div style="width:2px;height:20px;background:var(--border)"></div>
-      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- PIPELINE FLOWCHART TAB -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <div id="tab-flowchart" class="section">
+      <div class="section-header">
+        <h2>Pipeline Flowchart</h2>
+        <p>
+          End-to-end email-to-database flow: from Postmark inbound webhook to scored candidate record in PostgreSQL.
+        </p>
+      </div>
+
+      <div style="max-width: 520px; margin: 0 auto; font-family: inherit">
+        <!-- Step 1: Postmark -->
+        <div
+          style="
+            background: var(--surface);
+            border: 2px solid var(--accent-blue);
+            border-radius: 10px;
+            padding: 14px 20px;
+            text-align: center;
+          "
+        >
+          <div
+            style="
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: var(--accent-blue);
+              margin-bottom: 4px;
+            "
+          >
+            Trigger
+          </div>
+          <div style="font-weight: 600; color: var(--text); font-size: 14px">Postmark Inbound Email</div>
+          <div style="font-size: 12px; color: var(--muted); margin-top: 4px">
+            POST /api/webhooks/email &nbsp;·&nbsp; HTTP Basic Auth
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; margin: 2px 0">
+          <div style="width: 2px; height: 20px; background: var(--border)"></div>
+          <div style="color: var(--muted); font-size: 14px; line-height: 1">▼</div>
+        </div>
+
+        <!-- Decision: Idempotency -->
+        <div
+          style="
+            background: var(--surface2);
+            border: 2px solid var(--accent-orange);
+            border-radius: 10px;
+            padding: 14px 20px;
+            text-align: center;
+          "
+        >
+          <div
+            style="
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: var(--accent-orange);
+              margin-bottom: 4px;
+            "
+          >
+            Decision
+          </div>
+          <div style="font-weight: 600; color: var(--text); font-size: 14px">Idempotency Check</div>
+          <div style="font-size: 12px; color: var(--muted); margin-top: 4px">
+            emailIntakeLog — already seen this messageId?
+          </div>
+          <div
+            style="
+              margin-top: 10px;
+              padding: 8px 12px;
+              background: rgba(239, 68, 68, 0.1);
+              border: 1px solid rgba(239, 68, 68, 0.3);
+              border-radius: 6px;
+              font-size: 12px;
+              color: var(--accent-red);
+            "
+          >
+            duplicate → return 200 OK (skip silently)
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; margin: 2px 0">
+          <div style="width: 2px; height: 20px; background: var(--border)"></div>
+          <div style="color: var(--muted); font-size: 14px; line-height: 1">▼</div>
+        </div>
+
+        <!-- Step 2: Enqueue -->
+        <div
+          style="
+            background: var(--surface);
+            border: 2px solid var(--accent-blue);
+            border-radius: 10px;
+            padding: 14px 20px;
+            text-align: center;
+          "
+        >
+          <div
+            style="
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: var(--accent-blue);
+              margin-bottom: 4px;
+            "
+          >
+            API
+          </div>
+          <div style="font-weight: 600; color: var(--text); font-size: 14px">Enqueue to BullMQ Redis</div>
+          <div style="font-size: 12px; color: var(--muted); margin-top: 4px">
+            Queue: "ingest-email" &nbsp;·&nbsp; return 200 immediately
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; margin: 2px 0">
+          <div style="width: 2px; height: 20px; background: var(--border)"></div>
+          <div style="color: var(--muted); font-size: 14px; line-height: 1">▼</div>
+        </div>
+
+        <!-- Step 3: SpamFilter -->
+        <div
+          style="
+            background: var(--surface);
+            border: 2px solid var(--accent-purple);
+            border-radius: 10px;
+            padding: 14px 20px;
+            text-align: center;
+          "
+        >
+          <div
+            style="
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: var(--accent-purple);
+              margin-bottom: 4px;
+            "
+          >
+            Worker
+          </div>
+          <div style="font-weight: 600; color: var(--text); font-size: 14px">SpamFilter</div>
+          <div style="font-size: 12px; color: var(--muted); margin-top: 4px">Detect spam or missing CV attachment</div>
+          <div
+            style="
+              margin-top: 10px;
+              padding: 8px 12px;
+              background: rgba(239, 68, 68, 0.1);
+              border: 1px solid rgba(239, 68, 68, 0.3);
+              border-radius: 6px;
+              font-size: 12px;
+              color: var(--accent-red);
+            "
+          >
+            spam / no CV → reject job
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; margin: 2px 0">
+          <div style="width: 2px; height: 20px; background: var(--border)"></div>
+          <div style="color: var(--muted); font-size: 14px; line-height: 1">▼</div>
+        </div>
+
+        <!-- Step 4: AttachmentExtractor -->
+        <div
+          style="
+            background: var(--surface);
+            border: 2px solid var(--accent-purple);
+            border-radius: 10px;
+            padding: 14px 20px;
+            text-align: center;
+          "
+        >
+          <div
+            style="
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: var(--accent-purple);
+              margin-bottom: 4px;
+            "
+          >
+            Worker
+          </div>
+          <div style="font-weight: 600; color: var(--text); font-size: 14px">AttachmentExtractor</div>
+          <div style="font-size: 12px; color: var(--muted); margin-top: 4px">PDF / DOCX → plain text</div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; margin: 2px 0">
+          <div style="width: 2px; height: 20px; background: var(--border)"></div>
+          <div style="color: var(--muted); font-size: 14px; line-height: 1">▼</div>
+        </div>
+
+        <!-- Step 5: R2 Upload -->
+        <div
+          style="
+            background: var(--surface);
+            border: 2px solid var(--accent-cyan);
+            border-radius: 10px;
+            padding: 14px 20px;
+            text-align: center;
+          "
+        >
+          <div
+            style="
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: var(--accent-cyan);
+              margin-bottom: 4px;
+            "
+          >
+            Worker
+          </div>
+          <div style="font-weight: 600; color: var(--text); font-size: 14px">R2 Upload</div>
+          <div style="font-size: 12px; color: var(--muted); margin-top: 4px">
+            Store original CV file in Cloudflare R2
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; margin: 2px 0">
+          <div style="width: 2px; height: 20px; background: var(--border)"></div>
+          <div style="color: var(--muted); font-size: 14px; line-height: 1">▼</div>
+        </div>
+
+        <!-- Step 6: ExtractionAgent -->
+        <div
+          style="
+            background: var(--surface);
+            border: 2px solid var(--accent-green);
+            border-radius: 10px;
+            padding: 14px 20px;
+            text-align: center;
+          "
+        >
+          <div
+            style="
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: var(--accent-green);
+              margin-bottom: 4px;
+            "
+          >
+            Worker · AI
+          </div>
+          <div style="font-weight: 600; color: var(--text); font-size: 14px">ExtractionAgent</div>
+          <div style="font-size: 12px; color: var(--muted); margin-top: 4px">
+            gpt-4o-mini via OpenRouter &nbsp;·&nbsp; plain text → CandidateExtract JSON
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; margin: 2px 0">
+          <div style="width: 2px; height: 20px; background: var(--border)"></div>
+          <div style="color: var(--muted); font-size: 14px; line-height: 1">▼</div>
+        </div>
+
+        <!-- Decision: DedupService -->
+        <div
+          style="
+            background: var(--surface2);
+            border: 2px solid var(--accent-orange);
+            border-radius: 10px;
+            padding: 14px 20px;
+            text-align: center;
+          "
+        >
+          <div
+            style="
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: var(--accent-orange);
+              margin-bottom: 4px;
+            "
+          >
+            Decision
+          </div>
+          <div style="font-weight: 600; color: var(--text); font-size: 14px">DedupService</div>
+          <div style="font-size: 12px; color: var(--muted); margin-top: 4px">
+            Phone exact match (regexp_replace digits-only) — is this a known candidate?
+          </div>
+          <div
+            style="
+              margin-top: 10px;
+              padding: 8px 12px;
+              background: rgba(239, 68, 68, 0.1);
+              border: 1px solid rgba(239, 68, 68, 0.3);
+              border-radius: 6px;
+              font-size: 12px;
+              color: var(--accent-red);
+            "
+          >
+            phone match → INSERT new row + CREATE DuplicateFlag linking both submissions
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; margin: 2px 0">
+          <div style="width: 2px; height: 20px; background: var(--border)"></div>
+          <div style="color: var(--muted); font-size: 14px; line-height: 1">▼</div>
+        </div>
+
+        <!-- Step 7: ScoringAgent -->
+        <div
+          style="
+            background: var(--surface);
+            border: 2px solid var(--accent-green);
+            border-radius: 10px;
+            padding: 14px 20px;
+            text-align: center;
+          "
+        >
+          <div
+            style="
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: var(--accent-green);
+              margin-bottom: 4px;
+            "
+          >
+            Worker · AI
+          </div>
+          <div style="font-weight: 600; color: var(--text); font-size: 14px">ScoringAgent</div>
+          <div style="font-size: 12px; color: var(--muted); margin-top: 4px">
+            gpt-4o-mini via OpenRouter &nbsp;·&nbsp; score candidate against all open jobs
+          </div>
+        </div>
+
+        <div style="display: flex; flex-direction: column; align-items: center; margin: 2px 0">
+          <div style="width: 2px; height: 20px; background: var(--border)"></div>
+          <div style="color: var(--muted); font-size: 14px; line-height: 1">▼</div>
+        </div>
+
+        <!-- Step 8: PostgreSQL -->
+        <div
+          style="
+            background: var(--surface);
+            border: 2px solid var(--accent-blue);
+            border-radius: 10px;
+            padding: 14px 20px;
+            text-align: center;
+          "
+        >
+          <div
+            style="
+              font-size: 11px;
+              font-weight: 700;
+              text-transform: uppercase;
+              letter-spacing: 0.8px;
+              color: var(--accent-blue);
+              margin-bottom: 4px;
+            "
+          >
+            Storage
+          </div>
+          <div style="font-weight: 600; color: var(--text); font-size: 14px">PostgreSQL</div>
+          <div style="font-size: 12px; color: var(--muted); margin-top: 4px">
+            Write to candidates + candidate_job_scores tables
+          </div>
+        </div>
+      </div>
     </div>
 
-    <!-- Step 7: ScoringAgent -->
-    <div style="background:var(--surface);border:2px solid var(--accent-green);border-radius:10px;padding:14px 20px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-green);margin-bottom:4px">Worker · AI</div>
-      <div style="font-weight:600;color:var(--text);font-size:14px">ScoringAgent</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">gpt-4o-mini via OpenRouter &nbsp;·&nbsp; score candidate against all open jobs</div>
-    </div>
-
-    <div style="display:flex;flex-direction:column;align-items:center;margin:2px 0">
-      <div style="width:2px;height:20px;background:var(--border)"></div>
-      <div style="color:var(--muted);font-size:14px;line-height:1">▼</div>
-    </div>
-
-    <!-- Step 8: PostgreSQL -->
-    <div style="background:var(--surface);border:2px solid var(--accent-blue);border-radius:10px;padding:14px 20px;text-align:center">
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;color:var(--accent-blue);margin-bottom:4px">Storage</div>
-      <div style="font-weight:600;color:var(--text);font-size:14px">PostgreSQL</div>
-      <div style="font-size:12px;color:var(--muted);margin-top:4px">Write to candidates + candidate_job_scores tables</div>
-    </div>
-
-  </div>
-</div>
-
-<script>
-function showTab(name) {
-  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
-  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-  document.getElementById('tab-' + name).classList.add('active');
-  event.target.classList.add('active');
-}
-</script>
-</body>
+    <script>
+      function showTab(name) {
+        document.querySelectorAll('.section').forEach((s) => s.classList.remove('active'));
+        document.querySelectorAll('.nav-tab').forEach((t) => t.classList.remove('active'));
+        document.getElementById('tab-' + name).classList.add('active');
+        event.target.classList.add('active');
+      }
+    </script>
+  </body>
 </html>
