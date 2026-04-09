@@ -48,10 +48,8 @@ describe('JwtService', () => {
   });
 
   it('verify() throws UnauthorizedException on expired token', async () => {
-    // Sign with 1ms expiry so it's immediately expired
-    const token = await service.sign(mockPayload, '1ms');
-    // Wait 5ms to ensure expiry
-    await new Promise((r) => setTimeout(r, 5));
+    // Sign with -1s expiry (already expired) — jose does not accept '1ms' format
+    const token = await service.sign(mockPayload, '-1s');
     await expect(service.verify(token)).rejects.toThrow(UnauthorizedException);
   });
 
