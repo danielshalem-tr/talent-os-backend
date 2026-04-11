@@ -53,9 +53,9 @@ export class InvitationService {
    */
   async verifyMagicLink(token: string): Promise<{ userId: string } | null> {
     const redisKey = `ml:${token}`;
-    const userId = await this.redis.get(redisKey);
+    // CR-02: use atomic GETDEL (Redis 6.2+) to prevent TOCTOU race on one-time use
+    const userId = await this.redis.getdel(redisKey);
     if (!userId) return null;
-    await this.redis.del(redisKey); // D-07: one-time use
     return { userId };
   }
 
@@ -101,6 +101,22 @@ export class InvitationService {
     }
 
     const result = await this.prisma.$transaction(async (tx) => {
+      // WR-03: handle existing user (e.g. previously soft-deleted) to avoid P2002 constraint error
+      const existingUser = await tx.user.findFirst({
+        where: { organizationId: invitation.organizationId, email: invitation.email },
+      });
+      if (existingUser) {
+        if (existingUser.isActive) {
+          throw new ConflictException({ code: 'ALREADY_MEMBER', message: 'User is already a member' });
+        }
+        const user = await tx.user.update({
+          where: { id: existingUser.id },
+          data: { isActive: true, role: invitation.role },
+        });
+        await tx.invitation.update({ where: { id: invitation.id }, data: { status: 'accepted' } });
+        return { user, org: invitation.organization };
+      }
+
       const user = await tx.user.create({
         data: {
           email: invitation.email,
