@@ -7,34 +7,36 @@ export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private readonly frontendUrl: string;
   private readonly isDev: boolean;
+  // WR-05: transport instantiated once in constructor and reused across all sends
+  private readonly transport: nodemailer.Transporter | null;
+  private readonly smtpFrom: string;
 
   constructor(private readonly configService: ConfigService) {
     this.frontendUrl = this.configService.get<string>('FRONTEND_URL', 'http://localhost:5173');
     this.isDev = this.configService.get<string>('NODE_ENV') !== 'production';
-  }
+    this.smtpFrom = this.configService.get<string>('SMTP_FROM', 'noreply@talentos.triolla.io');
 
-  private createTransport() {
     const host = this.configService.get<string>('SMTP_HOST');
-    if (!host) return null; // dev fallback
-    return nodemailer.createTransport({
-      host,
-      port: this.configService.get<number>('SMTP_PORT') ?? 587,
-      auth: {
-        user: this.configService.get<string>('SMTP_USER'),
-        pass: this.configService.get<string>('SMTP_PASS'),
-      },
-    });
+    this.transport = host
+      ? nodemailer.createTransport({
+          host,
+          port: this.configService.get<number>('SMTP_PORT') ?? 587,
+          auth: {
+            user: this.configService.get<string>('SMTP_USER'),
+            pass: this.configService.get<string>('SMTP_PASS'),
+          },
+        })
+      : null;
   }
 
   private async sendOrLog(to: string, subject: string, text: string): Promise<void> {
-    const transport = this.createTransport();
-    if (!transport) {
+    if (!this.transport) {
       // D-12: dev fallback — log instead of throw when SMTP_HOST absent
       this.logger.log({ to, subject, text }, '[EmailService DEV] Would send email:');
       return;
     }
-    await transport.sendMail({
-      from: this.configService.get<string>('SMTP_FROM', 'noreply@talentos.triolla.io'),
+    await this.transport.sendMail({
+      from: this.smtpFrom,
       to,
       subject,
       text,
