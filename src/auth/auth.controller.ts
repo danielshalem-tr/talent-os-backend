@@ -78,6 +78,19 @@ export class AuthController {
     if (!orgName || !orgName.trim()) {
       return { error: { code: 'VALIDATION_ERROR', message: 'org_name is required' } };
     }
+
+    // WR-01: validate logo MIME type and size before uploading
+    const ALLOWED_LOGO_MIMES = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+    const MAX_LOGO_BYTES = 2 * 1024 * 1024; // 2 MB
+    if (logo) {
+      if (!ALLOWED_LOGO_MIMES.includes(logo.mimetype)) {
+        return { error: { code: 'INVALID_FILE_TYPE', message: 'Logo must be PNG, JPEG, WebP, or SVG' } };
+      }
+      if (logo.size > MAX_LOGO_BYTES) {
+        return { error: { code: 'FILE_TOO_LARGE', message: 'Logo must be under 2 MB' } };
+      }
+    }
+
     return this.authService.completeOnboarding(req.session as JwtPayload, orgName.trim(), logo);
   }
 
