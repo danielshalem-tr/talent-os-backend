@@ -3,6 +3,7 @@ import { AuthService, MeResponse } from './auth.service';
 import { JwtService, JwtPayload } from './jwt.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ConfigService } from '@nestjs/config';
+import { StorageService } from '../storage/storage.service';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────
 const mockPrisma = {
@@ -27,6 +28,10 @@ const mockJwtService = {
 const mockConfigService = {
   get: jest.fn(),
 } as unknown as ConfigService;
+
+const mockStorageService = {
+  uploadLogoFromBuffer: jest.fn().mockResolvedValue(undefined),
+} as unknown as StorageService;
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────
 const mockOrg = {
@@ -80,7 +85,7 @@ describe('AuthService', () => {
       return undefined;
     });
 
-    service = new AuthService(mockPrisma, mockJwtService, mockConfigService);
+    service = new AuthService(mockPrisma, mockJwtService, mockConfigService, mockStorageService);
   });
 
   // Test 1: New email → create org + user, return MeResponse

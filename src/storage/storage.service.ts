@@ -97,6 +97,18 @@ export class StorageService {
     return key;
   }
 
+  // Upload an org logo from a raw buffer with an explicit R2 key
+  async uploadLogoFromBuffer(buffer: Buffer, mimetype: string, key: string): Promise<void> {
+    const command = new PutObjectCommand({
+      Bucket: this.config.get<string>('R2_BUCKET_NAME')!,
+      Key: key,
+      Body: buffer,
+      ContentType: mimetype,
+    });
+    await this.s3Client.send(command);
+    this.logger.log(`Uploaded logo ${key} to R2 (${buffer.length} bytes)`);
+  }
+
   private selectLargestCvAttachment(attachments: PostmarkAttachmentDto[]): PostmarkAttachmentDto | null {
     // D-01: Only PDF/DOCX; picks the one with the largest ContentLength
     const cvFiles = attachments.filter((att) => (CV_MIME_TYPES as readonly string[]).includes(att.ContentType));

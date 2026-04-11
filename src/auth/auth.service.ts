@@ -2,6 +2,7 @@ import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/co
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService, JwtPayload } from './jwt.service';
+import { StorageService } from '../storage/storage.service';
 import { generateOrgShortId } from './utils/generate-short-id';
 
 export interface MeResponse {
@@ -22,6 +23,7 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly storageService: StorageService,
   ) {}
 
   /**
@@ -158,5 +160,39 @@ export class AuthService {
       auth_provider: user.authProvider,
       has_completed_onboarding: org.onboardingCompletedAt != null,
     };
+  }
+
+  /**
+   * D-14: Complete onboarding — sets org name + onboardingCompletedAt.
+   * Throws 409 Conflict if onboarding already completed (T-19-15: double-submit protection).
+   */
+  async completeOnboarding(
+    session: JwtPayload,
+    orgName: string,
+    logoFile?: Express.Multer.File,
+  ): Promise<{ success: true }> {
+    const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: session.org } });
+    if (org.onboardingCompletedAt != null) {
+      throw new ConflictException({ code: 'ONBOARDING_COMPLETE', message: 'Onboarding already completed' });
+    }
+
+    let logoUrl: string | undefined;
+    if (logoFile) {
+      // Upload logo to R2 — key: logos/{orgId}/{timestamp}.{ext}
+      const ext = logoFile.originalname.split('.').pop() ?? 'png';
+      const key = `logos/${session.org}/${Date.now()}.${ext}`;
+      await this.storageService.uploadLogoFromBuffer(logoFile.buffer, logoFile.mimetype, key);
+      logoUrl = key;
+    }
+
+    await this.prisma.organization.update({
+      where: { id: session.org },
+      data: {
+        name: orgName,
+        onboardingCompletedAt: new Date(),
+        ...(logoUrl !== undefined ? { logoUrl } : {}),
+      },
+    });
+    return { success: true };
   }
 }
