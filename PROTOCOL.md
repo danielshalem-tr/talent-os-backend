@@ -797,6 +797,314 @@ System health check for monitoring.
 
 ---
 
+## 7. Auth API
+
+All auth endpoints share the base URL `http://localhost:3000/api`.
+Session is maintained via an **HTTP-only cookie** (`talent_os_session`) set by the backend.
+_(Note for Backend: You must configure CORS with `Access-Control-Allow-Credentials: true` and specify the exact frontend origin, otherwise the browser will reject the cookie)._
+
+---
+
+### `GET /auth/me`
+
+Return the currently authenticated user's session.
+
+**Response:** `200 OK`
+
+```json
+{
+  "id": "uuid",
+  "name": "Sarah Johnson",
+  "email": "sarah@company.com",
+  "role": "owner",
+  "org_id": "uuid",
+  "org_name": "Triolla",
+  "org_logo_url": "https://cdn.example.com/logos/uuid.png",
+  "auth_provider": "google",
+  "has_completed_onboarding": true
+}
+```
+
+**Errors:**
+
+- `401 Unauthorized` — no active session
+
+---
+
+### `POST /auth/google/verify`
+
+Verify a Google OAuth `access_token` obtained from the SPA (via `useGoogleLogin` implicit flow). Backend must use this token to fetch the user's profile from the Google UserInfo endpoint (`https://www.googleapis.com/oauth2/v3/userinfo`), validate the email, and then create/update the session.
+
+**Request Body:**
+
+```json
+{ "access_token": "<Google Access Token>" }
+```
+
+**Behavior:**
+
+- Backend fetches user info (email, name, picture) using the provided token.
+- On new user (sign-up path): creates Tenant + User with `role = 'owner'`
+- On returning user: updates session
+- If email already exists with a different provider: returns `409 Conflict` with `code: "EMAIL_EXISTS"`
+
+**Response:** `200 OK` — same shape as `GET /auth/me`
+
+**Errors:**
+
+- `400 Bad Request` — missing or malformed `credential`
+- `401 Unauthorized` — Google token verification failed
+- `409 Conflict` — email exists with a different auth provider (`code: "EMAIL_EXISTS"`)
+
+**Notes:**
+
+- The frontend does NOT redirect. It receives the session and the `RequireGuest` route guard handles in-app navigation.
+- The backend sets the `talent_os_session` HttpOnly cookie in the response. All subsequent requests include this cookie automatically because the Axios instance is configured with `withCredentials: true`.
+
+---
+
+### `POST /auth/logout`
+
+Destroy the current session cookie.
+
+**Response:** `200 OK`
+
+```json
+{ "success": true }
+```
+
+---
+
+### `POST /auth/onboarding`
+
+Complete onboarding for a newly signed-up owner. Sets org name and optional logo.
+
+**Content-Type:** `multipart/form-data`
+
+**Form Fields:**
+
+- `org_name` (required): string
+- `logo` (optional): image file — PNG, JPG, or SVG, max 2 MB
+
+**Response:** `200 OK`
+
+```json
+{ "success": true }
+```
+
+**Errors:**
+
+- `400 Bad Request` — `org_name` missing or invalid
+- `401 Unauthorized` — no session
+- `409 Conflict` — onboarding already completed
+
+---
+
+### `GET /auth/invite/:token`
+
+Validate an invitation token and return its details. Called before the user clicks "Join".
+
+**Path Parameters:**
+
+- `token`: The one-time invitation token from the magic link
+
+**Response:** `200 OK`
+
+```json
+{
+  "org_name": "Triolla",
+  "role": "member",
+  "email": "invitee@company.com"
+}
+```
+
+**Errors:**
+
+- `404 Not Found` — token does not exist (`NOT_FOUND`)
+- `409 Conflict` — token already used (`INVITE_USED`)
+- `410 Gone` — token expired (`INVITE_EXPIRED`)
+
+---
+
+### `POST /auth/invite/:token/accept`
+
+Accept an invitation. Creates the user in the DB, marks invitation as accepted, and sets a session cookie.
+
+**Path Parameters:**
+
+- `token`: The one-time invitation token
+
+**Response:** `200 OK` — same shape as `GET /auth/me`
+
+**Errors:**
+
+- `404 Not Found` — token does not exist
+- `409 Conflict` — already used
+- `410 Gone` — expired
+
+---
+
+### `POST /auth/magic-link`
+
+Send a magic link login email to a returning user who joined via invitation.
+
+**Request Body:**
+
+```json
+{ "email": "user@company.com" }
+```
+
+**Response:** `200 OK`
+
+```json
+{ "success": true }
+```
+
+**Notes:**
+
+- Always returns 200 (does not reveal whether email exists, for security)
+- If the email belongs to a Google-auth user, the backend sends an email telling them to use Google login instead
+
+---
+
+### `GET /auth/magic-link/verify`
+
+Verify a magic-link login token (the link emailed to the user for returning logins).
+
+**Query Parameters:**
+
+- `token`: magic link token
+
+**Behavior:** Sets session cookie, redirects to `/`
+
+**Errors:**
+
+- `404 Not Found` — invalid token
+- `410 Gone` — expired token (redirect to `/login?error=link_expired`)
+
+---
+
+### `GET /auth/team/members`
+
+Fetch all active members of the current tenant.
+
+**Response:** `200 OK`
+
+```json
+{
+  "members": [
+    {
+      "id": "uuid",
+      "name": "Sarah Johnson",
+      "email": "sarah@triolla.io",
+      "role": "owner",
+      "joined_at": "2025-01-10T00:00:00.000Z",
+      "auth_provider": "google"
+    }
+  ]
+}
+```
+
+---
+
+### `GET /auth/team/invitations`
+
+Fetch all pending (not yet accepted, not expired) invitations for the current tenant.
+
+**Response:** `200 OK`
+
+```json
+{
+  "invitations": [
+    {
+      "id": "uuid",
+      "email": "jana@example.com",
+      "role": "admin",
+      "expires_at": "2026-04-18T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+### `POST /auth/team/invitations`
+
+Send an invitation email and create an `invitations` record.
+
+**Request Body:**
+
+```json
+{
+  "email": "colleague@company.com",
+  "role": "admin"
+}
+```
+
+**Response:** `201 Created`
+
+```json
+{
+  "id": "uuid",
+  "email": "colleague@company.com",
+  "role": "admin",
+  "expires_at": "2026-04-18T00:00:00.000Z"
+}
+```
+
+**Errors:**
+
+- `409 Conflict` with `code: "ALREADY_MEMBER"` — email is already an active member
+- `409 Conflict` with `code: "PENDING_INVITATION"` — pending invitation already exists for this email
+
+---
+
+### `DELETE /auth/team/invitations/:id`
+
+Cancel a pending invitation.
+
+**Response:** `204 No Content`
+
+**Errors:**
+
+- `404 Not Found` — invitation not found
+
+---
+
+### `PATCH /auth/team/members/:id/role`
+
+Change the role of an active member. Owner role cannot be set via this endpoint.
+
+**Request Body:**
+
+```json
+{ "role": "admin" }
+```
+
+**Response:** `200 OK`
+
+```json
+{ "success": true }
+```
+
+**Errors:**
+
+- `403 Forbidden` — caller is not Owner, or target is Owner
+- `404 Not Found` — member not found
+
+---
+
+### `DELETE /auth/team/members/:id`
+
+Remove an active member from the tenant. Immediately revokes access.
+
+**Response:** `204 No Content`
+
+**Errors:**
+
+- `403 Forbidden` — caller is not Owner, or target is themselves or another Owner
+- `404 Not Found` — member not found
+
 ## Error Response Format
 
 All error responses follow this structure:
