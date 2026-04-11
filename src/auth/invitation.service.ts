@@ -48,14 +48,17 @@ export class InvitationService {
   /**
    * D-07: Verify magic link token.
    * Returns { userId } on success, deletes key (one-time use).
-   * Returns null if key not found (404 case).
-   * NB: Redis TTL expiry makes key disappear → null = expired (410 case handled in controller).
+   * Returns 'not_found' if key is absent (TTL-expired or never existed — Redis gives no distinction).
+   * WR-04: discriminated return type lets the controller emit different UI messages per case.
+   * Note: Redis does not distinguish TTL-expiry from never-existed; both map to 'not_found'.
+   * To distinguish them, store an expiry-shadow key (e.g. ml:exp:{token}) with a longer TTL
+   * and check it here — left as a future improvement.
    */
-  async verifyMagicLink(token: string): Promise<{ userId: string } | null> {
+  async verifyMagicLink(token: string): Promise<{ userId: string } | 'not_found'> {
     const redisKey = `ml:${token}`;
     // CR-02: use atomic GETDEL (Redis 6.2+) to prevent TOCTOU race on one-time use
     const userId = await this.redis.getdel(redisKey);
-    if (!userId) return null;
+    if (!userId) return 'not_found';
     return { userId };
   }
 

@@ -101,8 +101,9 @@ export class AuthController {
       return;
     }
     const result = await this.invitationService.verifyMagicLink(token);
-    if (!result) {
-      // Redis key not found — could be expired (TTL) or never existed
+    // WR-04: discriminated return — 'not_found' covers both TTL-expired and never-existed
+    // (Redis gives no distinction; future improvement: shadow-key for expired vs invalid)
+    if (result === 'not_found') {
       res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Invalid or expired magic link' } });
       return;
     }
