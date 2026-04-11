@@ -36,8 +36,14 @@ export class AuthService {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
     const isProd = this.configService.get<string>('NODE_ENV') === 'production';
 
-    if (!clientId || !isProd) {
+    // CR-01: In production, GOOGLE_CLIENT_ID must be present — never allow unauthenticated stub
+    if (isProd && !clientId) {
+      throw new UnauthorizedException('Google Sign-In is not configured');
+    }
+
+    if (!isProd) {
       // D-20: dev stub — parse access_token as JSON { email, name }
+      // Only active in non-production environments; never active in production
       // Try base64 first, then plain JSON
       try {
         const decoded = Buffer.from(accessToken, 'base64').toString('utf-8');
@@ -97,7 +103,7 @@ export class AuthService {
       const org = await tx.organization.create({
         data: {
           name: orgName,
-          shortId: await generateOrgShortId(orgName, this.prisma),
+          shortId: await generateOrgShortId(orgName, tx as unknown as PrismaService),
         },
       });
       // Step 2: create user with role='owner'
