@@ -18,17 +18,43 @@ See [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md) for complete phase 
 **Focus:** Organization signup, admin user management, role-based access control
 **Milestone Start:** 2026-04-07
 
-## v2.0 Phase Structure
+## v2.0 Phase Structure (Agile)
 
-Core dependency: **Phase 18 must complete first** (database schema + session infrastructure). Phase 19 follows.
+The following phases can be worked in parallel or sequentially. Core dependency: **Phase 18 must complete first** (database schema + JWT infrastructure). Phases 19–21 are independent after that.
 
-### Work Order
+### Recommended Work Order (but flexible)
 
-**Phase 18** (prerequisite) → **Phase 19** (all Auth API endpoints)
+1. **Phase 18** (prerequisite) → **Phase 19** (signup flow) → **Phase 20** (admin users) → **Phase 21** (RBAC)
+2. Or: **Phase 18** → all of 19/20/21 in parallel if team size allows
 
 ## Phase Details
 
-### Phase 18: Database Schema & JWT Infrastructure
+### Phase 1: Foundation
+
+**Goal:** Database schema created, NestJS app bootstrapped, environment validated, Worker process separated from API.
+
+**Depends on:** Nothing (first phase)
+
+**Requirements:** DB-01, DB-02, DB-03, DB-04, DB-05, DB-06, DB-07, DB-08, DB-09, INFR-01, INFR-02, INFR-03, INFR-04, INFR-05, PROC-01
+
+**Success Criteria** (what must be TRUE):
+
+1. PostgreSQL database with 7 tables (tenants, jobs, candidates, applications, candidate_job_scores, duplicate_flags, email_intake_log) created and accessible
+2. Every table has `tenant_id` FK to tenants.id and all required constraints/indexes in place
+3. NestJS API starts with `rawBody: true` for HMAC verification and serves HTTP requests
+4. BullMQ Worker process starts independently with Redis connection and no HTTP layer
+5. Environment variables validated at startup via @nestjs/config + Zod; app fails fast on missing config
+6. Docker Compose runs all 4 services (api, worker, postgres, redis) locally with identical configuration to VPS
+
+**Plans:** 3/3 plans complete
+
+Plans:
+
+- [x] 01-01-PLAN.md — Install dependencies, clean scaffold, bootstrap main.ts + worker.ts + env validation + PrismaService
+- [x] 01-02-PLAN.md — Prisma schema (7 tables), initial migration, pg_trgm indexes, seed data
+- [x] 01-03-PLAN.md — Dockerfile (multi-stage), docker-compose.yml (4 services + health checks), .env.example
+
+#### Phase 18: Database Schema & JWT Infrastructure
 
 **Goal:** Add `organizations` and `users` tables to PostgreSQL schema; implement JWT token generation/validation infrastructure; no API endpoints yet.
 
@@ -50,41 +76,103 @@ Plans:
 
 - [x] 18-01-PLAN.md — Schema design (organizations + users tables), migration, JwtService scaffold, env validation
 
-### Phase 19: Auth API Endpoints
+### Phase 19: Organization Signup Endpoint
 
-**Goal:** Implement all Auth API endpoints from PROTOCOL.md section 7 — session management via HTTP-only cookies, Google OAuth verification, magic link login, invitation flow, and team management (members + invitations). All endpoints must match the contract exactly.
+**Goal:** POST /auth/signup endpoint creates organization + admin user in atomic transaction; returns JWT access/refresh tokens.
 
 **Depends on:** Phase 18
 
-**Requirements:** AUTH-001, AUTH-002, AUTH-003, AUTH-004, AUTH-005, AUTH-006, AUTH-007
+**Requirements:** UM-02, AUTH-02, AUTH-06
 
 **Success Criteria** (what must be TRUE):
 
-1. `GET /auth/me` returns current session user or 401 when no session
-2. `POST /auth/google/verify` accepts Google access_token, fetches user info from Google UserInfo API, creates Tenant+User (owner) on first sign-up, returns session via HTTP-only `talent_os_session` cookie
-3. `POST /auth/logout` clears session cookie; returns `{ success: true }`
-4. `POST /auth/onboarding` (multipart) saves org name + optional logo (R2); returns 409 if already completed
-5. `GET /auth/invite/:token` returns `{ org_name, role, email }` or 404/409/410
-6. `POST /auth/invite/:token/accept` creates user with invited role, marks invitation accepted, sets session cookie
-7. `POST /auth/magic-link` sends magic link email; always returns 200 (no email enumeration)
-8. `GET /auth/magic-link/verify` validates token, sets session cookie, redirects to `/`
-9. `GET /auth/team/members` returns all active members for current tenant
-10. `GET /auth/team/invitations` returns pending invitations for current tenant
-11. `POST /auth/team/invitations` creates invitation + sends email; 409 on duplicate
-12. `DELETE /auth/team/invitations/:id` cancels pending invitation
-13. `PATCH /auth/team/members/:id/role` changes member role (Owner-only; cannot target Owner)
-14. `DELETE /auth/team/members/:id` removes member immediately (Owner-only)
-15. Google OAuth stub: code structured so `GOOGLE_CLIENT_ID` env var enables real verification; works in dev without it
-16. All error responses use standard `{ error: { code, message, details? } }` format
+1. POST /auth/signup accepts `{ orgName, adminEmail, adminPassword }` and validates password (min 8 chars, 1 uppercase, 1 number, 1 digit)
+2. Organization created with auto-generated `shortId` (e.g., "triol-01" from org name)
+3. Admin user created with role='admin', password hashed via bcrypt, is_active=true
+4. Transaction is atomic: either both org+user created or neither
+5. Response: `{ accessToken, refreshToken, user: { id, email, fullName, role, orgId } }`
+6. Duplicate email in different org allowed; duplicate (email, orgId) returns 409 Conflict
+7. No JWT middleware protection on this endpoint (public signup)
 
-**Plans:** 4 plans
+**Plans:** 1/1 plan pending
 
 Plans:
 
-- [ ] 19-01-PLAN.md — Schema migration (onboardingCompletedAt) + SessionGuard + EmailService + Wave 0 test stubs
-- [ ] 19-02-PLAN.md — Core session endpoints: GET /auth/me, POST /auth/google/verify, POST /auth/logout
-- [ ] 19-03-PLAN.md — Onboarding + magic link + invitation acceptance endpoints
-- [ ] 19-04-PLAN.md — Team management: members, invitations, role changes, member removal
+- [ ] 19-01-PLAN.md — AuthController.signup(), AuthService signup logic, bcrypt integration, password validation, atomic transaction, tests
+
+### Phase 20: Admin User Management Endpoints
+
+**Goal:** Admin users can invite/manage team members via `/api/admin/users` endpoints.
+
+**Depends on:** Phase 19
+
+**Requirements:** ADMIN-01, ADMIN-02, ADMIN-03, ADMIN-04, ADMIN-05
+
+**Success Criteria** (what must be TRUE):
+
+1. GET /api/admin/users returns all users for authenticated user's org with id, email, full_name, role, is_active, created_at
+2. POST /api/admin/users creates new user; admin provides email, full_name, role; system generates temporary password
+3. Response includes temporary password (shown once); email invite with link to reset password sent to new user email
+4. PUT /api/admin/users/:id updates full_name, role, is_active (atomic)
+5. DELETE /api/admin/users/:id soft-deletes (is_active=false); no hard delete
+6. GET /api/admin/users/:id returns single user with all fields
+7. All endpoints enforce tenant isolation: user can only manage users in their org
+8. Only admin role can access these endpoints (403 Forbidden for recruiter/viewer)
+
+**Plans:** 1/1 plan pending
+
+Plans:
+
+- [ ] 20-01-PLAN.md — AdminModule, AdminUsersController/Service, CRUD endpoints, invite email logic, temp password generation, tenant isolation, tests
+
+### Phase 21: JWT Auth Middleware & Role-Based Access Control
+
+**Goal:** Add JWT validation middleware to all existing API endpoints; implement role-based permission checks.
+
+**Depends on:** Phase 19 (auth tokens exist)
+
+**Requirements:** AUTH-06, RBAC-01, RBAC-02, RBAC-03, RBAC-04, RBAC-05, API-01, API-02, API-03, API-04
+
+**Success Criteria** (what must be TRUE):
+
+1. JwtAuthGuard middleware validates access token on all `/api/*` endpoints except `/auth/signup` and `/auth/login`
+2. Missing/invalid token returns 401 Unauthorized with standard error format
+3. Valid token extracts user.id and tenant_id (organization_id) and attaches to request context
+4. RoleGuard middleware checks user.role against endpoint requirements; 403 Forbidden if insufficient
+5. All candidate/job/application endpoints enforce tenant isolation: users only see data from their org
+6. Response format includes optional `user` object in /auth/login and /auth/signup; unchanged for existing endpoints
+7. Error responses use standard format: `{ code, message, details? }`
+8. All tests passing; no TypeScript errors
+
+**Plans:** 1/1 plan pending
+
+Plans:
+
+- [ ] 21-01-PLAN.md — JwtAuthGuard + RoleGuard middleware, tenant isolation checks, error handling, update all endpoint tests, integration tests
+
+### Phase 22: Login & Token Refresh Endpoints
+
+**Goal:** POST /auth/login and POST /auth/refresh endpoints; complete authentication flow.
+
+**Depends on:** Phase 21
+
+**Requirements:** AUTH-03, AUTH-04, AUTH-05
+
+**Success Criteria** (what must be TRUE):
+
+1. POST /auth/login accepts email, password; validates credentials; returns accessToken, refreshToken, user object
+2. POST /auth/refresh accepts refreshToken; validates; returns new accessToken (old token invalidated)
+3. POST /auth/logout invalidates all tokens for user (requires valid accessToken)
+4. Refresh token stored in DB with expiry (7d); lookup on /auth/refresh validates existence
+5. Password comparison uses bcrypt.compare(); no plaintext storage
+6. Response format consistent with /auth/signup
+7. All error cases covered: invalid email, wrong password, expired refresh token, etc.
+
+**Plans:** 1/1 plan pending
+
+Plans:
+
+- [ ] 22-01-PLAN.md — Login/refresh/logout logic, token invalidation strategy, tests, password reset prep
 
 ## Phase 2: Webhook Intake & Idempotency (v1.0 - ARCHIVED)
 
@@ -411,12 +499,15 @@ Plans:
 | 16. Backend Support for Manual Routing & UI Parity              | 0/3            | Planned  | TBD        |
 | 17. Production Deployment Readiness                             | 5/5            | Complete | 2026-04-01 |
 
-### v2.0 Phases
+### v2.0 Phases (Agile — No Strict Order)
 
-| Phase                                    | Plans Complete | Status   | Started    |
-| ---------------------------------------- | -------------- | -------- | ---------- |
-| 18. Database Schema & JWT Infrastructure | 1/1            | Complete | 2026-04-09 |
-| 19. Auth API Endpoints                   | 0/0            | Pending  | —          |
+| Phase                                    | Plans Complete | Status  | Started |
+| ---------------------------------------- | -------------- | ------- | ------- |
+| 18. Database Schema & JWT Infrastructure | 1/1 | Complete    | 2026-04-09 |
+| 19. Organization Signup Endpoint         | 0/1            | Pending | —       |
+| 20. Admin User Management Endpoints      | 0/1            | Pending | —       |
+| 21. JWT Auth Middleware & RBAC           | 0/1            | Pending | —       |
+| 22. Login & Token Refresh Endpoints      | 0/1            | Pending | —       |
 
 ---
 

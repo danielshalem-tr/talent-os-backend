@@ -17,6 +17,7 @@ model Organization {
   createdByUserId  String?   @unique @map("created_by_user_id") @db.Uuid
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  onboardingCompletedAt DateTime? @map("onboarding_completed_at") @db.Timestamptz
 
   // Relations — v1.0 relations
   jobs                    Job[]
