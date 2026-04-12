@@ -24,7 +24,7 @@ jest.mock('mammoth', () => ({
 
 describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
@@ -33,6 +33,7 @@ describe('IngestionProcessor', () => {
     const txClient = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
     };
     prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
@@ -215,6 +216,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
     const txClient = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
     };
     prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
@@ -345,6 +347,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     const txClient = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
     };
 
     prisma = {
@@ -496,6 +499,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         update: jest.fn().mockRejectedValueOnce(new Error('DB connection lost')),
       },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
     };
     prisma.$transaction.mockImplementationOnce(async (cb: (tx: typeof txClient) => Promise<void>) => {
       return cb(txClient);
@@ -548,7 +552,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
 describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => {
   let processor: IngestionProcessor;
   let prisma: {
-    emailIntakeLog: { update: jest.Mock };
+    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
     $transaction: jest.Mock;
     candidate: { update: jest.Mock };
     job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
@@ -566,6 +570,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     const txClient = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
     };
 
     prisma = {
@@ -789,6 +794,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       const txClient = {
         emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
         $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
       };
       prisma = {
         emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
@@ -938,6 +944,7 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
     const txClient = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
     };
     const prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
@@ -1019,6 +1026,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
     const txClient = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
     };
     prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },

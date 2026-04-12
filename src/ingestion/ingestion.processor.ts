@@ -201,7 +201,7 @@ export class IngestionProcessor extends WorkerHost {
           // Advisory lock: serialize concurrent workers processing the same phone
           // Lock is automatically released when the transaction commits/rollbacks
           if (extraction!.phone?.trim()) {
-            await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${extraction!.phone}))`;
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${extraction!.phone}))`;
           }
 
           // Dedup check — now INSIDE the transaction, protected by advisory lock
