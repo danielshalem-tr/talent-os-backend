@@ -156,9 +156,14 @@ export class AuthService {
    */
   async getMe(session: JwtPayload): Promise<MeResponse> {
     const [user, org] = await Promise.all([
-      this.prisma.user.findUniqueOrThrow({ where: { id: session.sub } }),
-      this.prisma.organization.findUniqueOrThrow({ where: { id: session.org } }),
+      this.prisma.user.findUnique({ where: { id: session.sub } }),
+      this.prisma.organization.findUnique({ where: { id: session.org } }),
     ]);
+
+    if (!user || !org) {
+      throw new UnauthorizedException('Session user or organization no longer exists');
+    }
+
     return this.buildMeResponse(user, org);
   }
 
@@ -202,7 +207,12 @@ export class AuthService {
     orgName: string,
     logoFile?: Express.Multer.File,
   ): Promise<{ success: true }> {
-    const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: session.org } });
+    const org = await this.prisma.organization.findUnique({ where: { id: session.org } });
+    
+    if (!org) {
+      throw new UnauthorizedException('Session organization no longer exists');
+    }
+
     if (org.onboardingCompletedAt != null) {
       throw new ConflictException({ code: 'ONBOARDING_COMPLETE', message: 'Onboarding already completed' });
     }

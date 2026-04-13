@@ -10,6 +10,7 @@ const mockPrisma = {
   user: {
     findFirst: jest.fn(),
     findUniqueOrThrow: jest.fn(),
+    findUnique: jest.fn(),
     create: jest.fn(),
     update: jest.fn(),
   },
@@ -169,8 +170,8 @@ describe('AuthService', () => {
 
   // Test 4: getMe returns full MeResponse with has_completed_onboarding derived from onboardingCompletedAt
   it('getMe returns MeResponse with has_completed_onboarding=false when onboardingCompletedAt is null', async () => {
-    (mockPrisma.user.findUniqueOrThrow as jest.Mock).mockResolvedValue(mockUser);
-    (mockPrisma.organization.findUniqueOrThrow as jest.Mock).mockResolvedValue(mockOrg);
+    (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
+    (mockPrisma.organization.findUnique as jest.Mock).mockResolvedValue(mockOrg);
 
     const session: JwtPayload = { sub: 'user-uuid', org: 'org-uuid', role: 'owner' };
     const result = await service.getMe(session);
@@ -180,8 +181,8 @@ describe('AuthService', () => {
   });
 
   it('getMe returns has_completed_onboarding=true when onboardingCompletedAt is set', async () => {
-    (mockPrisma.user.findUniqueOrThrow as jest.Mock).mockResolvedValue(mockUser);
-    (mockPrisma.organization.findUniqueOrThrow as jest.Mock).mockResolvedValue({
+    (mockPrisma.user.findUnique as jest.Mock).mockResolvedValue(mockUser);
+    (mockPrisma.organization.findUnique as jest.Mock).mockResolvedValue({
       ...mockOrg,
       onboardingCompletedAt: new Date('2026-01-01'),
     });
