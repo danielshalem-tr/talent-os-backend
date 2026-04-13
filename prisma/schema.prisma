@@ -48,6 +48,7 @@ model User {
   fullName       String?  @map("full_name") @db.Text
   isActive       Boolean  @default(true) @map("is_active")
   providerId     String?  @map("provider_id") @db.Text
+  avatarUrl      String?  @map("avatar_url") @db.Text
   createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt      DateTime @updatedAt @map("updated_at") @db.Timestamptz
 

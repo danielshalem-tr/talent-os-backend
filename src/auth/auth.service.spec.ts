@@ -11,6 +11,7 @@ const mockPrisma = {
     findFirst: jest.fn(),
     findUniqueOrThrow: jest.fn(),
     create: jest.fn(),
+    update: jest.fn(),
   },
   organization: {
     create: jest.fn(),
@@ -54,6 +55,7 @@ const mockUser = {
   organizationId: 'org-uuid',
   authProvider: 'google',
   providerId: 'google-sub-123',
+  avatarUrl: 'https://google.com/photo.jpg',
   isActive: true,
   createdAt: new Date(),
   updatedAt: new Date(),
@@ -69,6 +71,7 @@ const expectedMeResponse: MeResponse = {
   org_logo_url: null,
   auth_provider: 'google',
   has_completed_onboarding: false,
+  avatar_url: 'https://google.com/photo.jpg',
 };
 
 // ─── Tests ─────────────────────────────────────────────────────────────────
@@ -124,6 +127,7 @@ describe('AuthService', () => {
   // Test 2: Existing email + auth_provider='google' → return session (existing user)
   it('googleVerify with existing google email returns session for existing user', async () => {
     (mockPrisma.user.findFirst as jest.Mock).mockResolvedValue(mockUser);
+    (mockPrisma.user.update as jest.Mock).mockResolvedValue(mockUser);
     (mockPrisma.organization.findUniqueOrThrow as jest.Mock).mockResolvedValue(mockOrg);
 
     const accessToken = JSON.stringify({ email: 'test@example.com', name: 'Test User' });
@@ -132,6 +136,12 @@ describe('AuthService', () => {
     expect(result.meResponse).toMatchObject(expectedMeResponse);
     expect(result.sessionToken).toBe('mocked-session-token');
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    expect(mockPrisma.user.update).toHaveBeenCalledWith({
+      where: { id: mockUser.id },
+      data: expect.objectContaining({
+        authProvider: 'google',
+      }),
+    });
     expect(mockJwtService.signRefreshToken).toHaveBeenCalledWith({
       sub: mockUser.id,
       org: mockUser.organizationId,
@@ -139,16 +149,21 @@ describe('AuthService', () => {
     });
   });
 
-  // Test 3: Existing email + auth_provider='magic_link' → ConflictException EMAIL_EXISTS
-  it('googleVerify with existing email + different auth_provider throws ConflictException EMAIL_EXISTS', async () => {
+  it('googleVerify with existing email + magic_link authProvider auto-links to google', async () => {
     const magicLinkUser = { ...mockUser, authProvider: 'magic_link' };
     (mockPrisma.user.findFirst as jest.Mock).mockResolvedValue(magicLinkUser);
+    (mockPrisma.user.update as jest.Mock).mockResolvedValue({ ...mockUser, authProvider: 'google' });
+    (mockPrisma.organization.findUniqueOrThrow as jest.Mock).mockResolvedValue(mockOrg);
 
     const accessToken = JSON.stringify({ email: 'test@example.com', name: 'Test User' });
+    const result = await service.googleVerify(accessToken);
 
-    await expect(service.googleVerify(accessToken)).rejects.toThrow(ConflictException);
-    await expect(service.googleVerify(accessToken)).rejects.toMatchObject({
-      response: { code: 'EMAIL_EXISTS' },
+    expect(result.meResponse).toMatchObject(expectedMeResponse);
+    expect(mockPrisma.user.update).toHaveBeenCalledWith({
+      where: { id: mockUser.id },
+      data: expect.objectContaining({
+        authProvider: 'google',
+      }),
     });
   });
 

@@ -26,14 +26,8 @@ export class InvitationService {
   /** D-05/D-06: Generate a magic link token, store in Redis, send email */
   async generateAndStoreMagicLink(email: string): Promise<void> {
     const user = await this.prisma.user.findFirst({ where: { email, isActive: true } });
-    console.log({ user });
-    if (!user) return; // D-07: never reveal email existence — return silently
 
-    if (user.authProvider === 'google') {
-      // D-11: if Google-auth user tries magic link, send "use Google" email
-      await this.emailService.sendUseGoogleEmail(email);
-      return;
-    }
+    if (!user) return; // D-07: never reveal email existence — return silently
 
     const token = randomBytes(32).toString('hex'); // D-06: cryptographically random
     const redisKey = `ml:${token}`;

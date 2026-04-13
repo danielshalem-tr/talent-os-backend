@@ -18,8 +18,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { SessionGuard } from './session.guard';
 import { AuthService } from './auth.service';
 import { InvitationService } from './invitation.service';
-import { JwtPayload } from './jwt.service';
-import { JwtService } from './jwt.service';
+import { JwtPayload, JwtService } from './jwt.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 const SESSION_COOKIE = 'talent_os_session';
@@ -128,14 +127,19 @@ export class AuthController {
       return;
     }
     const user = await this.prisma.user.findUniqueOrThrow({ where: { id: result.userId } });
-    const sessionToken = await this.jwtService.signRefreshToken({
-      sub: user.id,
-      org: user.organizationId,
-      role: user.role as JwtPayload['role'],
-    });
-    setSessionCookie(res, sessionToken);
 
-    // CHANGED: Instead of redirect, return a simple JSON response so the SPA can handle routing
+    // Run DB update and JWT signing concurrently — JWT only needs fields already fetched
+    const [, sessionToken] = await Promise.all([
+      user.authProvider !== 'magic_link'
+        ? this.prisma.user.update({ where: { id: user.id }, data: { authProvider: 'magic_link' } })
+        : Promise.resolve(null),
+      this.jwtService.signRefreshToken({
+        sub: user.id,
+        org: user.organizationId,
+        role: user.role as JwtPayload['role'],
+      }),
+    ]);
+    setSessionCookie(res, sessionToken);
     return { success: true };
   }
 

@@ -15,6 +15,7 @@ export interface MeResponse {
   org_logo_url: string | null;
   auth_provider: string;
   has_completed_onboarding: boolean;
+  avatar_url: string | null;
 }
 
 @Injectable()
@@ -31,7 +32,9 @@ export class AuthService {
    * If GOOGLE_CLIENT_ID is present, always call the real Google UserInfo API.
    * If GOOGLE_CLIENT_ID is absent, fall back to dev stub (non-prod only).
    */
-  private async fetchGoogleUserInfo(accessToken: string): Promise<{ email: string; name: string; sub?: string }> {
+  private async fetchGoogleUserInfo(
+    accessToken: string,
+  ): Promise<{ email: string; name: string; sub?: string; email_verified?: boolean; picture?: string }> {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
     const isProd = this.configService.get<string>('NODE_ENV') === 'production';
 
@@ -46,17 +49,23 @@ export class AuthService {
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       if (!res.ok) throw new UnauthorizedException('Google token verification failed');
-      return res.json() as Promise<{ email: string; name: string; sub: string }>;
+      return res.json() as Promise<{
+        email: string;
+        name: string;
+        sub: string;
+        email_verified: boolean;
+        picture: string;
+      }>;
     }
 
     // D-20: dev stub — only active when GOOGLE_CLIENT_ID is absent in non-production environments
     // Parse access_token as JSON { email, name } (base64 or plain)
     try {
       const decoded = Buffer.from(accessToken, 'base64').toString('utf-8');
-      return JSON.parse(decoded) as { email: string; name: string };
+      return { ...(JSON.parse(decoded) as { email: string; name: string }), email_verified: true };
     } catch {
       try {
-        return JSON.parse(accessToken) as { email: string; name: string };
+        return { ...(JSON.parse(accessToken) as { email: string; name: string }), email_verified: true };
       } catch {
         throw new UnauthorizedException('Invalid dev stub token (expected JSON { email, name })');
       }
@@ -68,28 +77,42 @@ export class AuthService {
    */
   async googleVerify(accessToken: string): Promise<{ meResponse: MeResponse; sessionToken: string }> {
     const googleUser = await this.fetchGoogleUserInfo(accessToken);
+
+    // SECURITY: reject unverified Google emails to prevent account takeover via auto-link
+    if (googleUser.email_verified === false) {
+      throw new UnauthorizedException('Google account email must be verified to log in');
+    }
+
     const email = googleUser.email;
 
     // D-22: Check if user already exists globally by email
     const existingUser = await this.prisma.user.findFirst({ where: { email } });
 
     if (existingUser) {
-      if (existingUser.authProvider !== 'google') {
-        // T-19-09: reject if email registered with different auth method
-        throw new ConflictException({
-          code: 'EMAIL_EXISTS',
-          message: 'This email is registered with a different login method.',
-        });
-      }
-      const org = await this.prisma.organization.findUniqueOrThrow({
-        where: { id: existingUser.organizationId },
-      });
+      // Auto-link: update provider metadata + refresh avatar from Google profile.
+      // Always update on Google login to keep avatar current (cost: one UPDATE per login).
+      const [updatedUser, org] = await Promise.all([
+        this.prisma.user.update({
+          where: { id: existingUser.id },
+          data: {
+            authProvider: 'google',
+            providerId: googleUser.sub ?? null,
+            // Backfill name from Google profile if user has no name yet
+            ...(existingUser.fullName ? {} : { fullName: googleUser.name ?? null }),
+            // Backfill or update avatar from Google profile
+            ...(googleUser.picture ? { avatarUrl: googleUser.picture } : {}),
+          },
+        }),
+        this.prisma.organization.findUniqueOrThrow({
+          where: { id: existingUser.organizationId },
+        }),
+      ]);
       const sessionToken = await this.jwtService.signRefreshToken({
-        sub: existingUser.id,
-        org: existingUser.organizationId,
-        role: existingUser.role as JwtPayload['role'],
+        sub: updatedUser.id,
+        org: updatedUser.organizationId,
+        role: updatedUser.role as JwtPayload['role'],
       });
-      return { meResponse: this.buildMeResponse(existingUser, org), sessionToken };
+      return { meResponse: this.buildMeResponse(updatedUser, org), sessionToken };
     }
 
     // D-21: new user — create org + user in single DB transaction (D-24 from Phase 18)
@@ -102,6 +125,7 @@ export class AuthService {
           shortId: await generateOrgShortId(orgName, tx as unknown as PrismaService),
         },
       });
+
       // Step 2: create user with role='owner'
       const user = await tx.user.create({
         data: {
@@ -111,6 +135,7 @@ export class AuthService {
           organizationId: org.id,
           role: 'owner',
           providerId: googleUser.sub ?? null,
+          avatarUrl: googleUser.picture ?? null,
         },
       });
       // Step 3: update org with createdByUserId = user.id
@@ -130,8 +155,10 @@ export class AuthService {
    * D-15: Build GET /auth/me response from user + org records.
    */
   async getMe(session: JwtPayload): Promise<MeResponse> {
-    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: session.sub } });
-    const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: session.org } });
+    const [user, org] = await Promise.all([
+      this.prisma.user.findUniqueOrThrow({ where: { id: session.sub } }),
+      this.prisma.organization.findUniqueOrThrow({ where: { id: session.org } }),
+    ]);
     return this.buildMeResponse(user, org);
   }
 
@@ -143,6 +170,7 @@ export class AuthService {
       role: string;
       organizationId: string;
       authProvider: string;
+      avatarUrl?: string | null;
     },
     org: {
       id: string;
@@ -161,6 +189,7 @@ export class AuthService {
       org_logo_url: org.logoUrl ?? null,
       auth_provider: user.authProvider,
       has_completed_onboarding: org.onboardingCompletedAt != null,
+      avatar_url: user.avatarUrl ?? null,
     };
   }
 

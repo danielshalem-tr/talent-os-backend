@@ -59,12 +59,4 @@ export class EmailService {
       `Click this link to log in to Talent OS:\n\n${link}\n\nThis link expires in 1 hour and can only be used once.`,
     );
   }
-
-  async sendUseGoogleEmail(to: string): Promise<void> {
-    await this.sendOrLog(
-      to,
-      'Log in with Google',
-      `Your account uses Google Sign-In. Please click "Continue with Google" on the login page to access Talent OS.`,
-    );
-  }
 }
