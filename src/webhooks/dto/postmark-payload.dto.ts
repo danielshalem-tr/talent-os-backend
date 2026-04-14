@@ -5,6 +5,7 @@ export const PostmarkAttachmentSchema = z.object({
   Content: z.string().optional(), // Base64-encoded binary — will be stripped before DB insert
   ContentType: z.string(),
   ContentLength: z.number(),
+  ContentID: z.string().optional(), // "" for real attachments, populated for inline CID images (e.g. "logo.png@01CE7342.75E71F80")
 });
 
 export const PostmarkPayloadSchema = z.object({

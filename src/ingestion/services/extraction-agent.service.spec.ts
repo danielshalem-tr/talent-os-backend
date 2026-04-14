@@ -320,6 +320,11 @@ describe('CandidateExtractSchema - float coercion', () => {
   it('should reject years_experience > 50', () => {
     expect(() => CandidateExtractSchema.parse({ ...validBase, years_experience: 75 })).toThrow();
   });
+
+  it('should coerce stringified years_experience "6" to integer 6', () => {
+    const result = CandidateExtractSchema.parse({ ...validBase, years_experience: '6' });
+    expect(result.years_experience).toBe(6);
+  });
 });
 
 describe('ExtractionAgentService - context limits', () => {
@@ -413,5 +418,111 @@ describe('extractDeterministically() - name detection', () => {
   it('should accept Arabic multi-part name', () => {
     const result = service.extractDeterministically('عبد الرحمن الحسيني\nمهندس برمجيات');
     expect(result.full_name).toBe('عبد الرحمن الحسيني');
+  });
+});
+
+describe('ExtractionAgentService - known agency domain resolution (Issue 3)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockCallModel.mockReturnValue({ getText: mockGetText });
+  });
+
+  const agencyAiResult = {
+    full_name: 'Avi Levi',
+    email: 'avi@gmail.com',
+    phone: '+972-52-0000000',
+    current_role: 'Software Engineer',
+    years_experience: 4,
+    location: 'Tel Aviv, Israel',
+    skills: ['node.js'],
+    ai_summary: 'Software engineer. Strong Node.js background.',
+    source_hint: 'agency',
+    source_agency: 'Job Hunt', // AI returns non-canonical name
+  };
+
+  // jobhunt.co.il domain → canonical "jobhunt", overrides AI result
+  it('overrides source_agency with canonical "jobhunt" for jobhunt.co.il sender', async () => {
+    mockGetText.mockResolvedValueOnce(JSON.stringify(agencyAiResult));
+    const service = makeService();
+    const result = await service.extract('cv text', false, {
+      subject: 'Presenting candidate',
+      fromEmail: 'talent@jobhunt.co.il',
+    });
+    expect(result.source_agency).toBe('jobhunt');
+    expect(result.source_hint).toBe('agency');
+  });
+
+  // alljob.co.il domain → canonical "allJobs", overrides AI result
+  it('overrides source_agency with canonical "allJobs" for alljob.co.il sender', async () => {
+    mockGetText.mockResolvedValueOnce(JSON.stringify({ ...agencyAiResult, source_agency: 'AllJobs' }));
+    const service = makeService();
+    const result = await service.extract('cv text', false, {
+      subject: 'New candidate',
+      fromEmail: 'alljobs@alljob.co.il',
+    });
+    expect(result.source_agency).toBe('allJobs');
+    expect(result.source_hint).toBe('agency');
+  });
+
+  // Unknown domain: AI result is preserved as-is
+  it('preserves AI source_agency for unknown domain', async () => {
+    mockGetText.mockResolvedValueOnce(JSON.stringify({ ...agencyAiResult, source_agency: 'Recruiters Inc' }));
+    const service = makeService();
+    const result = await service.extract('cv text', false, {
+      subject: 'Candidate for your role',
+      fromEmail: 'hr@someagency.com',
+    });
+    expect(result.source_agency).toBe('Recruiters Inc');
+  });
+
+  // Known domain injects "Resolved Agency Name" line into userMessage
+  it('injects "Resolved Agency Name" into prompt for known domains', async () => {
+    mockGetText.mockResolvedValueOnce(JSON.stringify(agencyAiResult));
+    const service = makeService();
+    await service.extract('cv text', false, {
+      subject: 'Presenting candidate',
+      fromEmail: 'talent@jobhunt.co.il',
+    });
+    expect(mockCallModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.stringContaining('Resolved Agency Name: jobhunt'),
+      }),
+    );
+  });
+
+  // Unknown domain: no "Resolved Agency Name" line in prompt
+  it('does NOT inject "Resolved Agency Name" for unknown domain', async () => {
+    mockGetText.mockResolvedValueOnce(JSON.stringify(agencyAiResult));
+    const service = makeService();
+    await service.extract('cv text', false, {
+      subject: 'Candidate',
+      fromEmail: 'hr@unknownagency.com',
+    });
+    expect(mockCallModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        input: expect.not.stringContaining('Resolved Agency Name'),
+      }),
+    );
+  });
+});
+
+describe('ExtractionAgentService - location prompt instruction (Issue 1)', () => {
+  // Verify the INSTRUCTIONS string explicitly directs the AI to use HOME location signals
+  // and not the employer's country — regression guard so the instruction is never accidentally removed.
+  it('INSTRUCTIONS prompt contains home-location guidance and phone prefix example', () => {
+    // Import the module to access the compiled constant indirectly via the callModel input
+    const service = makeService();
+    // The instructions are passed as `instructions` in callModel — verify via a mocked call
+    mockGetText.mockResolvedValueOnce(JSON.stringify({
+      full_name: 'Test', email: null, phone: null, current_role: null,
+      years_experience: null, location: null, skills: [], ai_summary: null,
+      source_hint: null, source_agency: null,
+    }));
+    return service.extract('cv', false, { subject: 'S', fromEmail: 'a@b.com' }).then(() => {
+      const callArg = mockCallModel.mock.calls[0][0];
+      expect(callArg.instructions).toContain('HOME location');
+      expect(callArg.instructions).toContain('Phone country prefix');
+      expect(callArg.instructions).toContain('employer');
+    });
   });
 });
