@@ -1,5 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { CandidatesService } from './candidates.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -60,7 +59,6 @@ function mockCandidate(overrides: Partial<{
 describe('CandidatesService', () => {
   let service: CandidatesService;
   let prismaMock: { candidate: { findMany: jest.Mock } };
-  let configMock: { get: jest.Mock };
 
   beforeEach(async () => {
     prismaMock = {
@@ -68,15 +66,11 @@ describe('CandidatesService', () => {
         findMany: jest.fn(),
       },
     };
-    configMock = {
-      get: jest.fn().mockReturnValue(TENANT_ID),
-    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CandidatesService,
         { provide: PrismaService, useValue: prismaMock },
-        { provide: ConfigService, useValue: configMock },
         { provide: StorageService, useValue: { uploadFromBuffer: jest.fn() } },
         { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' }) } },
         { provide: CandidateAiService, useValue: { generateSummary: jest.fn().mockResolvedValue('Test summary') } },
@@ -99,7 +93,7 @@ describe('CandidatesService', () => {
       }),
     ]);
 
-    const result = await service.findAll();
+    const result = await service.findAll(TENANT_ID);
 
     expect(prismaMock.candidate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -117,7 +111,7 @@ describe('CandidatesService', () => {
   it('filters by q param using ILIKE on fullName, email, currentRole', async () => {
     prismaMock.candidate.findMany.mockResolvedValue([]);
 
-    await service.findAll('jane');
+    await service.findAll(TENANT_ID, 'jane');
 
     expect(prismaMock.candidate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -135,7 +129,7 @@ describe('CandidatesService', () => {
 
   // Test 3: filter='high-score' is no longer supported → throws BadRequestException
   it('filter=high-score throws INVALID_FILTER error', async () => {
-    await expect(service.findAll(undefined, 'high-score' as any)).rejects.toThrow(
+    await expect(service.findAll(TENANT_ID, undefined, 'high-score' as any)).rejects.toThrow(
       expect.objectContaining({
         getResponse: expect.any(Function),
       }),
@@ -144,7 +138,7 @@ describe('CandidatesService', () => {
 
   // Test 4: filter='available' is no longer supported → throws BadRequestException
   it('filter=available throws INVALID_FILTER error', async () => {
-    await expect(service.findAll(undefined, 'available' as any)).rejects.toThrow(
+    await expect(service.findAll(TENANT_ID, undefined, 'available' as any)).rejects.toThrow(
       expect.objectContaining({
         getResponse: expect.any(Function),
       }),
@@ -153,7 +147,7 @@ describe('CandidatesService', () => {
 
   // Test 5: filter='referred' is no longer supported → throws BadRequestException
   it('filter=referred throws INVALID_FILTER error', async () => {
-    await expect(service.findAll(undefined, 'referred' as any)).rejects.toThrow(
+    await expect(service.findAll(TENANT_ID, undefined, 'referred' as any)).rejects.toThrow(
       expect.objectContaining({
         getResponse: expect.any(Function),
       }),
@@ -164,7 +158,7 @@ describe('CandidatesService', () => {
   it('filter=duplicates adds duplicateFlags.some condition to where clause', async () => {
     prismaMock.candidate.findMany.mockResolvedValue([]);
 
-    await service.findAll(undefined, 'duplicates');
+    await service.findAll(TENANT_ID, undefined, 'duplicates');
 
     expect(prismaMock.candidate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -182,7 +176,7 @@ describe('CandidatesService', () => {
       mockCandidate({ applications: [] }),
     ]);
 
-    const result = await service.findAll();
+    const result = await service.findAll(TENANT_ID);
 
     expect(result.candidates[0].ai_score).toBeNull();
   });
@@ -193,7 +187,7 @@ describe('CandidatesService', () => {
       mockCandidate({ duplicateFlags: [] }), // reviewed=false flags filtered in select — empty means none unreviewed
     ]);
 
-    const result = await service.findAll();
+    const result = await service.findAll(TENANT_ID);
 
     expect(result.candidates[0].is_duplicate).toBe(false);
   });
@@ -236,7 +230,6 @@ describe('CandidatesService.createCandidate()', () => {
     application: { create: jest.Mock };
     $transaction: jest.Mock;
   };
-  let mockConfig: { get: jest.Mock };
 
   beforeEach(async () => {
     mockStorageService = { uploadFromBuffer: jest.fn().mockResolvedValue('cvs/tenant-123/cand-id.pdf') };
@@ -278,13 +271,11 @@ describe('CandidatesService.createCandidate()', () => {
         });
       }),
     };
-    mockConfig = { get: jest.fn().mockReturnValue('tenant-123') };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CandidatesService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: ConfigService, useValue: mockConfig },
         { provide: StorageService, useValue: mockStorageService },
         { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' }) } },
         { provide: CandidateAiService, useValue: { generateSummary: jest.fn().mockResolvedValue('Test summary') } },
@@ -293,7 +284,6 @@ describe('CandidatesService.createCandidate()', () => {
 
     service = module.get<CandidatesService>(CandidatesService);
     jest.clearAllMocks();
-    mockConfig.get.mockReturnValue('tenant-123');
     mockPrisma.job.findFirst.mockResolvedValue({ id: BASE_DTO.job_id });
     mockPrisma.candidate.findFirst.mockResolvedValue(null);
     mockStorageService.uploadFromBuffer.mockResolvedValue('cvs/tenant-123/cand-uuid.pdf');
@@ -332,11 +322,11 @@ describe('CandidatesService.createCandidate()', () => {
 
   it('should accept PDF file and call uploadFromBuffer', async () => {
     const file = makePdfFile();
-    const result = await service.createCandidate(BASE_DTO, file);
+    const result = await service.createCandidate(BASE_DTO, file, TENANT_ID);
     expect(mockStorageService.uploadFromBuffer).toHaveBeenCalledWith(
       file.buffer,
       'application/pdf',
-      'tenant-123',
+      TENANT_ID,
       expect.any(String),
     );
     expect(result).toBeDefined();
@@ -348,11 +338,11 @@ describe('CandidatesService.createCandidate()', () => {
       mimetype: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       originalname: 'cv.docx',
     };
-    await service.createCandidate(BASE_DTO, file);
+    await service.createCandidate(BASE_DTO, file, TENANT_ID);
     expect(mockStorageService.uploadFromBuffer).toHaveBeenCalledWith(
       expect.any(Buffer),
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'tenant-123',
+      TENANT_ID,
       expect.any(String),
     );
   });
@@ -362,26 +352,26 @@ describe('CandidatesService.createCandidate()', () => {
     mockStorageService.uploadFromBuffer.mockRejectedValue(
       new BadRequestException({ error: { code: 'INVALID_FILE_TYPE', message: 'Invalid file type' } }),
     );
-    await expect(service.createCandidate(BASE_DTO, file)).rejects.toThrow(BadRequestException);
+    await expect(service.createCandidate(BASE_DTO, file, TENANT_ID)).rejects.toThrow(BadRequestException);
   });
 
   // Email Uniqueness Tests
 
   it('should accept candidate with new email', async () => {
     mockPrisma.candidate.findFirst.mockResolvedValue(null);
-    const result = await service.createCandidate(BASE_DTO, undefined);
+    const result = await service.createCandidate(BASE_DTO, undefined, TENANT_ID);
     expect(result).toHaveProperty('application_id');
   });
 
   it('should reject duplicate email with ConflictException', async () => {
     mockPrisma.candidate.findFirst.mockResolvedValue({ id: 'existing-cand' });
-    await expect(service.createCandidate(BASE_DTO, undefined)).rejects.toThrow(ConflictException);
+    await expect(service.createCandidate(BASE_DTO, undefined, TENANT_ID)).rejects.toThrow(ConflictException);
   });
 
   // Transaction Atomicity Tests
 
   it('should create Candidate and Application atomically', async () => {
-    const result = await service.createCandidate(BASE_DTO, undefined);
+    const result = await service.createCandidate(BASE_DTO, undefined, TENANT_ID);
     expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
     expect(result).toHaveProperty('id');
     expect(result).toHaveProperty('application_id', 'app-uuid');
@@ -389,21 +379,21 @@ describe('CandidatesService.createCandidate()', () => {
 
   it('should propagate error if Application create fails inside transaction', async () => {
     mockPrisma.$transaction.mockRejectedValue(new Error('DB error'));
-    await expect(service.createCandidate(BASE_DTO, undefined)).rejects.toThrow('DB error');
+    await expect(service.createCandidate(BASE_DTO, undefined, TENANT_ID)).rejects.toThrow('DB error');
   });
 
   // Tenant Isolation Test
 
   it('should validate job exists in tenant', async () => {
-    await service.createCandidate(BASE_DTO, undefined);
+    await service.createCandidate(BASE_DTO, undefined, TENANT_ID);
     expect(mockPrisma.job.findFirst).toHaveBeenCalledWith({
-      where: { id: BASE_DTO.job_id, tenantId: 'tenant-123' },
+      where: { id: BASE_DTO.job_id, tenantId: TENANT_ID },
     });
   });
 
   it('should throw NotFoundException if job does not exist', async () => {
     mockPrisma.job.findFirst.mockResolvedValue(null);
-    await expect(service.createCandidate(BASE_DTO, undefined)).rejects.toThrow(NotFoundException);
+    await expect(service.createCandidate(BASE_DTO, undefined, TENANT_ID)).rejects.toThrow(NotFoundException);
   });
 });
 
@@ -445,7 +435,6 @@ describe('CandidatesService.deleteCandidate()', () => {
       providers: [
         CandidatesService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(TENANT_ID) } },
         { provide: StorageService, useValue: { uploadFromBuffer: jest.fn() } },
         { provide: ScoringAgentService, useValue: { score: jest.fn() } },
         { provide: CandidateAiService, useValue: { generateSummary: jest.fn() } },
@@ -459,12 +448,12 @@ describe('CandidatesService.deleteCandidate()', () => {
 
   it('throws NotFoundException when candidate does not exist', async () => {
     mockPrisma.candidate.findFirst.mockResolvedValue(null);
-    await expect(service.deleteCandidate('no-such-id')).rejects.toThrow(NotFoundException);
+    await expect(service.deleteCandidate('no-such-id', TENANT_ID)).rejects.toThrow(NotFoundException);
     expect(mockPrisma.$transaction).not.toHaveBeenCalled();
   });
 
   it('scopes findFirst lookup to tenant', async () => {
-    await service.deleteCandidate(CAND_ID);
+    await service.deleteCandidate(CAND_ID, TENANT_ID);
     expect(mockPrisma.candidate.findFirst).toHaveBeenCalledWith({
       where: { id: CAND_ID, tenantId: TENANT_ID },
       select: { id: true },
@@ -472,12 +461,12 @@ describe('CandidatesService.deleteCandidate()', () => {
   });
 
   it('runs inside a transaction', async () => {
-    await service.deleteCandidate(CAND_ID);
+    await service.deleteCandidate(CAND_ID, TENANT_ID);
     expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('deletes DuplicateFlags on both candidateId and matchedCandidateId sides', async () => {
-    await service.deleteCandidate(CAND_ID);
+    await service.deleteCandidate(CAND_ID, TENANT_ID);
     expect(txDuplicateFlag.deleteMany).toHaveBeenCalledWith({
       where: {
         OR: [{ candidateId: CAND_ID }, { matchedCandidateId: CAND_ID }],
@@ -486,7 +475,7 @@ describe('CandidatesService.deleteCandidate()', () => {
   });
 
   it('nullifies EmailIntakeLog.candidateId before deleting candidate', async () => {
-    await service.deleteCandidate(CAND_ID);
+    await service.deleteCandidate(CAND_ID, TENANT_ID);
     expect(txEmailIntakeLog.updateMany).toHaveBeenCalledWith({
       where: { candidateId: CAND_ID },
       data: { candidateId: null },
@@ -494,7 +483,7 @@ describe('CandidatesService.deleteCandidate()', () => {
   });
 
   it('deletes the candidate record inside the transaction', async () => {
-    await service.deleteCandidate(CAND_ID);
+    await service.deleteCandidate(CAND_ID, TENANT_ID);
     expect(txCandidate.delete).toHaveBeenCalledWith({ where: { id: CAND_ID } });
   });
 
@@ -504,14 +493,14 @@ describe('CandidatesService.deleteCandidate()', () => {
     txEmailIntakeLog.updateMany.mockImplementation(async () => { order.push('emailIntakeLog'); return { count: 0 }; });
     txCandidate.delete.mockImplementation(async () => { order.push('candidate'); return { id: CAND_ID }; });
 
-    await service.deleteCandidate(CAND_ID);
+    await service.deleteCandidate(CAND_ID, TENANT_ID);
 
     expect(order).toEqual(['duplicateFlag', 'emailIntakeLog', 'candidate']);
   });
 
   it('propagates unexpected errors from the transaction', async () => {
     mockPrisma.$transaction.mockRejectedValue(new Error('DB failure'));
-    await expect(service.deleteCandidate(CAND_ID)).rejects.toThrow('DB failure');
+    await expect(service.deleteCandidate(CAND_ID, TENANT_ID)).rejects.toThrow('DB failure');
   });
 });
 
@@ -522,14 +511,12 @@ describe('CandidatesService.deleteCandidate()', () => {
 describe('CandidatesService.updateCandidate() - Error Handling', () => {
   let service: CandidatesService;
   let mockPrisma: any;
-  let mockConfig: { get: jest.Mock };
 
   const TENANT_ID = '11111111-1111-1111-1111-111111111111';
   const CAND_ID = 'cand-uuid';
   const JOB_ID = 'job-uuid';
 
   beforeEach(async () => {
-    mockConfig = { get: jest.fn().mockReturnValue(TENANT_ID) };
     mockPrisma = {
       candidate: { findFirst: jest.fn(), update: jest.fn() },
       job: { findFirst: jest.fn() },
@@ -543,7 +530,6 @@ describe('CandidatesService.updateCandidate() - Error Handling', () => {
       providers: [
         CandidatesService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: ConfigService, useValue: mockConfig },
         { provide: StorageService, useValue: {} },
         { provide: ScoringAgentService, useValue: { score: jest.fn() } },
         { provide: CandidateAiService, useValue: { generateSummary: jest.fn() } },
@@ -558,7 +544,7 @@ describe('CandidatesService.updateCandidate() - Error Handling', () => {
   it('throws NotFoundException when candidate not found', async () => {
     mockPrisma.candidate.findFirst.mockResolvedValue(null);
 
-    await expect(service.updateCandidate(CAND_ID, { job_id: JOB_ID })).rejects.toThrow(NotFoundException);
+    await expect(service.updateCandidate(CAND_ID, { job_id: JOB_ID }, TENANT_ID)).rejects.toThrow(NotFoundException);
   });
 
   it('throws NotFoundException when job not found during reassignment', async () => {
@@ -575,7 +561,7 @@ describe('CandidatesService.updateCandidate() - Error Handling', () => {
     mockPrisma.jobStage.findFirst.mockResolvedValue({ id: 'stage-id' });
     mockPrisma.job.findFirst.mockResolvedValue(null); // Job not found
 
-    await expect(service.updateCandidate(CAND_ID, { job_id: JOB_ID })).rejects.toThrow(NotFoundException);
+    await expect(service.updateCandidate(CAND_ID, { job_id: JOB_ID }, TENANT_ID)).rejects.toThrow(NotFoundException);
   });
 
   it('throws BadRequestException when job has no enabled stages', async () => {
@@ -590,7 +576,7 @@ describe('CandidatesService.updateCandidate() - Error Handling', () => {
     });
     mockPrisma.jobStage.findFirst.mockResolvedValue(null);
 
-    await expect(service.updateCandidate(CAND_ID, { job_id: JOB_ID })).rejects.toThrow(BadRequestException);
+    await expect(service.updateCandidate(CAND_ID, { job_id: JOB_ID }, TENANT_ID)).rejects.toThrow(BadRequestException);
   });
 
   it('throws BadRequestException with code NO_STAGES when no enabled stages exist', async () => {
@@ -606,7 +592,7 @@ describe('CandidatesService.updateCandidate() - Error Handling', () => {
     mockPrisma.jobStage.findFirst.mockResolvedValue(null);
 
     try {
-      await service.updateCandidate(CAND_ID, { job_id: JOB_ID });
+      await service.updateCandidate(CAND_ID, { job_id: JOB_ID }, TENANT_ID);
       fail('Should have thrown BadRequestException');
     } catch (err) {
       expect(err).toBeInstanceOf(BadRequestException);
@@ -620,7 +606,7 @@ describe('CandidatesService.updateCandidate() - Error Handling', () => {
     mockPrisma.candidate.findFirst.mockResolvedValue(null);
 
     try {
-      await service.updateCandidate(CAND_ID, { job_id: JOB_ID });
+      await service.updateCandidate(CAND_ID, { job_id: JOB_ID }, TENANT_ID);
     } catch (e) {
       // Expected
     }
@@ -640,13 +626,10 @@ describe('CandidatesService.updateCandidate() - Error Handling', () => {
 describe('CandidatesService.findAll() - Unassigned Filter', () => {
   let service: CandidatesService;
   let mockPrisma: { candidate: { findMany: jest.Mock } };
-  let mockConfig: { get: jest.Mock };
 
   const TENANT_ID = '11111111-1111-1111-1111-111111111111';
 
   beforeEach(async () => {
-    mockConfig = { get: jest.fn().mockReturnValue(TENANT_ID) };
-
     mockPrisma = {
       candidate: { findMany: jest.fn() },
     };
@@ -655,7 +638,6 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
       providers: [
         CandidatesService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: ConfigService, useValue: mockConfig },
         { provide: StorageService, useValue: {} },
         { provide: ScoringAgentService, useValue: {} },
         { provide: CandidateAiService, useValue: {} },
@@ -680,7 +662,7 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
       },
     ]);
 
-    const result = await service.findAll(undefined, undefined, undefined, true);
+    const result = await service.findAll(TENANT_ID, undefined, undefined, undefined, true);
 
     expect(mockPrisma.candidate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -700,7 +682,7 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
       { id: 'cand-2', jobId: 'job-uuid', fullName: 'Assigned', applications: [], duplicateFlags: [], candidateStageSummaries: [] },
     ]);
 
-    const result = await service.findAll(undefined, undefined, undefined, false);
+    const result = await service.findAll(TENANT_ID, undefined, undefined, undefined, false);
 
     expect(result.candidates).toHaveLength(2);
   });
@@ -710,7 +692,7 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
       { id: 'cand-1', jobId: null, fullName: 'John', applications: [], duplicateFlags: [], candidateStageSummaries: [] },
     ]);
 
-    await service.findAll('john', undefined, undefined, true);
+    await service.findAll(TENANT_ID, 'john', undefined, undefined, true);
 
     expect(mockPrisma.candidate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -727,7 +709,7 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
       { id: 'cand-1', jobId: null, duplicateFlags: [{ id: 'dup-1', reviewed: false }], applications: [], candidateStageSummaries: [] },
     ]);
 
-    await service.findAll(undefined, 'duplicates', undefined, true);
+    await service.findAll(TENANT_ID, undefined, 'duplicates', undefined, true);
 
     expect(mockPrisma.candidate.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -742,7 +724,7 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
   it('takes precedence over jobId param when both provided', async () => {
     mockPrisma.candidate.findMany.mockResolvedValue([]);
 
-    await service.findAll(undefined, undefined, 'some-job-id', true);
+    await service.findAll(TENANT_ID, undefined, undefined, 'some-job-id', true);
 
     // unassigned=true should override jobId filter
     expect(mockPrisma.candidate.findMany).toHaveBeenCalledWith(
@@ -762,13 +744,10 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
 describe('CandidatesService - Response Format Compliance', () => {
   let service: CandidatesService;
   let mockPrisma: { candidate: { findMany: jest.Mock; findFirst: jest.Mock } };
-  let mockConfig: { get: jest.Mock };
 
   const TENANT_ID = '11111111-1111-1111-1111-111111111111';
 
   beforeEach(async () => {
-    mockConfig = { get: jest.fn().mockReturnValue(TENANT_ID) };
-
     mockPrisma = {
       candidate: {
         findMany: jest.fn(),
@@ -780,7 +759,6 @@ describe('CandidatesService - Response Format Compliance', () => {
       providers: [
         CandidatesService,
         { provide: PrismaService, useValue: mockPrisma },
-        { provide: ConfigService, useValue: mockConfig },
         { provide: StorageService, useValue: {} },
         { provide: ScoringAgentService, useValue: {} },
         { provide: CandidateAiService, useValue: {} },
@@ -813,7 +791,7 @@ describe('CandidatesService - Response Format Compliance', () => {
       },
     ]);
 
-    const result = await service.findAll();
+    const result = await service.findAll(TENANT_ID);
 
     // Verify response has sourceAgency field
     expect(result.candidates[0].source_agency).toBe('LinkedIn');
@@ -833,7 +811,7 @@ describe('CandidatesService - Response Format Compliance', () => {
       },
     ]);
 
-    const result = await service.findAll();
+    const result = await service.findAll(TENANT_ID);
 
     expect(result.candidates[0].ai_score).toBe(80);
   });
@@ -850,7 +828,7 @@ describe('CandidatesService - Response Format Compliance', () => {
       },
     ]);
 
-    const result = await service.findAll();
+    const result = await service.findAll(TENANT_ID);
 
     expect(result.candidates[0].source_agency).toBe('LinkedIn');
   });

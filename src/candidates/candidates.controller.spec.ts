@@ -1,10 +1,19 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { INestApplication, BadRequestException } from '@nestjs/common';
+import { INestApplication, BadRequestException, CanActivate, ExecutionContext } from '@nestjs/common';
 import request from 'supertest';
 import { CandidatesController } from './candidates.controller';
 import { CandidatesService } from './candidates.service';
+import { SessionGuard } from '../auth/session.guard';
 
 const TENANT_ID = '11111111-1111-1111-1111-111111111111';
+
+class MockSessionGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const req = context.switchToHttp().getRequest();
+    req.session = { org: TENANT_ID, sub: 'user-uuid', role: 'admin' };
+    return true;
+  }
+}
 
 describe('CandidatesController (Integration Tests)', () => {
   let app: INestApplication;
@@ -48,8 +57,12 @@ describe('CandidatesController (Integration Tests)', () => {
       controllers: [CandidatesController],
       providers: [
         { provide: CandidatesService, useValue: mockCandidatesService },
+        { provide: SessionGuard, useClass: MockSessionGuard },
       ],
-    }).compile();
+    })
+      .overrideGuard(SessionGuard)
+      .useClass(MockSessionGuard)
+      .compile();
 
     app = moduleFixture.createNestApplication();
     candidatesService = moduleFixture.get<CandidatesService>(CandidatesService);
@@ -297,6 +310,7 @@ describe('CandidatesController (Integration Tests)', () => {
 
         expect(response.body.candidates).toHaveLength(1);
         expect(candidatesService.findAll).toHaveBeenCalledWith(
+          TENANT_ID,
           'john',
           undefined,
           undefined,
@@ -318,6 +332,7 @@ describe('CandidatesController (Integration Tests)', () => {
 
         expect(response.body.candidates).toHaveLength(1);
         expect(candidatesService.findAll).toHaveBeenCalledWith(
+          TENANT_ID,
           undefined,
           'duplicates',
           undefined,
@@ -338,6 +353,7 @@ describe('CandidatesController (Integration Tests)', () => {
           .expect(200);
 
         expect(candidatesService.findAll).toHaveBeenCalledWith(
+          TENANT_ID,
           undefined,
           undefined,
           'some-job',

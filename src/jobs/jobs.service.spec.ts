@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { JobsService } from './jobs.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
 import { NotFoundException } from '@nestjs/common';
 
 const TENANT_ID = '11111111-1111-1111-1111-111111111111';
@@ -19,10 +18,6 @@ const mockPrismaService = {
   $queryRaw: jest.fn().mockResolvedValue([{ max: null }]),
 };
 
-const mockConfigService = {
-  get: jest.fn().mockReturnValue(TENANT_ID),
-};
-
 describe('JobsService', () => {
   let service: JobsService;
 
@@ -31,13 +26,11 @@ describe('JobsService', () => {
       providers: [
         JobsService,
         { provide: PrismaService, useValue: mockPrismaService },
-        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
     service = module.get<JobsService>(JobsService);
     jest.clearAllMocks();
-    mockConfigService.get.mockReturnValue(TENANT_ID);
   });
 
   describe('createJob()', () => {
@@ -85,7 +78,7 @@ describe('JobsService', () => {
         must_have_skills: [],
         nice_to_have_skills: [],
         selected_org_types: [],
-      });
+      }, TENANT_ID);
 
       const callArgs = mockPrismaService.job.create.mock.calls[0][0];
       expect(callArgs.data.hiringStages.create).toHaveLength(8);
@@ -99,7 +92,7 @@ describe('JobsService', () => {
         must_have_skills: [],
         nice_to_have_skills: [],
         selected_org_types: [],
-      });
+      }, TENANT_ID);
 
       const callArgs = mockPrismaService.job.create.mock.calls[0][0];
       const stages = callArgs.data.hiringStages.create;
@@ -117,7 +110,7 @@ describe('JobsService', () => {
         must_have_skills: [],
         nice_to_have_skills: [],
         selected_org_types: [],
-      });
+      }, TENANT_ID);
 
       const callArgs = mockPrismaService.job.create.mock.calls[0][0];
       const stages = callArgs.data.hiringStages.create;
@@ -135,7 +128,7 @@ describe('JobsService', () => {
         nice_to_have_skills: [],
         selected_org_types: [],
         hiring_flow: [{ name: 'Custom', order: 1, color: 'bg-blue-500', is_enabled: true, is_custom: true }],
-      });
+      }, TENANT_ID);
 
       const callArgs = mockPrismaService.job.create.mock.calls[0][0];
       expect(callArgs.data.hiringStages.create).toHaveLength(1);
@@ -151,14 +144,14 @@ describe('JobsService', () => {
         nice_to_have_skills: [],
         selected_org_types: [],
         screening_questions: [{ text: 'Q?', type: 'yes_no' }],
-      });
+      }, TENANT_ID);
 
       const callArgs = mockPrismaService.job.create.mock.calls[0][0];
       expect(callArgs.data.screeningQuestions.create).toHaveLength(1);
       expect(callArgs.data.screeningQuestions.create[0].text).toBe('Q?');
     });
 
-    it('D-06: assigns tenantId from ConfigService to all nested creates', async () => {
+    it('D-06: assigns tenantId param to all nested creates', async () => {
       await service.createJob({
         title: 'Eng',
         job_type: 'full_time',
@@ -166,7 +159,7 @@ describe('JobsService', () => {
         must_have_skills: [],
         nice_to_have_skills: [],
         selected_org_types: [],
-      });
+      }, TENANT_ID);
 
       const callArgs = mockPrismaService.job.create.mock.calls[0][0];
       const stages = callArgs.data.hiringStages.create;
@@ -186,7 +179,7 @@ describe('JobsService', () => {
           nice_to_have_skills: [],
           selected_org_types: [],
           hiring_flow: [{ name: 'Review', order: 1, color: 'bg-zinc-400', is_enabled: true, is_custom: false, interviewer: 'John Smith (not a UUID)' }],
-        }),
+        }, TENANT_ID),
       ).resolves.not.toThrow();
     });
 
@@ -198,7 +191,7 @@ describe('JobsService', () => {
         must_have_skills: [],
         nice_to_have_skills: [],
         selected_org_types: [],
-      });
+      }, TENANT_ID);
 
       expect(result).toHaveProperty('job_type');
       expect(result).toHaveProperty('hiring_flow');
@@ -243,7 +236,7 @@ describe('JobsService', () => {
     });
 
     it('returns { jobs[], total } shape with mapped snake_case fields', async () => {
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
 
       expect(result).toHaveProperty('jobs');
       expect(result).toHaveProperty('total');
@@ -258,17 +251,17 @@ describe('JobsService', () => {
     });
 
     it('candidate_count = _count.applications from Prisma', async () => {
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
       expect(result.jobs[0].candidate_count).toBe(5);
     });
 
     it('total = jobs.length', async () => {
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
       expect(result.total).toBe(1);
     });
 
     it('returns nested hiring_flow with correct fields', async () => {
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
       const stage = result.jobs[0].hiring_flow[0];
       expect(stage).toHaveProperty('is_enabled', true);
       expect(stage).toHaveProperty('color', 'bg-indigo-400');
@@ -277,7 +270,7 @@ describe('JobsService', () => {
     });
 
     it('returns screening_questions with type field (not answerType)', async () => {
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
       const q = result.jobs[0].screening_questions[0];
       expect(q).toHaveProperty('type', 'yes_no');
       expect(q).toHaveProperty('expected_answer', 'yes');
@@ -286,7 +279,7 @@ describe('JobsService', () => {
     });
 
     it('snake_case fields (job_type, hiring_manager, created_at, candidate_count) are present', async () => {
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
       const job = result.jobs[0];
       expect(job).toHaveProperty('job_type', 'full_time');
       expect(job).toHaveProperty('hiring_manager', 'Jane Smith');
@@ -297,12 +290,11 @@ describe('JobsService', () => {
       expect(job).not.toHaveProperty('createdAt');
     });
 
-    it('WHERE clause includes tenantId from ConfigService', async () => {
+    it('WHERE clause includes tenantId param', async () => {
       mockPrismaService.job.findMany.mockResolvedValue([]);
 
-      await service.findAll();
+      await service.findAll(TENANT_ID);
 
-      expect(mockConfigService.get).toHaveBeenCalledWith('TENANT_ID');
       const findManyCall = mockPrismaService.job.findMany.mock.calls[0][0];
       expect(findManyCall.where).toEqual({ tenantId: TENANT_ID });
     });
@@ -310,7 +302,7 @@ describe('JobsService', () => {
     it('passes status filter to Prisma when provided', async () => {
       mockPrismaService.job.findMany.mockResolvedValue([]);
 
-      await service.findAll('open');
+      await service.findAll(TENANT_ID, 'open');
 
       const findManyCall = mockPrismaService.job.findMany.mock.calls[0][0];
       expect(findManyCall.where).toEqual({ tenantId: TENANT_ID, status: 'open' });
@@ -319,7 +311,7 @@ describe('JobsService', () => {
     it('omits status filter when not provided', async () => {
       mockPrismaService.job.findMany.mockResolvedValue([]);
 
-      await service.findAll();
+      await service.findAll(TENANT_ID);
 
       const findManyCall = mockPrismaService.job.findMany.mock.calls[0][0];
       expect(findManyCall.where).toEqual({ tenantId: TENANT_ID });
@@ -332,7 +324,7 @@ describe('JobsService', () => {
       mockPrismaService.job.findFirst.mockResolvedValue({ id: 'job-1', tenantId: TENANT_ID, status: 'open' });
       mockPrismaService.job.update.mockResolvedValue({ id: 'job-1', status: 'closed' });
 
-      await service.deleteJob('job-1');
+      await service.deleteJob('job-1', TENANT_ID);
 
       expect(mockPrismaService.job.update).toHaveBeenCalledWith({
         where: { id: 'job-1' },
@@ -343,7 +335,7 @@ describe('JobsService', () => {
     it('throws NotFoundException if job not found', async () => {
       mockPrismaService.job.findFirst.mockResolvedValue(null);
 
-      await expect(service.deleteJob('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.deleteJob('nonexistent', TENANT_ID)).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -380,7 +372,7 @@ describe('JobsService', () => {
     it('returns formatted job when found', async () => {
       mockPrismaService.job.findFirst.mockResolvedValue(mockJob);
 
-      const result = await service.findOne('job-1');
+      const result = await service.findOne('job-1', TENANT_ID);
 
       expect(result).toHaveProperty('id', 'job-1');
       expect(result).toHaveProperty('title', 'Senior Frontend Developer');
@@ -397,7 +389,7 @@ describe('JobsService', () => {
     it('calls findFirst with id and tenantId', async () => {
       mockPrismaService.job.findFirst.mockResolvedValue(mockJob);
 
-      await service.findOne('job-1');
+      await service.findOne('job-1', TENANT_ID);
 
       expect(mockPrismaService.job.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -409,14 +401,14 @@ describe('JobsService', () => {
     it('throws NotFoundException when findFirst returns null', async () => {
       mockPrismaService.job.findFirst.mockResolvedValue(null);
 
-      await expect(service.findOne('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.findOne('nonexistent', TENANT_ID)).rejects.toThrow(NotFoundException);
     });
 
     it('NotFoundException has correct error shape', async () => {
       mockPrismaService.job.findFirst.mockResolvedValue(null);
 
       try {
-        await service.findOne('nonexistent');
+        await service.findOne('nonexistent', TENANT_ID);
         fail('should have thrown');
       } catch (err) {
         expect(err).toBeInstanceOf(NotFoundException);
@@ -435,12 +427,12 @@ describe('JobsService', () => {
 
     it('throws NotFoundException when job does not exist', async () => {
       mockPrismaService.job.findFirst.mockResolvedValue(null);
-      await expect(service.hardDeleteJob('nonexistent')).rejects.toThrow(NotFoundException);
+      await expect(service.hardDeleteJob('nonexistent', TENANT_ID)).rejects.toThrow(NotFoundException);
     });
 
     it('scopes existence check to tenant', async () => {
       mockPrismaService.job.findFirst.mockResolvedValue({ id: 'job-1' });
-      await service.hardDeleteJob('job-1');
+      await service.hardDeleteJob('job-1', TENANT_ID);
       expect(mockPrismaService.job.findFirst).toHaveBeenCalledWith({
         where: { id: 'job-1', tenantId: TENANT_ID },
       });
@@ -448,21 +440,21 @@ describe('JobsService', () => {
 
     it('calls prisma.job.delete (hard delete, not update)', async () => {
       mockPrismaService.job.findFirst.mockResolvedValue({ id: 'job-1' });
-      await service.hardDeleteJob('job-1');
+      await service.hardDeleteJob('job-1', TENANT_ID);
       expect((mockPrismaService.job as any).delete).toHaveBeenCalledWith({ where: { id: 'job-1' } });
       expect(mockPrismaService.job.update).not.toHaveBeenCalled();
     });
 
     it('does not call findFirst if job does not exist (throws before delete)', async () => {
       mockPrismaService.job.findFirst.mockResolvedValue(null);
-      await expect(service.hardDeleteJob('job-1')).rejects.toThrow(NotFoundException);
+      await expect(service.hardDeleteJob('job-1', TENANT_ID)).rejects.toThrow(NotFoundException);
       expect((mockPrismaService.job as any).delete).not.toHaveBeenCalled();
     });
 
     it('propagates unexpected errors from prisma.job.delete', async () => {
       mockPrismaService.job.findFirst.mockResolvedValue({ id: 'job-1' });
       (mockPrismaService.job as any).delete.mockRejectedValue(new Error('DB error'));
-      await expect(service.hardDeleteJob('job-1')).rejects.toThrow('DB error');
+      await expect(service.hardDeleteJob('job-1', TENANT_ID)).rejects.toThrow('DB error');
     });
   });
 });

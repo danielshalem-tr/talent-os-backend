@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ApplicationsService } from './applications.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
 
 const TENANT_ID = '11111111-1111-1111-1111-111111111111';
 
@@ -9,10 +8,6 @@ const mockPrismaService = {
   application: {
     findMany: jest.fn(),
   },
-};
-
-const mockConfigService = {
-  get: jest.fn().mockReturnValue(TENANT_ID),
 };
 
 const makeMockApplication = (overrides: {
@@ -49,13 +44,11 @@ describe('ApplicationsService', () => {
       providers: [
         ApplicationsService,
         { provide: PrismaService, useValue: mockPrismaService },
-        { provide: ConfigService, useValue: mockConfigService },
       ],
     }).compile();
 
     service = module.get<ApplicationsService>(ApplicationsService);
     jest.clearAllMocks();
-    mockConfigService.get.mockReturnValue(TENANT_ID);
   });
 
   describe('findAll', () => {
@@ -64,7 +57,7 @@ describe('ApplicationsService', () => {
         makeMockApplication(),
       ]);
 
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
 
       expect(result).toHaveProperty('applications');
       expect(Array.isArray(result.applications)).toBe(true);
@@ -76,7 +69,7 @@ describe('ApplicationsService', () => {
         makeMockApplication({ id: 'app-abc' }),
       ]);
 
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
       const app = result.applications[0];
 
       expect(app).toHaveProperty('id', 'app-abc');
@@ -104,7 +97,7 @@ describe('ApplicationsService', () => {
         }),
       ]);
 
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
       const candidate = result.applications[0].candidate;
 
       expect(candidate).toHaveProperty('id', 'cand-42');
@@ -125,7 +118,7 @@ describe('ApplicationsService', () => {
         }),
       ]);
 
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
 
       expect(result.applications[0].candidate.ai_score).toBe(92);
     });
@@ -135,17 +128,16 @@ describe('ApplicationsService', () => {
         makeMockApplication({ scores: [] }),
       ]);
 
-      const result = await service.findAll();
+      const result = await service.findAll(TENANT_ID);
 
       expect(result.applications[0].candidate.ai_score).toBeNull();
     });
 
-    it('Test 6: WHERE includes tenantId from ConfigService', async () => {
+    it('Test 6: WHERE includes tenantId param', async () => {
       mockPrismaService.application.findMany.mockResolvedValue([]);
 
-      await service.findAll();
+      await service.findAll(TENANT_ID);
 
-      expect(mockConfigService.get).toHaveBeenCalledWith('TENANT_ID');
       const findManyCall = mockPrismaService.application.findMany.mock.calls[0][0];
       expect(findManyCall.where).toEqual({ tenantId: TENANT_ID });
     });

@@ -14,7 +14,6 @@ import { CandidatesService } from './candidates.service';
 import { JobsController } from '../jobs/jobs.controller';
 import { JobsService } from '../jobs/jobs.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
 import { StorageService } from '../storage/storage.service';
 
 const TENANT_ID = '11111111-1111-1111-1111-111111111111';
@@ -92,16 +91,16 @@ function makeBasePrisma(overrides: Record<string, any> = {}) {
   };
 }
 
+const mockReq = { session: { org: TENANT_ID, sub: 'user-uuid', role: 'admin' } } as any;
+
 function makeCandidatesController(
   mockPrisma: any,
   mockStorageService: any = { uploadFromBuffer: jest.fn() },
 ) {
-  const mockConfig = { get: jest.fn().mockReturnValue(TENANT_ID) };
   const mockCandidateAiService = { generateSummary: jest.fn().mockResolvedValue('Mocked AI summary') };
   const mockScoringAgentService = { score: jest.fn().mockResolvedValue({ score: 75, reasoning: 'Good fit', strengths: [], gaps: [], modelUsed: 'gpt-4o-mini' }) };
   const service = new CandidatesService(
     mockPrisma as any,
-    mockConfig as any,
     mockStorageService as any,
     mockCandidateAiService as any,
     mockScoringAgentService as any,
@@ -110,8 +109,7 @@ function makeCandidatesController(
 }
 
 function makeJobsController(mockPrisma: any) {
-  const mockConfig = { get: jest.fn().mockReturnValue(TENANT_ID) };
-  const service = new JobsService(mockPrisma as any, mockConfig as any);
+  const service = new JobsService(mockPrisma as any);
   return new JobsController(service);
 }
 
@@ -123,7 +121,7 @@ describe('POST /candidates', () => {
     const mockPrisma = makeBasePrisma();
     const controller = makeCandidatesController(mockPrisma);
 
-    const result = await controller.create(undefined, {
+    const result = await controller.create(mockReq, undefined, {
       full_name: 'Jane Doe',
       email: 'jane@example.com',
       job_id: JOB_ID,
@@ -163,7 +161,7 @@ describe('POST /candidates', () => {
       path: '',
     };
 
-    const result = await controller.create(file, {
+    const result = await controller.create(mockReq, file, {
       full_name: 'Jane Doe',
       email: 'jane@example.com',
       job_id: JOB_ID,
@@ -186,7 +184,7 @@ describe('POST /candidates', () => {
     const controller = makeCandidatesController(mockPrisma);
 
     await expect(
-      controller.create(undefined, {
+      controller.create(mockReq, undefined, {
         full_name: 'Jane Doe',
         email: 'not-an-email',
         job_id: JOB_ID,
@@ -222,7 +220,7 @@ describe('POST /candidates', () => {
     };
 
     await expect(
-      controller.create(file, {
+      controller.create(mockReq, file, {
         full_name: 'Jane Doe',
         email: 'jane@example.com',
         job_id: JOB_ID,
@@ -247,7 +245,7 @@ describe('POST /candidates', () => {
     const controller = makeCandidatesController(mockPrisma);
 
     await expect(
-      controller.create(undefined, {
+      controller.create(mockReq, undefined, {
         full_name: 'Nobody',
         email: 'nobody@example.com',
         job_id: 'b0eebc99-9c0b-4ef8-bb6d-6bb9bd380a99',
@@ -268,7 +266,7 @@ describe('POST /candidates', () => {
     const controller = makeCandidatesController(mockPrisma);
 
     await expect(
-      controller.create(undefined, {
+      controller.create(mockReq, undefined, {
         full_name: 'Duplicate',
         email: 'existing@example.com',
         job_id: JOB_ID,
@@ -297,7 +295,7 @@ describe('GET /jobs/list', () => {
     });
     const controller = makeJobsController(mockPrisma);
 
-    const result = await controller.getOpenJobs();
+    const result = await controller.getOpenJobs(mockReq);
 
     expect(result.jobs).toHaveLength(1);
     expect(result.jobs[0]).toEqual({ id: JOB_ID, title: 'Senior Engineer', department: 'Engineering' });
@@ -320,7 +318,7 @@ describe('GET /jobs/list', () => {
     });
     const controller = makeJobsController(mockPrisma);
 
-    const result = await controller.getOpenJobs();
+    const result = await controller.getOpenJobs(mockReq);
 
     expect(result.jobs).toHaveLength(0);
   });
