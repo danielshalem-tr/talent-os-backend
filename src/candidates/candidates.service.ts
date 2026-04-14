@@ -8,7 +8,6 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
 import { StorageService } from '../storage/storage.service';
 import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateStageDto } from './dto/update-candidate-stage.dto';
@@ -28,15 +27,12 @@ export class CandidatesService {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
     private readonly storageService: StorageService,
     private readonly candidateAiService: CandidateAiService,
     private readonly scoringAgent: ScoringAgentService,
   ) {}
 
-  async getCounts(): Promise<{ total: number; duplicates: number; unassigned: number }> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async getCounts(tenantId: string): Promise<{ total: number; duplicates: number; unassigned: number }> {
     const [total, duplicates, unassigned] = await Promise.all([
       this.prisma.candidate.count({
         where: { tenantId, status: 'active' },
@@ -57,13 +53,12 @@ export class CandidatesService {
   }
 
   async findAll(
+    tenantId: string,
     q?: string,
     filter?: CandidateFilter,
     jobId?: string,
     unassigned?: boolean,
   ): Promise<{ candidates: CandidateResponse[]; total: number }> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
     // Validate filter parameter — only 'all' and 'duplicates' are supported
     // (C-4 fix: prevents silent failures from removed filters like 'high-score', 'available', 'referred')
     if (filter && !['all', 'duplicates'].includes(filter)) {
@@ -187,9 +182,7 @@ export class CandidatesService {
     return { candidates: result, total: result.length };
   }
 
-  async findOne(candidateId: string): Promise<CandidateResponse> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async findOne(candidateId: string, tenantId: string): Promise<CandidateResponse> {
     const c = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
       select: {
@@ -275,9 +268,7 @@ export class CandidatesService {
     };
   }
 
-  async updateCandidate(candidateId: string, dto: UpdateCandidateDto): Promise<CandidateResponse> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async updateCandidate(candidateId: string, dto: UpdateCandidateDto, tenantId: string): Promise<CandidateResponse> {
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
     });
@@ -297,7 +288,7 @@ export class CandidatesService {
     if (dto.job_id) {
       if (candidate.jobId === dto.job_id) {
         // Same-job no-op: if no profile fields changed, return early
-        if (Object.keys(updateData).length === 0) return this.findOne(candidateId);
+        if (Object.keys(updateData).length === 0) return this.findOne(candidateId, tenantId);
       } else if (candidate.jobId) {
         // REASSIGNMENT: jobId=X → jobId=Y
         const firstStage = await this.prisma.jobStage.findFirst({
@@ -387,7 +378,7 @@ export class CandidatesService {
           }
         });
 
-        return this.findOne(candidateId);
+        return this.findOne(candidateId, tenantId);
       } else {
         // INITIAL ASSIGNMENT: jobId=null → jobId=X
         const firstStage = await this.prisma.jobStage.findFirst({
@@ -443,7 +434,7 @@ export class CandidatesService {
           });
         });
 
-        return this.findOne(candidateId); // Early return post transaction
+        return this.findOne(candidateId, tenantId); // Early return post transaction
       }
     }
 
@@ -455,11 +446,10 @@ export class CandidatesService {
       });
     }
 
-    return this.findOne(candidateId);
+    return this.findOne(candidateId, tenantId);
   }
 
-  async rejectCandidate(candidateId: string, dto: RejectCandidateDto): Promise<CandidateResponse> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
+  async rejectCandidate(candidateId: string, dto: RejectCandidateDto, tenantId: string): Promise<CandidateResponse> {
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
       select: { id: true, jobId: true },
@@ -481,12 +471,10 @@ export class CandidatesService {
       }
     });
 
-    return this.findOne(candidateId);
+    return this.findOne(candidateId, tenantId);
   }
 
-  async saveStageSummary(candidateId: string, stageId: string, summary: string): Promise<{ success: boolean }> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async saveStageSummary(candidateId: string, stageId: string, summary: string, tenantId: string): Promise<{ success: boolean }> {
     // Verifying candidate ownership essentially
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
@@ -534,10 +522,9 @@ export class CandidatesService {
     candidateId: string,
     currentStageId: string,
     summary: string,
+    tenantId: string,
   ): Promise<{ success: boolean; hiring_stage_id: string }> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
-    await this.saveStageSummary(candidateId, currentStageId, summary);
+    await this.saveStageSummary(candidateId, currentStageId, summary, tenantId);
 
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
@@ -573,14 +560,12 @@ export class CandidatesService {
     const nextStageId = stages[currentIndex + 1].id;
 
     // Use updateStage for robust atomic dual updating!
-    await this.updateStage(candidateId, { hiring_stage_id: nextStageId });
+    await this.updateStage(candidateId, { hiring_stage_id: nextStageId }, tenantId);
 
     return { success: true, hiring_stage_id: nextStageId };
   }
 
-  async updateStage(candidateId: string, dto: UpdateCandidateStageDto): Promise<void> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async updateStage(candidateId: string, dto: UpdateCandidateStageDto, tenantId: string): Promise<void> {
     // 1. Find the candidate and verify ownership
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
@@ -637,9 +622,7 @@ export class CandidatesService {
     });
   }
 
-  async deleteCandidate(candidateId: string): Promise<void> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async deleteCandidate(candidateId: string, tenantId: string): Promise<void> {
     // Verify the candidate exists and belongs to this tenant
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
@@ -678,9 +661,8 @@ export class CandidatesService {
   async createCandidate(
     dto: CreateCandidateDto,
     file: Express.Multer.File | undefined,
+    tenantId: string,
   ): Promise<Record<string, unknown>> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
     // Pre-validation 1: validate job exists in the same tenant
     const job = await this.prisma.job.findFirst({
       where: { id: dto.job_id, tenantId },
@@ -820,9 +802,7 @@ export class CandidatesService {
     };
   }
 
-  async getCvPresignedUrl(candidateId: string): Promise<{ url: string }> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async getCvPresignedUrl(candidateId: string, tenantId: string): Promise<{ url: string }> {
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
       select: { cvFileUrl: true },

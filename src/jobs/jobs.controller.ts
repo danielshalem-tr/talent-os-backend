@@ -13,7 +13,7 @@ import {
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
+import type { Request } from 'express';
 import { ZodError } from 'zod';
 import { SessionGuard } from '../auth/session.guard';
 import { JobsService } from './jobs.service';

@@ -1,5 +1,5 @@
 import { Controller, Get, Req, UseGuards } from '@nestjs/common';
-import { Request } from 'express';
+import type { Request } from 'express';
 import { SessionGuard } from '../auth/session.guard';
 import { ApplicationsService } from './applications.service';
 

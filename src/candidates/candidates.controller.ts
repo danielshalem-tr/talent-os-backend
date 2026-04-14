@@ -16,7 +16,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { Request } from 'express';
+import type { Request } from 'express';
 import { ZodError } from 'zod';
 import { SessionGuard } from '../auth/session.guard';
 import { CandidatesService } from './candidates.service';
