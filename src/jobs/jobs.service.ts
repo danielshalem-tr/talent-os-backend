@@ -1,6 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
 import { CreateJobDto } from './dto/create-job.dto';
 
 const DEFAULT_HIRING_STAGES = [
@@ -16,14 +15,9 @@ const DEFAULT_HIRING_STAGES = [
 
 @Injectable()
 export class JobsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(status?: string): Promise<{ jobs: any[]; total: number }> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async findAll(tenantId: string, status?: string): Promise<{ jobs: any[]; total: number }> {
     const jobs = await this.prisma.job.findMany({
       where: { tenantId, ...(status ? { status } : {}) },
       include: {
@@ -40,9 +34,7 @@ export class JobsService {
     };
   }
 
-  async findOne(id: string): Promise<any> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async findOne(id: string, tenantId: string): Promise<any> {
     const job = await this.prisma.job.findFirst({
       where: { id, tenantId },
       include: {
@@ -61,9 +53,7 @@ export class JobsService {
     return this._formatJobResponse(job);
   }
 
-  async createJob(dto: CreateJobDto): Promise<any> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async createJob(dto: CreateJobDto, tenantId: string): Promise<any> {
     // Use provided stages, or auto-seed 4 defaults if hiring_flow is omitted/empty
     const stagesToCreate =
       dto.hiring_flow && dto.hiring_flow.length > 0
@@ -128,9 +118,7 @@ export class JobsService {
     });
   }
 
-  async updateJob(id: string, dto: CreateJobDto): Promise<any> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async updateJob(id: string, dto: CreateJobDto, tenantId: string): Promise<any> {
     await this.prisma.job.findFirstOrThrow({
       where: { id, tenantId },
     });
@@ -247,9 +235,7 @@ export class JobsService {
     });
   }
 
-  async getOpenJobs(): Promise<{ jobs: Array<{ id: string; title: string; department: string | null }> }> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async getOpenJobs(tenantId: string): Promise<{ jobs: Array<{ id: string; title: string; department: string | null }> }> {
     const jobs = await this.prisma.job.findMany({
       where: { tenantId, status: 'open' },
       select: {
@@ -269,9 +255,7 @@ export class JobsService {
     };
   }
 
-  async deleteJob(id: string): Promise<void> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async deleteJob(id: string, tenantId: string): Promise<void> {
     // Verify exists before update
     const job = await this.prisma.job.findFirst({
       where: { id, tenantId },
@@ -293,9 +277,7 @@ export class JobsService {
     });
   }
 
-  async hardDeleteJob(id: string): Promise<void> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async hardDeleteJob(id: string, tenantId: string): Promise<void> {
     // Verify exists and belongs to this tenant
     const job = await this.prisma.job.findFirst({
       where: { id, tenantId },
