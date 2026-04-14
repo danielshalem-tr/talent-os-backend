@@ -338,7 +338,7 @@ describe('GET /jobs/list', () => {
     });
     const controller = makeJobsController(mockPrisma);
 
-    await controller.getOpenJobs();
+    await controller.getOpenJobs(mockReq);
 
     expect(mockFindMany).toHaveBeenCalledWith(
       expect.objectContaining({
