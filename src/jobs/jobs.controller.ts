@@ -10,32 +10,41 @@ import {
   BadRequestException,
   NotFoundException,
   HttpCode,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
+import { Request } from 'express';
 import { ZodError } from 'zod';
+import { SessionGuard } from '../auth/session.guard';
 import { JobsService } from './jobs.service';
 import { CreateJobSchema } from './dto/create-job.dto';
 
+@UseGuards(SessionGuard)
 @Controller('jobs')
 export class JobsController {
   constructor(private readonly jobsService: JobsService) {}
 
   @Get()
-  async findAll(@Query('status') status?: string) {
-    return this.jobsService.findAll(status);
+  async findAll(@Req() req: Request, @Query('status') status?: string) {
+    const tenantId = req.session!.org;
+    return this.jobsService.findAll(tenantId, status);
   }
 
   @Get('list')
-  async getOpenJobs() {
-    return this.jobsService.getOpenJobs();
+  async getOpenJobs(@Req() req: Request) {
+    const tenantId = req.session!.org;
+    return this.jobsService.getOpenJobs(tenantId);
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string) {
-    return this.jobsService.findOne(id);
+  async findOne(@Param('id') id: string, @Req() req: Request) {
+    const tenantId = req.session!.org;
+    return this.jobsService.findOne(id, tenantId);
   }
 
   @Post()
-  async create(@Body() body: unknown) {
+  async create(@Body() body: unknown, @Req() req: Request) {
+    const tenantId = req.session!.org;
     const result = CreateJobSchema.safeParse(body);
     if (!result.success) {
       const fieldErrors = this.formatZodErrors(result.error);
@@ -47,11 +56,12 @@ export class JobsController {
         },
       });
     }
-    return this.jobsService.createJob(result.data);
+    return this.jobsService.createJob(result.data, tenantId);
   }
 
   @Put(':id')
-  async update(@Param('id') id: string, @Body() body: unknown) {
+  async update(@Param('id') id: string, @Body() body: unknown, @Req() req: Request) {
+    const tenantId = req.session!.org;
     const result = CreateJobSchema.safeParse(body);
     if (!result.success) {
       const fieldErrors = this.formatZodErrors(result.error);
@@ -64,7 +74,7 @@ export class JobsController {
       });
     }
     try {
-      return await this.jobsService.updateJob(id, result.data);
+      return await this.jobsService.updateJob(id, result.data, tenantId);
     } catch (error: any) {
       // Prisma P2025: record not found
       if (error?.code === 'P2025' || error instanceof NotFoundException) {
@@ -82,9 +92,10 @@ export class JobsController {
   /** Soft-delete (status → closed) */
   @Delete(':id')
   @HttpCode(204)
-  async delete(@Param('id') id: string) {
+  async delete(@Param('id') id: string, @Req() req: Request) {
+    const tenantId = req.session!.org;
     try {
-      await this.jobsService.deleteJob(id);
+      await this.jobsService.deleteJob(id, tenantId);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         throw new NotFoundException({
@@ -105,9 +116,10 @@ export class JobsController {
    */
   @Delete(':id/hard')
   @HttpCode(204)
-  async hardDelete(@Param('id') id: string) {
+  async hardDelete(@Param('id') id: string, @Req() req: Request) {
+    const tenantId = req.session!.org;
     try {
-      await this.jobsService.hardDeleteJob(id);
+      await this.jobsService.hardDeleteJob(id, tenantId);
     } catch (error: any) {
       if (error instanceof NotFoundException) {
         throw new NotFoundException({
