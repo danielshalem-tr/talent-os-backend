@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { ConfigService } from '@nestjs/config';
 
 export interface ApplicationCandidateResponse {
   id: string;
@@ -21,14 +20,9 @@ export interface ApplicationResponse {
 
 @Injectable()
 export class ApplicationsService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly configService: ConfigService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
-  async findAll(): Promise<{ applications: ApplicationResponse[] }> {
-    const tenantId = this.configService.get<string>('TENANT_ID')!;
-
+  async findAll(tenantId: string): Promise<{ applications: ApplicationResponse[] }> {
     const applications = await this.prisma.application.findMany({
       where: { tenantId },
       include: {
