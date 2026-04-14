@@ -10,11 +10,15 @@ import {
   Patch,
   Post,
   Query,
+  Req,
   UploadedFile,
+  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Request } from 'express';
 import { ZodError } from 'zod';
+import { SessionGuard } from '../auth/session.guard';
 import { CandidatesService } from './candidates.service';
 import type { CandidateFilter } from './candidates.service';
 import { CreateCandidateSchema } from './dto/create-candidate.dto';
@@ -24,6 +28,7 @@ import { StageSummarySchema } from './dto/stage-summary.dto';
 import { RejectCandidateSchema } from './dto/reject-candidate.dto';
 import { CandidateResponse } from './dto/candidate-response.dto';
 
+@UseGuards(SessionGuard)
 @Controller('candidates')
 export class CandidatesController {
   constructor(private readonly candidatesService: CandidatesService) {}
@@ -33,8 +38,9 @@ export class CandidatesController {
    * @returns { total, duplicates, unassigned } for the active candidate pool
    */
   @Get('counts')
-  async getCounts(): Promise<{ total: number; duplicates: number; unassigned: number }> {
-    return this.candidatesService.getCounts();
+  async getCounts(@Req() req: Request): Promise<{ total: number; duplicates: number; unassigned: number }> {
+    const tenantId = req.session!.org;
+    return this.candidatesService.getCounts(tenantId);
   }
 
   /**
@@ -46,23 +52,27 @@ export class CandidatesController {
    */
   @Get()
   async findAll(
+    @Req() req: Request,
     @Query('q') q?: string,
     @Query('filter') filter?: CandidateFilter,
     @Query('job_id') jobId?: string,
     @Query('unassigned') unassigned?: string,
   ): Promise<{ candidates: CandidateResponse[]; total: number }> {
+    const tenantId = req.session!.org;
     const unassignedBool = unassigned === 'true';
-    return this.candidatesService.findAll(q, filter, jobId, unassignedBool);
+    return this.candidatesService.findAll(tenantId, q, filter, jobId, unassignedBool);
   }
 
   @Get(':id')
-  async findOne(@Param('id') id: string): Promise<CandidateResponse> {
-    return this.candidatesService.findOne(id);
+  async findOne(@Param('id') id: string, @Req() req: Request): Promise<CandidateResponse> {
+    const tenantId = req.session!.org;
+    return this.candidatesService.findOne(id, tenantId);
   }
 
   @Get(':id/cv-url')
-  async getCvUrl(@Param('id') candidateId: string) {
-    return this.candidatesService.getCvPresignedUrl(candidateId);
+  async getCvUrl(@Param('id') candidateId: string, @Req() req: Request) {
+    const tenantId = req.session!.org;
+    return this.candidatesService.getCvPresignedUrl(candidateId, tenantId);
   }
 
   /**
@@ -73,9 +83,11 @@ export class CandidatesController {
   @Post()
   @UseInterceptors(FileInterceptor('cv_file'))
   async create(
+    @Req() req: Request,
     @UploadedFile() file: Express.Multer.File | undefined,
     @Body() body: unknown,
   ): Promise<Record<string, unknown>> {
+    const tenantId = req.session!.org;
     const result = CreateCandidateSchema.safeParse(body);
     if (!result.success) {
       const fieldErrors = this.formatZodErrors(result.error);
@@ -87,7 +99,7 @@ export class CandidatesController {
         },
       });
     }
-    return this.candidatesService.createCandidate(result.data, file);
+    return this.candidatesService.createCandidate(result.data, file, tenantId);
   }
 
   /**
@@ -96,7 +108,8 @@ export class CandidatesController {
    * Updates both candidate.hiringStageId and application.jobStageId atomically.
    */
   @Patch(':id/stage')
-  async updateStage(@Param('id') id: string, @Body() body: unknown): Promise<{ success: boolean }> {
+  async updateStage(@Param('id') id: string, @Body() body: unknown, @Req() req: Request): Promise<{ success: boolean }> {
+    const tenantId = req.session!.org;
     const result = UpdateCandidateStageSchema.safeParse(body);
     if (!result.success) {
       const fieldErrors = this.formatZodErrors(result.error);
@@ -108,7 +121,7 @@ export class CandidatesController {
         },
       });
     }
-    await this.candidatesService.updateStage(id, result.data);
+    await this.candidatesService.updateStage(id, result.data, tenantId);
     return { success: true };
   }
 
@@ -120,8 +133,9 @@ export class CandidatesController {
    */
   @Delete(':id')
   @HttpCode(204)
-  async delete(@Param('id') id: string): Promise<void> {
-    await this.candidatesService.deleteCandidate(id);
+  async delete(@Param('id') id: string, @Req() req: Request): Promise<void> {
+    const tenantId = req.session!.org;
+    await this.candidatesService.deleteCandidate(id, tenantId);
   }
 
   /**
@@ -133,14 +147,15 @@ export class CandidatesController {
    * @returns Updated CandidateResponse
    */
   @Patch(':id')
-  async updateCandidate(@Param('id') id: string, @Body() body: unknown): Promise<CandidateResponse> {
+  async updateCandidate(@Param('id') id: string, @Body() body: unknown, @Req() req: Request): Promise<CandidateResponse> {
+    const tenantId = req.session!.org;
     const result = UpdateCandidateSchema.safeParse(body);
     if (!result.success) {
       throw new BadRequestException({
         error: { code: 'VALIDATION_ERROR', message: 'Validation failed', details: this.formatZodErrors(result.error) },
       });
     }
-    return this.candidatesService.updateCandidate(id, result.data);
+    return this.candidatesService.updateCandidate(id, result.data, tenantId);
   }
 
   /**
@@ -150,14 +165,15 @@ export class CandidatesController {
    */
   @Post(':id/reject')
   @HttpCode(200)
-  async rejectCandidate(@Param('id') id: string, @Body() body: unknown): Promise<CandidateResponse> {
+  async rejectCandidate(@Param('id') id: string, @Body() body: unknown, @Req() req: Request): Promise<CandidateResponse> {
+    const tenantId = req.session!.org;
     const result = RejectCandidateSchema.safeParse(body);
     if (!result.success) {
       throw new BadRequestException({
         error: { code: 'VALIDATION_ERROR', message: 'Validation failed', details: this.formatZodErrors(result.error) },
       });
     }
-    return this.candidatesService.rejectCandidate(id, result.data);
+    return this.candidatesService.rejectCandidate(id, result.data, tenantId);
   }
 
   /**
@@ -172,14 +188,16 @@ export class CandidatesController {
     @Param('id') id: string,
     @Param('stage_id') stageId: string,
     @Body() body: unknown,
+    @Req() req: Request,
   ): Promise<{ success: boolean }> {
+    const tenantId = req.session!.org;
     const result = StageSummarySchema.safeParse(body);
     if (!result.success) {
       throw new BadRequestException({
         error: { code: 'VALIDATION_ERROR', message: 'Validation failed', details: this.formatZodErrors(result.error) },
       });
     }
-    return this.candidatesService.saveStageSummary(id, stageId, result.data.summary);
+    return this.candidatesService.saveStageSummary(id, stageId, result.data.summary, tenantId);
   }
 
   /**
@@ -194,14 +212,16 @@ export class CandidatesController {
     @Param('id') id: string,
     @Param('stage_id') stageId: string,
     @Body() body: unknown,
+    @Req() req: Request,
   ): Promise<{ success: boolean; hiring_stage_id: string }> {
+    const tenantId = req.session!.org;
     const result = StageSummarySchema.safeParse(body);
     if (!result.success) {
       throw new BadRequestException({
         error: { code: 'VALIDATION_ERROR', message: 'Validation failed', details: this.formatZodErrors(result.error) },
       });
     }
-    return this.candidatesService.advanceWithSummary(id, stageId, result.data.summary);
+    return this.candidatesService.advanceWithSummary(id, stageId, result.data.summary, tenantId);
   }
 
   private formatZodErrors(error: ZodError): Record<string, string[]> {
