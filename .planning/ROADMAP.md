@@ -411,15 +411,49 @@ Plans:
 | 16. Backend Support for Manual Routing & UI Parity              | 0/3            | Planned  | TBD        |
 | 17. Production Deployment Readiness                             | 5/5            | Complete | 2026-04-01 |
 
+### Phase 20: True Multi-Tenant Isolation — Session-Derived Tenant ID
+
+**Goal:** Replace the hardcoded `TENANT_ID` env var in all business API endpoints with the authenticated user's organization ID extracted from the session JWT. Enforce `SessionGuard` on every business endpoint so unauthenticated callers are rejected and users from Org A can never see data from Org B.
+
+**Depends on:** Phase 19 (SessionGuard + JWT infrastructure)
+
+**Requirements:** TENANT-01 through TENANT-07
+
+**Success Criteria** (what must be TRUE):
+
+1. `GET /candidates`, `POST /candidates`, `GET /candidates/:id`, `PATCH /candidates/:id`, `DELETE /candidates/:id` all require a valid session cookie; unauthenticated requests → 401
+2. All candidate service methods receive `tenantId` as an explicit parameter (extracted from `request.session.org`), not from `ConfigService.get('TENANT_ID')`
+3. `GET /jobs`, `POST /jobs`, `GET /jobs/:id`, `PUT /jobs/:id`, `DELETE /jobs/:id`, `GET /jobs/list` all require a valid session cookie and use `session.org` for tenant scoping
+4. All jobs service methods receive `tenantId` as an explicit parameter
+5. `GET /applications` requires a valid session cookie and scopes by `session.org`
+6. `GET /config` requires a valid session cookie (config is tenant-agnostic but endpoint must be authenticated)
+7. `TENANT_ID` env var made optional in `env.ts` (only used by ingestion worker for email routing; not required for API server)
+8. `DedupService` and `IngestionProcessor` continue to use `TENANT_ID` from config (webhook flow has no user session — single-tenant ingestion is an acceptable Phase 1 constraint)
+9. All tests updated: service unit tests pass `tenantId` as method param instead of mocking `ConfigService.get('TENANT_ID')`
+10. Two users signed in under different orgs each see only their org's candidates and jobs — no cross-tenant data leakage
+11. `RESEND_API_KEY` and `RESEND_FROM` env vars added to `env.ts` schema (currently used by `EmailService` but not validated at startup)
+
+**Plans:** 3/3 plans complete
+
+Plans:
+
+- [x] 20-01-PLAN.md — Wave 1: Add `SessionGuard` + `@Req() req` to all business controllers (candidates, jobs, applications, config); extract `tenantId = req.session!.org`; pass to service methods; make `TENANT_ID` optional in env.ts
+- [x] 20-02-PLAN.md — Wave 2: Refactor `CandidatesService` and `JobsService` — replace all `configService.get('TENANT_ID')` with tenantId param; update `ApplicationsService` similarly; verify `DedupService`/`IngestionProcessor` still read from config
+- [x] 20-03-PLAN.md — Wave 3: Update all affected unit/integration tests; run full test suite; human smoke test (two separate org sign-ins confirm data isolation)
+
+---
+
 ### v2.0 Phases
 
 | Phase                                    | Plans Complete | Status   | Started    |
 | ---------------------------------------- | -------------- | -------- | ---------- |
 | 18. Database Schema & JWT Infrastructure | 1/1            | Complete | 2026-04-09 |
-| 19. Auth API Endpoints                   | 4/4 | Complete   | 2026-04-11 |
+| 19. Auth API Endpoints                   | 4/4            | Complete | 2026-04-11 |
+| 20. True Multi-Tenant Isolation          | 3/3 | Complete   | 2026-04-14 |
 
 ---
 
 _Roadmap created: 2026-03-22 by /gsd:new-roadmap_
 _Updated: 2026-03-31 by plan-phase (Phase 17 planning complete)_
 _Updated: 2026-04-07 for v2.0 milestone planning (Phases 18–22, agile structure)_
+_Updated: 2026-04-14 by plan-milestone-gaps (Phase 20 added — tenant isolation gap)_
