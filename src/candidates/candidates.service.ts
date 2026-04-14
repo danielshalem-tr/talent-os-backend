@@ -14,6 +14,7 @@ import { CreateCandidateDto } from './dto/create-candidate.dto';
 import { UpdateCandidateStageDto } from './dto/update-candidate-stage.dto';
 import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { StageSummaryDto } from './dto/stage-summary.dto';
+import { RejectCandidateDto } from './dto/reject-candidate.dto';
 import { CandidateResponse } from './dto/candidate-response.dto';
 import { Prisma } from '@prisma/client';
 import { CandidateAiService } from './candidate-ai.service';
@@ -132,6 +133,8 @@ export class CandidatesService {
           select: { id: true },
         },
         status: true,
+        rejectionReason: true,
+        rejectionNote: true,
         candidateStageSummaries: {
           select: { jobStageId: true, summary: true },
         },
@@ -163,6 +166,8 @@ export class CandidatesService {
         // Profile data
         status: c.status,
         is_rejected: c.status === 'rejected',
+        rejection_reason: c.rejectionReason ?? null,
+        rejection_note: c.rejectionNote ?? null,
         stage_summaries: c.candidateStageSummaries.reduce(
           (acc, curr) => {
             acc[curr.jobStageId] = curr.summary;
@@ -222,6 +227,8 @@ export class CandidatesService {
           select: { id: true },
         },
         status: true,
+        rejectionReason: true,
+        rejectionNote: true,
         candidateStageSummaries: {
           select: { jobStageId: true, summary: true },
         },
@@ -252,6 +259,8 @@ export class CandidatesService {
       skills: c.skills,
       status: c.status,
       is_rejected: c.status === 'rejected',
+      rejection_reason: c.rejectionReason ?? null,
+      rejection_note: c.rejectionNote ?? null,
       stage_summaries: c.candidateStageSummaries.reduce(
         (acc, curr) => {
           acc[curr.jobStageId] = curr.summary;
@@ -449,7 +458,7 @@ export class CandidatesService {
     return this.findOne(candidateId);
   }
 
-  async rejectCandidate(candidateId: string): Promise<CandidateResponse> {
+  async rejectCandidate(candidateId: string, dto: RejectCandidateDto): Promise<CandidateResponse> {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
@@ -461,7 +470,7 @@ export class CandidatesService {
     await this.prisma.$transaction(async (tx) => {
       await tx.candidate.update({
         where: { id: candidateId },
-        data: { status: 'rejected' },
+        data: { status: 'rejected', rejectionReason: dto.reason, rejectionNote: dto.note ?? null },
       });
 
       if (candidate.jobId) {

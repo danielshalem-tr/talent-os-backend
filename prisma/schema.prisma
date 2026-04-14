@@ -147,6 +147,8 @@ model Candidate {
   aiScore         Int?     @map("ai_score") @db.SmallInt
   metadata        Json?    @db.JsonB
   status          String   @default("active") @db.Text // "active", "rejected"
+  rejectionReason String?  @map("rejection_reason") @db.VarChar(100) // not_a_fit | overqualified | underqualified | failed_screening | compensation_mismatch | culture_fit | other
+  rejectionNote   String?  @map("rejection_note") @db.Text
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
 

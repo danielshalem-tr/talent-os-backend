@@ -27,6 +27,8 @@ describe('CandidatesController (Integration Tests)', () => {
     skills: ['TypeScript'],
     status: 'active',
     is_rejected: false,
+    rejection_reason: null,
+    rejection_note: null,
     job_id: 'job-uuid',
     hiring_stage_id: 'stage-uuid',
     hiring_stage_name: 'Application Review',

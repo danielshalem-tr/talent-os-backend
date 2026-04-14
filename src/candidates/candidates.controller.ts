@@ -21,6 +21,7 @@ import { CreateCandidateSchema } from './dto/create-candidate.dto';
 import { UpdateCandidateStageSchema } from './dto/update-candidate-stage.dto';
 import { UpdateCandidateSchema } from './dto/update-candidate.dto';
 import { StageSummarySchema } from './dto/stage-summary.dto';
+import { RejectCandidateSchema } from './dto/reject-candidate.dto';
 import { CandidateResponse } from './dto/candidate-response.dto';
 
 @Controller('candidates')
@@ -149,8 +150,14 @@ export class CandidatesController {
    */
   @Post(':id/reject')
   @HttpCode(200)
-  async rejectCandidate(@Param('id') id: string): Promise<CandidateResponse> {
-    return this.candidatesService.rejectCandidate(id);
+  async rejectCandidate(@Param('id') id: string, @Body() body: unknown): Promise<CandidateResponse> {
+    const result = RejectCandidateSchema.safeParse(body);
+    if (!result.success) {
+      throw new BadRequestException({
+        error: { code: 'VALIDATION_ERROR', message: 'Validation failed', details: this.formatZodErrors(result.error) },
+      });
+    }
+    return this.candidatesService.rejectCandidate(id, result.data);
   }
 
   /**

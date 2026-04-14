@@ -29,6 +29,8 @@ export interface CandidateResponse {
   // New Profile data trackings
   status: string;
   is_rejected: boolean;
+  rejection_reason: string | null;
+  rejection_note: string | null;
   stage_summaries: Record<string, string>;
   years_experience: number | null;
 }
