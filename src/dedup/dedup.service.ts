@@ -46,7 +46,7 @@ export class DedupService {
     tenantId: string,
     fromEmail: string,
     tx?: Prisma.TransactionClient,
-    source?: string | null, // NEW: optional source from extraction.source_hint
+    source?: string | null, // optional source from extraction.source_hint
   ): Promise<string> {
     const client = tx ?? this.prisma;
     const created = await client.candidate.create({
@@ -55,7 +55,8 @@ export class DedupService {
         fullName: candidate.full_name,
         email: candidate.email ?? null,
         phone: candidate.phone ?? null,
-        source: source ?? 'direct', // CHANGED: use provided source or default to 'direct'
+        source: source ?? 'direct',
+        sourceAgency: candidate.source_agency ?? null, // BUG-2 fix: propagate agency name to DB
         sourceEmail: fromEmail,
         // Phase 7 enriches: currentRole, yearsExperience, skills, cvText, cvFileUrl, aiSummary, metadata
       },

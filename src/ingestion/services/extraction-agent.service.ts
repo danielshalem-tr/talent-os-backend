@@ -37,10 +37,11 @@ const FALLBACK: Omit<CandidateExtract, 'suspicious'> = {
  * Known agency domain → canonical name map.
  * Deterministic resolution — never rely on AI for these.
  * Keys are lowercase domain strings (without port).
+ * BUG-3 fix: 'allJobs' corrected to 'AllJobs' (matches the actual brand name).
  */
 const KNOWN_AGENCY_DOMAINS: Record<string, string> = {
   'jobhunt.co.il': 'jobhunt',
-  'alljob.co.il': 'allJobs',
+  'alljob.co.il': 'AllJobs',
 };
 
 /**

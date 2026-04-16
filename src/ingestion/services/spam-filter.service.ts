@@ -100,8 +100,8 @@ const HEBREW_SPAM_PATTERNS: RegExp[] = [
 /**
  * Subject-line patterns that indicate non-CV emails.
  * Matched case-insensitively against the full subject string.
- * A match with no attachment → hard spam reject.
- * A match with attachment → suspicious.
+ * A match with no CV attachment → hard spam reject.
+ * A match with CV attachment → suspicious.
  */
 const NON_CV_SUBJECT_PATTERNS: RegExp[] = [
   // Real estate
@@ -116,11 +116,29 @@ const NON_CV_SUBJECT_PATTERNS: RegExp[] = [
   // Generic sales follow-ups with no CV context
   /\bjust\s+bumping\b/i,
   /^re:\s*(fw:|fwd:)?\s*[^a-z]*(sale|rental|lease|space|property)/i,
+  // Calendar invites — English
+  /^invitation:/i,
+  /^invite:/i,
+  /\byou(?:'re| are) invited\b/i,
+  // Calendar invites — Hebrew ("הזמנה:" = "invitation:")
+  /^הזמנה:/u,
+  /^הזמנה\s/u,
   // Hebrew subject patterns (real estate / commercial)
   /(?:^|[^\p{L}])נדל"?״?ן(?:[^\p{L}]|$)/u, // real estate (both gershayim forms)
   /(?:^|[^\p{L}])להשכרה(?:[^\p{L}]|$)/u, // for rent
   /(?:^|[^\p{L}])למכירה(?:[^\p{L}]|$)/u, // for sale
   /(?:^|[^\p{L}])שטחי\s+מסחר(?:[^\p{L}]|$)/u, // commercial spaces
+];
+
+/**
+ * MIME types that are never CV documents.
+ * Attachments whose ContentType matches one of these are treated as non-meaningful
+ * for the purpose of the "has attachment" bypass — they do not protect an email
+ * from spam rejection.
+ */
+const NON_CV_CONTENT_TYPES: RegExp[] = [
+  /^text\/calendar\b/i, // .ics calendar invites
+  /^application\/ics\b/i, // alternate .ics MIME type
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -143,14 +161,22 @@ export class SpamFilterService {
    * ContentID is the only signal for distinguishing inline vs. attached.
    * As a defense-in-depth measure, we only treat inline entries as meaningless
    * if they are also images. Any documents with a ContentID are still considered attached.
+   *
+   * BUG-1 fix: calendar attachments (text/calendar, application/ics) are also treated
+   * as non-meaningful — they can never contain a CV.
    */
   private hasMeaningfulAttachment(attachments: PostmarkPayloadDto['Attachments']): boolean {
     if (!attachments || attachments.length === 0) return false;
 
     return attachments.some((att) => {
-      // Only ignore inline images — non-image attachments with ContentID 
-      // are still treated as meaningful (defense-in-depth)
+      // Ignore inline images — not a CV document
       if (att.ContentID && att.ContentType?.startsWith('image/')) return false;
+
+      // BUG-1 fix: ignore calendar attachments — never a CV
+      if (att.ContentType && NON_CV_CONTENT_TYPES.some((re) => re.test(att.ContentType))) return false;
+
+      // Also reject by filename extension as a fallback (ContentType can be wrong)
+      if (att.Name && /\.ics$/i.test(att.Name)) return false;
 
       // Everything else is meaningful (PDF, DOCX, unknown, etc.)
       return true;
@@ -194,6 +220,7 @@ export class SpamFilterService {
 
   check(payload: PostmarkPayloadDto): SpamFilterResult {
     // FIX #1: Use meaningful-attachment check instead of raw length > 0
+    // BUG-1 fix: calendar attachments (text/calendar) are treated as non-meaningful
     const hasAttachment = this.hasMeaningfulAttachment(payload.Attachments);
 
     const bodyLength = (payload.TextBody ?? '').trim().length;
@@ -206,13 +233,14 @@ export class SpamFilterService {
       return { isSpam: true, suspicious: false };
     }
 
-    // Subject pattern check: non-CV subject patterns (real estate, sales, etc.)
-    // Now includes Hebrew subject patterns (FIX #3)
+    // Subject pattern check: non-CV subject patterns (real estate, sales, calendar invites, etc.)
+    // BUG-1 fix: now includes calendar invite subject patterns (Hebrew + English)
     const matchesNonCvSubject = NON_CV_SUBJECT_PATTERNS.some((re) => re.test(rawSubject));
     if (matchesNonCvSubject) {
       if (!hasAttachment) {
         return { isSpam: true, suspicious: false };
       }
+      // Has a CV-like attachment alongside a non-CV subject — flag as suspicious for human review
       return { isSpam: false, suspicious: true };
     }
 

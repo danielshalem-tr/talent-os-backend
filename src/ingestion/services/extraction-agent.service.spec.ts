@@ -452,15 +452,15 @@ describe('ExtractionAgentService - known agency domain resolution (Issue 3)', ()
     expect(result.source_hint).toBe('agency');
   });
 
-  // alljob.co.il domain → canonical "allJobs", overrides AI result
-  it('overrides source_agency with canonical "allJobs" for alljob.co.il sender', async () => {
+  // alljob.co.il domain → canonical "AllJobs", overrides AI result
+  it('overrides source_agency with canonical "AllJobs" for alljob.co.il sender', async () => {
     mockGetText.mockResolvedValueOnce(JSON.stringify({ ...agencyAiResult, source_agency: 'AllJobs' }));
     const service = makeService();
     const result = await service.extract('cv text', false, {
       subject: 'New candidate',
       fromEmail: 'alljobs@alljob.co.il',
     });
-    expect(result.source_agency).toBe('allJobs');
+    expect(result.source_agency).toBe('AllJobs');
     expect(result.source_hint).toBe('agency');
   });
 
