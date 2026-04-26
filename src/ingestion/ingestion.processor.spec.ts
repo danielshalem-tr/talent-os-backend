@@ -1,5 +1,4 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConfigService } from '@nestjs/config';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { IngestionProcessor } from './ingestion.processor';
 import { SpamFilterService } from './services/spam-filter.service';
@@ -77,10 +76,6 @@ describe('IngestionProcessor', () => {
         SpamFilterService,
         AttachmentExtractorService,
         { provide: PrismaService, useValue: prisma },
-        {
-          provide: ConfigService,
-          useValue: { get: jest.fn().mockReturnValue('test-tenant-id') },
-        },
         { provide: ExtractionAgentService, useValue: extractionAgent },
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
@@ -265,10 +260,6 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
         SpamFilterService,
         AttachmentExtractorService,
         { provide: PrismaService, useValue: prisma },
-        {
-          provide: ConfigService,
-          useValue: { get: jest.fn().mockReturnValue('test-tenant-id') },
-        },
         { provide: ExtractionAgentService, useValue: extractionAgent },
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
@@ -426,10 +417,6 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         SpamFilterService,
         AttachmentExtractorService,
         { provide: PrismaService, useValue: prisma },
-        {
-          provide: ConfigService,
-          useValue: { get: jest.fn().mockReturnValue('test-tenant-id') },
-        },
         { provide: ExtractionAgentService, useValue: extractionAgent },
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
@@ -673,7 +660,6 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         SpamFilterService,
         AttachmentExtractorService,
         { provide: PrismaService, useValue: prisma },
-        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-tenant-id') } },
         { provide: ExtractionAgentService, useValue: extractionAgent },
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
@@ -872,7 +858,6 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           SpamFilterService,
           AttachmentExtractorService,
           { provide: PrismaService, useValue: prisma },
-          { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-tenant-id') } },
           { provide: ExtractionAgentService, useValue: extractionAgent },
           { provide: StorageService, useValue: storageService },
           { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
@@ -1023,7 +1008,6 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
         SpamFilterService,
         AttachmentExtractorService,
         { provide: PrismaService, useValue: prisma },
-        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-tenant-id') } },
         { provide: ExtractionAgentService, useValue: { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) } },
         { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key'), downloadPayload: jest.fn() } },
         { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
@@ -1113,7 +1097,6 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
         SpamFilterService,
         AttachmentExtractorService,
         { provide: PrismaService, useValue: prisma },
-        { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-tenant-id') } },
         { provide: ExtractionAgentService, useValue: { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) } },
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },

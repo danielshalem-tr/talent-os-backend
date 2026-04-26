@@ -82,6 +82,40 @@ describe('WebhooksService', () => {
     });
   });
 
+  describe('M3: uploadPayload runs before prisma.create (no orphaned DB row on R2 failure)', () => {
+    it('calls uploadPayload before prisma.create', async () => {
+      mockPrisma.emailIntakeLog.findUnique.mockResolvedValue(null);
+
+      const callOrder: string[] = [];
+      mockStorageService.uploadPayload.mockImplementation(async () => {
+        callOrder.push('uploadPayload');
+        return 'emails/tenant/msg/payload.json';
+      });
+      mockStorageService.upload.mockImplementation(async () => {
+        callOrder.push('upload');
+        return null;
+      });
+      mockPrisma.emailIntakeLog.create.mockImplementation(async () => {
+        callOrder.push('create');
+        return { id: 'log-1' };
+      });
+      mockQueue.add.mockResolvedValue({});
+
+      await service.enqueue(basePayload);
+
+      expect(callOrder.indexOf('uploadPayload')).toBeLessThan(callOrder.indexOf('create'));
+    });
+
+    it('does not call prisma.create when uploadPayload rejects', async () => {
+      mockPrisma.emailIntakeLog.findUnique.mockResolvedValue(null);
+      mockStorageService.uploadPayload.mockRejectedValue(new Error('R2 unavailable'));
+
+      await expect(service.enqueue(basePayload)).rejects.toThrow('R2 unavailable');
+
+      expect(mockPrisma.emailIntakeLog.create).not.toHaveBeenCalled();
+    });
+  });
+
   describe('idempotent on duplicate messageId with status=completed', () => {
     it('returns { status: "queued" } without re-enqueue', async () => {
       mockPrisma.emailIntakeLog.findUnique.mockResolvedValue({
