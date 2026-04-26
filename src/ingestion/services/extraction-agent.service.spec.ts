@@ -303,6 +303,25 @@ describe('ExtractionAgentService', () => {
       'msg-uuid',
     );
   });
+
+  // extract re-throws when saveExtractionCache rejects — AI result discarded, BullMQ will retry
+  it('extract re-throws when saveExtractionCache rejects — AI result discarded, BullMQ will retry', async () => {
+    const aiResult = {
+      full_name: 'New Candidate',
+      email: null, phone: null, current_role: null,
+      years_experience: null, location: null, skills: [],
+      ai_summary: null, source_hint: null, source_agency: null,
+    };
+    mockGenerateObject.mockResolvedValueOnce({ object: aiResult } as any);
+    const mockStorage = {
+      loadExtractionCache: jest.fn().mockResolvedValue(null),
+      saveExtractionCache: jest.fn().mockRejectedValue(new Error('R2 unavailable')),
+    };
+    const service = makeService(mockStorage);
+
+    await expect(service.extract('cv text', false, DEFAULT_METADATA)).rejects.toThrow('R2 unavailable');
+    expect(mockGenerateObject).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('CandidateExtractSchema - float coercion', () => {
