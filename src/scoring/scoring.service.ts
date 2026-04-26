@@ -57,12 +57,13 @@ Example output:
 @Injectable()
 export class ScoringAgentService {
   private readonly logger = new Logger(ScoringAgentService.name);
+  private readonly client: OpenRouter;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly config: ConfigService) {
+    this.client = new OpenRouter({ apiKey: config.get<string>('OPENROUTER_API_KEY')! });
+  }
 
   async score(input: ScoringInput): Promise<ScoreResult & { modelUsed: string }> {
-    const apiKey = this.config.get<string>('OPENROUTER_API_KEY')!;
-    const client = new OpenRouter({ apiKey });
 
     const MAX_CV_LENGTH = 15_000;
     const MAX_JOB_DESC_LENGTH = 15_000;
@@ -90,7 +91,7 @@ export class ScoringAgentService {
     const userMessage = `${candidateSection}\n\n${jobSection}`;
 
     try {
-      const result = client.callModel({
+      const result = this.client.callModel({
         model: 'openai/gpt-4o-mini',
         instructions: SCORING_INSTRUCTIONS,
         input: userMessage,

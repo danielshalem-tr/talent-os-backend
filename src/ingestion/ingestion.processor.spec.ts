@@ -73,7 +73,7 @@ describe('IngestionProcessor', () => {
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
-        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
+        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
 
@@ -253,7 +253,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
-        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
+        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
 
@@ -401,7 +401,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
-        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
+        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
 
@@ -634,7 +634,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: scoringService },
-        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
+        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
 
@@ -820,7 +820,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key') } },
           { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
           { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, modelUsed: 'test', reasoning: '', strengths: [], gaps: [] }) } },
-          { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
+          { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
         ],
       }).compile();
       processor = module.get<IngestionProcessor>(IngestionProcessor);
@@ -965,7 +965,7 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
         { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key') } },
         { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
         { provide: ScoringAgentService, useValue: { score: jest.fn() } },
-        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
+        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
     processor = module.get<IngestionProcessor>(IngestionProcessor);
@@ -1053,7 +1053,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
         { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key') } },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn() } },
-        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn() } },
+        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
     processor = module.get<IngestionProcessor>(IngestionProcessor);

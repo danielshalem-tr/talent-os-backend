@@ -8,7 +8,7 @@ import { PostmarkAuthGuard } from './guards/postmark-auth.guard';
 export class WebhooksController {
   constructor(private readonly webhooksService: WebhooksService) {}
 
-  @UseGuards(ThrottlerGuard, PostmarkAuthGuard)
+  @UseGuards(PostmarkAuthGuard, ThrottlerGuard)
   @Post('email')
   @HttpCode(HttpStatus.OK)
   async ingestEmail(@Body() rawBody: unknown): Promise<{ status: string }> {

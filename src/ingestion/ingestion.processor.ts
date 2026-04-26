@@ -1,6 +1,5 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
-import { Logger } from '@nestjs/common';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { Prisma } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
@@ -27,8 +26,6 @@ export interface ProcessingContext {
   maxStalledCount: 2, // retry if stalled 2x
 })
 export class IngestionProcessor extends WorkerHost {
-  private readonly logger = new Logger(IngestionProcessor.name);
-
   constructor(
     private readonly spamFilter: SpamFilterService,
     private readonly attachmentExtractor: AttachmentExtractorService,
@@ -68,9 +65,8 @@ export class IngestionProcessor extends WorkerHost {
     const payload = job.data;
     const tenantId = this.config.get<string>('TENANT_ID')!;
 
-    // D-24: structured lifecycle log — pino object-first pattern
     this.pinoLogger.log({ jobId: job.id, jobName: job.name, tenantId }, 'Job started');
-    this.logger.log(`Processing job ${job.id} for MessageID: ${payload.MessageID}`);
+    this.pinoLogger.log({ jobId: job.id, messageId: payload.MessageID }, 'Job processing started');
 
     // Step 0: Spam filter FIRST — before any parsing (D-11)
     const filterResult = this.spamFilter.check(payload);
@@ -83,7 +79,7 @@ export class IngestionProcessor extends WorkerHost {
         },
         data: { processingStatus: 'spam' },
       });
-      this.logger.log(`Spam filter rejected MessageID: ${payload.MessageID}`);
+      this.pinoLogger.log({ messageId: payload.MessageID }, 'Spam filter rejected');
       return;
     }
 
@@ -118,7 +114,7 @@ export class IngestionProcessor extends WorkerHost {
     context.fileKey = fileKey;
     context.cvText = fullText;
 
-    this.logger.log(`Phase 5 complete for MessageID: ${payload.MessageID} — fileKey: ${fileKey ?? 'none'}`);
+    this.pinoLogger.log({ messageId: payload.MessageID, fileKey: fileKey ?? null }, 'Phase 5 complete');
 
     // Phase 4: AI extraction — passes metadata for context (Phase 14: metadata enables source_hint detection)
     let extraction: CandidateExtract;
@@ -130,9 +126,7 @@ export class IngestionProcessor extends WorkerHost {
     } catch (err) {
       // Final attempt: try deterministic extraction as last resort before marking failed
       if (job.attemptsMade >= (job.opts?.attempts ?? 3) - 1) {
-        this.logger.warn(
-          `AI extraction failed on final attempt for ${payload.MessageID} — trying deterministic fallback`,
-        );
+        this.pinoLogger.warn({ messageId: payload.MessageID }, 'AI extraction failed on final attempt — trying deterministic fallback');
         try {
           const deterministicResult = this.extractionAgent.extractDeterministically(context.fullText);
           extraction = {
@@ -147,9 +141,7 @@ export class IngestionProcessor extends WorkerHost {
             where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
             data: { processingStatus: 'failed' },
           });
-          this.logger.error(
-            `Both AI and deterministic extraction failed for ${payload.MessageID}: ${(fallbackErr as Error).message}`,
-          );
+          this.pinoLogger.error({ messageId: payload.MessageID, error: (fallbackErr as Error).message }, 'Both AI and deterministic extraction failed');
           return; // Don't re-throw — job is permanently done (failed terminal state)
         }
       } else {
@@ -158,9 +150,7 @@ export class IngestionProcessor extends WorkerHost {
           where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
           data: { processingStatus: 'failed' },
         });
-        this.logger.error(
-          `Extraction failed for MessageID: ${payload.MessageID} (attempt ${job.attemptsMade + 1}) — ${(err as Error).message}`,
-        );
+        this.pinoLogger.error({ messageId: payload.MessageID, attempt: job.attemptsMade + 1, error: (err as Error).message }, 'Extraction failed');
         throw err;
       }
     }
@@ -173,11 +163,11 @@ export class IngestionProcessor extends WorkerHost {
         },
         data: { processingStatus: 'failed' },
       });
-      this.logger.error(`Extraction returned empty fullName for MessageID: ${payload.MessageID}`);
+      this.pinoLogger.error({ messageId: payload.MessageID }, 'Extraction returned empty fullName');
       return;
     }
 
-    this.logger.log(`Phase 4 complete for MessageID: ${payload.MessageID} — extracted: ${extraction!.full_name}`);
+    this.pinoLogger.log({ messageId: payload.MessageID, fullName: extraction!.full_name }, 'Phase 4 complete');
 
     // Phase 6: Duplicate detection + minimal candidate shell INSERT/UPSERT (atomic)
     // === IDEMPOTENCY GUARD ===
@@ -191,9 +181,7 @@ export class IngestionProcessor extends WorkerHost {
     let candidateId!: string;
 
     if (existingIntake?.candidateId) {
-      this.logger.log(
-        `Idempotency guard: intake ${payload.MessageID} already has candidateId ${existingIntake.candidateId}. Skipping Phase 6.`,
-      );
+      this.pinoLogger.log({ messageId: payload.MessageID, candidateId: existingIntake.candidateId }, 'Idempotency guard: skipping Phase 6');
       candidateId = existingIntake.candidateId;
     } else {
       try {
@@ -209,10 +197,7 @@ export class IngestionProcessor extends WorkerHost {
           try {
             dedupResult = await this.dedupService.check(extraction!, tenantId, tx);
           } catch (err) {
-            this.logger.error(
-              `Dedup check failed for MessageID: ${payload.MessageID} — ${(err as Error).message}`,
-              (err as Error).stack,
-            );
+            this.pinoLogger.error({ messageId: payload.MessageID, error: (err as Error).message }, 'Dedup check failed');
             throw err; // Transaction will rollback
           }
 
@@ -271,11 +256,7 @@ export class IngestionProcessor extends WorkerHost {
           });
         });
       } catch (err) {
-        this.logger.error(
-          `Phase 6 transaction failed for MessageID: ${payload.MessageID} — ${(err as Error).message}`,
-          (err as Error).stack,
-        );
-        // D-24: structured lifecycle log — job failed
+        this.pinoLogger.error({ messageId: payload.MessageID, error: (err as Error).message }, 'Phase 6 transaction failed');
         this.pinoLogger.error(
           {
             jobId: job.id,
@@ -298,7 +279,7 @@ export class IngestionProcessor extends WorkerHost {
     // Pass candidateId to Phase 7 via context (D-16)
     context.candidateId = candidateId!;
 
-    this.logger.log(`Phase 6 complete for MessageID: ${payload.MessageID} — candidateId: ${candidateId}`);
+    this.pinoLogger.log({ messageId: payload.MessageID, candidateId }, 'Phase 6 complete');
 
     // Phase 15: Deterministic Job ID extraction + multi-job lookup
     // Extract candidate short_ids (pure text parse — no DB query)
@@ -337,14 +318,10 @@ export class IngestionProcessor extends WorkerHost {
       matchedJobs = jobsData;
 
       if (matchedJobs.length > 0) {
-        const jobTitles = matchedJobs.map((j) => `"${j.title}"`).join(', ');
-        this.logger.log(
-          `Phase 15: Found ${matchedJobs.length} matching job(s) for short_ids [${matchedShortIds.join(', ')}]: ${jobTitles}`,
-        );
+        this.pinoLogger.log({ messageId: payload.MessageID, count: matchedJobs.length }, 'Phase 15: matched jobs found');
       }
     } else {
-      // No matching short_ids in email text
-      this.logger.debug(`Phase 15: No matching job short_ids found in email text for MessageID: ${payload.MessageID}`);
+      this.pinoLogger.debug({ messageId: payload.MessageID }, 'Phase 15: no matching job short_ids');
     }
 
     // For backward compatibility: set jobId/hiringStageId from first match (if any)
@@ -372,7 +349,7 @@ export class IngestionProcessor extends WorkerHost {
 
     // If no jobs were matched, skip scoring loop
     if (matchedJobs.length === 0) {
-      this.logger.log(`No matching jobs for MessageID: ${payload.MessageID} — skipping scoring`);
+      this.pinoLogger.log({ messageId: payload.MessageID }, 'No matching jobs — skipping scoring');
       await this.prisma.emailIntakeLog.update({
         where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
         data: { processingStatus: 'completed' },
@@ -417,9 +394,7 @@ export class IngestionProcessor extends WorkerHost {
           },
         } satisfies ScoringInput);
       } catch (err) {
-        this.logger.error(
-          `Scoring failed for candidateId: ${context.candidateId}, jobId: ${activeJob.id} — ${(err as Error).message}`,
-        );
+        this.pinoLogger.error({ messageId: payload.MessageID, candidateId: context.candidateId, jobId: activeJob.id, error: (err as Error).message }, 'Scoring failed');
         // Mark intake as failed if scoring fails for ANY matched job
         await this.prisma.emailIntakeLog.update({
           where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
@@ -445,9 +420,7 @@ export class IngestionProcessor extends WorkerHost {
       // (C-5 fix: prevents race condition from repeated updates in loop)
       maxAiScore = Math.max(maxAiScore, scoreResult.score);
 
-      this.logger.log(
-        `Phase 7 scored candidateId: ${context.candidateId} against jobId: ${activeJob.id} — score: ${scoreResult.score}`,
-      );
+      this.pinoLogger.log({ messageId: payload.MessageID, candidateId: context.candidateId, jobId: activeJob.id, score: scoreResult.score }, 'Phase 7 scored');
     }
 
     // Update denormalized aiScore once after all jobs scored
@@ -465,8 +438,6 @@ export class IngestionProcessor extends WorkerHost {
       data: { processingStatus: 'completed' },
     });
 
-    // D-24: structured lifecycle log — job completed
     this.pinoLogger.log({ jobId: job.id, jobName: job.name, tenantId }, 'Job completed');
-    this.logger.log(`Phase 7 complete for MessageID: ${payload.MessageID} — pipeline finished`);
   }
 }

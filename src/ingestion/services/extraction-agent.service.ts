@@ -170,8 +170,11 @@ Hebrew CV with employment gap, agency submission (Resolved Agency Name: jobhunt)
 @Injectable()
 export class ExtractionAgentService {
   private readonly logger = new Logger(ExtractionAgentService.name);
+  private readonly client: OpenRouter;
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly config: ConfigService) {
+    this.client = new OpenRouter({ apiKey: config.get<string>('OPENROUTER_API_KEY')! });
+  }
 
   async extract(
     fullText: string,
@@ -188,8 +191,6 @@ export class ExtractionAgentService {
     fullText: string,
     metadata: { subject: string; fromEmail: string },
   ): Promise<Omit<CandidateExtract, 'suspicious'>> {
-    const apiKey = this.config.get<string>('OPENROUTER_API_KEY')!;
-    const client = new OpenRouter({ apiKey });
 
     const MAX_INPUT_LENGTH = 20_000;
     const safeFullText = fullText.substring(0, MAX_INPUT_LENGTH);
@@ -209,7 +210,7 @@ export class ExtractionAgentService {
     const instructions = buildInstructions(new Date().getFullYear());
 
     try {
-      const result = client.callModel({
+      const result = this.client.callModel({
         model: 'openai/gpt-4o-mini',
         instructions,
         input: userMessage,
