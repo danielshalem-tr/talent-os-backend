@@ -43,6 +43,8 @@ export class WebhooksService {
           jobId: messageId,
           attempts: 3,
           backoff: { type: 'exponential', delay: 5000 },
+          removeOnComplete: { count: 1000 },
+          removeOnFail: { count: 500 },
         });
         this.logger.log(`Re-enqueued job for MessageID: ${messageId}`);
       } else {
@@ -86,6 +88,8 @@ export class WebhooksService {
         jobId: messageId,
         attempts: 3,
         backoff: { type: 'exponential', delay: 5000 },
+        removeOnComplete: { count: 1000 },
+        removeOnFail: { count: 500 },
       });
     } catch (error) {
       this.logger.error(`Failed to enqueue job for MessageID: ${messageId}`, error);
