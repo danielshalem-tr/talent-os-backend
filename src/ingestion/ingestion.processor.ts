@@ -118,37 +118,19 @@ export class IngestionProcessor extends WorkerHost {
       extraction = await this.extractionAgent.extract(context.fullText, context.suspicious, {
         subject: payload.Subject ?? '',
         fromEmail: payload.From,
+        tenantId,
+        messageId: payload.MessageID,
       });
     } catch (err) {
-      // Final attempt: try deterministic extraction as last resort before marking failed
-      if (job.attemptsMade >= (job.opts?.attempts ?? 3) - 1) {
-        this.pinoLogger.warn({ messageId: payload.MessageID }, 'AI extraction failed on final attempt — trying deterministic fallback');
-        try {
-          const deterministicResult = this.extractionAgent.extractDeterministically(context.fullText);
-          extraction = {
-            ...deterministicResult,
-            suspicious: context.suspicious,
-            source_hint: null,
-          };
-          // Don't throw — continue with partial data from deterministic extraction
-        } catch (fallbackErr) {
-          // Even deterministic failed — mark as permanently failed, don't retry
-          await this.prisma.emailIntakeLog.update({
-            where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-            data: { processingStatus: 'failed' },
-          });
-          this.pinoLogger.error({ messageId: payload.MessageID, error: (fallbackErr as Error).message }, 'Both AI and deterministic extraction failed');
-          return; // Don't re-throw — job is permanently done (failed terminal state)
-        }
-      } else {
-        // Non-final attempt — mark status and re-throw for BullMQ exponential backoff retry
-        await this.prisma.emailIntakeLog.update({
-          where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-          data: { processingStatus: 'failed' },
-        });
-        this.pinoLogger.error({ messageId: payload.MessageID, attempt: job.attemptsMade + 1, error: (err as Error).message }, 'Extraction failed');
-        throw err;
-      }
+      await this.prisma.emailIntakeLog.update({
+        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+        data: { processingStatus: 'failed', errorMessage: (err as Error).message },
+      });
+      this.pinoLogger.error(
+        { messageId: payload.MessageID, attempt: job.attemptsMade + 1, error: (err as Error).message },
+        'AI extraction failed',
+      );
+      throw err;
     }
 
     // D-04, D-05: empty fullName is treated the same as extraction failure (permanent — do not retry)

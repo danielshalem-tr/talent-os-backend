@@ -12,8 +12,9 @@ import { DedupService } from '../dedup/dedup.service';
 import { ScoringAgentService } from '../scoring/scoring.service';
 import { Prisma } from '@prisma/client';
 
-// Mock @openrouter/sdk to prevent ESM parse errors (ExtractionAgentService is provided as a mock anyway)
-jest.mock('@openrouter/sdk', () => ({ OpenRouter: jest.fn() }));
+// Mock AI SDK modules to prevent ESM parse errors (ExtractionAgentService is provided as a mock anyway)
+jest.mock('ai', () => ({ generateObject: jest.fn() }));
+jest.mock('@openrouter/ai-sdk-provider', () => ({ createOpenRouter: jest.fn().mockReturnValue({ chat: jest.fn() }) }));
 
 // Mock pdf-parse and mammoth so AttachmentExtractorService doesn't crash on fake content
 jest.mock('pdf-parse', () => jest.fn().mockResolvedValue({ text: 'pdf text' }));
@@ -155,7 +156,7 @@ describe('IngestionProcessor', () => {
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledTimes(2);
     expect(prisma.emailIntakeLog.update).toHaveBeenLastCalledWith(
       expect.objectContaining({
-        data: { processingStatus: 'failed' },
+        data: expect.objectContaining({ processingStatus: 'failed' }),
       }),
     );
   });

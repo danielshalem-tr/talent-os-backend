@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OpenRouter } from '@openrouter/sdk';
+import { generateObject } from 'ai';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 
 export const ScoreSchema = z.object({
@@ -57,14 +58,13 @@ Example output:
 @Injectable()
 export class ScoringAgentService {
   private readonly logger = new Logger(ScoringAgentService.name);
-  private readonly client: OpenRouter;
+  private readonly openrouter: ReturnType<typeof createOpenRouter>;
 
   constructor(private readonly config: ConfigService) {
-    this.client = new OpenRouter({ apiKey: config.get<string>('OPENROUTER_API_KEY')! });
+    this.openrouter = createOpenRouter({ apiKey: config.get<string>('OPENROUTER_API_KEY')! });
   }
 
   async score(input: ScoringInput): Promise<ScoreResult & { modelUsed: string }> {
-
     const MAX_CV_LENGTH = 15_000;
     const MAX_JOB_DESC_LENGTH = 15_000;
 
@@ -88,35 +88,16 @@ export class ScoringAgentService {
       `- Requirements: ${input.job.requirements.length > 0 ? input.job.requirements.join(', ') : 'None specified'}`,
     ].join('\n');
 
-    const userMessage = `${candidateSection}\n\n${jobSection}`;
+    const { object } = await generateObject({
+      model: this.openrouter.chat('openai/gpt-4o-mini'),
+      schema: ScoreSchema,
+      schemaName: 'CandidateScore',
+      system: SCORING_INSTRUCTIONS,
+      prompt: `${candidateSection}\n\n${jobSection}`,
+      temperature: 0,
+    });
 
-    try {
-      const result = this.client.callModel({
-        model: 'openai/gpt-4o-mini',
-        instructions: SCORING_INSTRUCTIONS,
-        input: userMessage,
-      });
-
-      const raw = await result.getText();
-      const json = raw
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```$/, '')
-        .trim();
-
-      const parseResult = ScoreSchema.safeParse(JSON.parse(json));
-      if (!parseResult.success) {
-        this.logger.error('Scoring LLM returned invalid JSON', parseResult.error.issues);
-        throw new Error(`Scoring output validation failed: ${parseResult.error.message}`);
-      }
-
-      this.logger.log(`Scored candidate — score: ${parseResult.data.score}`);
-      return { ...parseResult.data, modelUsed: 'openai/gpt-4o-mini' };
-    } catch (error) {
-      if (error instanceof Error && (error.message.includes('400') || error.message.includes('413'))) {
-        this.logger.error(`LLM context window exceeded: ${error.message}`);
-        throw new Error('SCORING_CONTEXT_EXCEEDED');
-      }
-      throw error;
-    }
+    this.logger.log(`Scored candidate — score: ${object.score}`);
+    return { ...object, modelUsed: 'openai/gpt-4o-mini' };
   }
 }

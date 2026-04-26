@@ -158,4 +158,49 @@ describe('StorageService', () => {
       );
     });
   });
+
+  describe('saveExtractionCache / loadExtractionCache', () => {
+    it('saveExtractionCache calls PutObjectCommand with key emails/t/m/extraction.json', async () => {
+      mockS3Send.mockResolvedValue({});
+      const result = { full_name: 'Dana Cohen', email: null };
+
+      await service.saveExtractionCache(result, 't', 'm');
+
+      expect(mockS3Send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            Key: 'emails/t/m/extraction.json',
+            Bucket: 'test-bucket',
+            ContentType: 'application/json',
+          }),
+        }),
+      );
+    });
+
+    it('loadExtractionCache returns parsed JSON on cache hit', async () => {
+      const cached = { full_name: 'Cached Name', email: null };
+      mockS3Send.mockResolvedValue({
+        Body: { transformToString: jest.fn().mockResolvedValue(JSON.stringify(cached)) },
+      });
+
+      const result = await service.loadExtractionCache('tenant-1', 'msg-1');
+
+      expect(result).toEqual(cached);
+      expect(mockS3Send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({ Key: 'emails/tenant-1/msg-1/extraction.json' }),
+        }),
+      );
+    });
+
+    it('loadExtractionCache returns null on NoSuchKey error', async () => {
+      const noSuchKeyError = new Error('NoSuchKey');
+      noSuchKeyError.name = 'NoSuchKey';
+      mockS3Send.mockRejectedValue(noSuchKeyError);
+
+      const result = await service.loadExtractionCache('tenant-1', 'msg-1');
+
+      expect(result).toBeNull();
+    });
+  });
 });

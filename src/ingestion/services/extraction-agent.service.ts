@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { OpenRouter } from '@openrouter/sdk';
+import { generateObject } from 'ai';
+import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
+import { StorageService } from '../../storage/storage.service';
 
 export const CandidateExtractSchema = z.object({
   full_name: z.string(),
@@ -18,19 +20,6 @@ export const CandidateExtractSchema = z.object({
 
 export type CandidateExtract = z.infer<typeof CandidateExtractSchema> & {
   suspicious: boolean;
-};
-
-const FALLBACK: Omit<CandidateExtract, 'suspicious'> = {
-  full_name: '',
-  email: null,
-  phone: null,
-  current_role: null,
-  years_experience: null,
-  location: null,
-  skills: [],
-  ai_summary: null,
-  source_hint: null,
-  source_agency: null,
 };
 
 /**
@@ -167,36 +156,46 @@ Hebrew CV with employment gap, agency submission (Resolved Agency Name: jobhunt)
 }`;
 }
 
+export interface ExtractionMetadata {
+  subject: string;
+  fromEmail: string;
+  tenantId: string;
+  messageId: string;
+}
+
 @Injectable()
 export class ExtractionAgentService {
   private readonly logger = new Logger(ExtractionAgentService.name);
-  private readonly client: OpenRouter;
+  private readonly openrouter: ReturnType<typeof createOpenRouter>;
 
-  constructor(private readonly config: ConfigService) {
-    this.client = new OpenRouter({ apiKey: config.get<string>('OPENROUTER_API_KEY')! });
+  constructor(
+    private readonly config: ConfigService,
+    private readonly storageService: StorageService,
+  ) {
+    this.openrouter = createOpenRouter({ apiKey: config.get<string>('OPENROUTER_API_KEY')! });
   }
 
-  async extract(
-    fullText: string,
-    suspicious: boolean,
-    metadata: { subject: string; fromEmail: string },
-  ): Promise<CandidateExtract> {
+  async extract(fullText: string, suspicious: boolean, metadata: ExtractionMetadata): Promise<CandidateExtract> {
+    // Check R2 cache first — avoid re-calling AI on retry
+    const cached = await this.storageService.loadExtractionCache(metadata.tenantId, metadata.messageId);
+    if (cached !== null) {
+      this.logger.log(`Extraction cache hit for ${metadata.messageId}`);
+      const parsed = CandidateExtractSchema.parse(cached);
+      return { ...parsed, suspicious };
+    }
+
     const extracted = await this.callAI(fullText, metadata);
+
+    // Cache result to R2 — retries will use this instead of calling AI again
+    await this.storageService.saveExtractionCache(extracted, metadata.tenantId, metadata.messageId);
+
     return { ...extracted, suspicious };
   }
 
-  // AI_PROVIDER: swap this method to change provider (e.g. @ai-sdk/anthropic generateObject)
-  // Current: @openrouter/sdk — openai/gpt-4o-mini
-  private async callAI(
-    fullText: string,
-    metadata: { subject: string; fromEmail: string },
-  ): Promise<Omit<CandidateExtract, 'suspicious'>> {
-
+  private async callAI(fullText: string, metadata: ExtractionMetadata): Promise<Omit<CandidateExtract, 'suspicious'>> {
     const MAX_INPUT_LENGTH = 20_000;
     const safeFullText = fullText.substring(0, MAX_INPUT_LENGTH);
 
-    // Issue 3 fix: deterministically resolve agency name from known sender domains
-    // before calling AI — avoids non-deterministic AI agency name inference.
     const resolvedAgency = resolveAgencyFromEmail(metadata.fromEmail);
 
     const metadataLines = [`--- Email Metadata ---`, `Subject: ${metadata.subject}`, `From: ${metadata.fromEmail}`];
@@ -204,139 +203,23 @@ export class ExtractionAgentService {
       metadataLines.push(`Resolved Agency Name: ${resolvedAgency}`);
     }
 
-    const userMessage = [...metadataLines, ``, `--- CV / Email Content ---`, safeFullText].join('\n');
-
-    // Build instructions with current year injected dynamically (avoids stale year on long-running processes)
+    const prompt = [...metadataLines, ``, `--- CV / Email Content ---`, safeFullText].join('\n');
     const instructions = buildInstructions(new Date().getFullYear());
 
-    try {
-      const result = this.client.callModel({
-        model: 'openai/gpt-4o-mini',
-        instructions,
-        input: userMessage,
-      });
+    const { object } = await generateObject({
+      model: this.openrouter.chat('openai/gpt-4o-mini'),
+      schema: CandidateExtractSchema,
+      schemaName: 'CandidateExtract',
+      system: instructions,
+      prompt,
+      temperature: 0,
+    });
 
-      const raw = await result.getText();
+    this.logger.log(`OpenRouter extraction successful for ${metadata.messageId}`);
 
-      // Strip markdown code fences if the model ignores instructions
-      const json = raw
-        .replace(/^```(?:json)?\s*/i, '')
-        .replace(/\s*```$/, '')
-        .trim();
-
-      const parseResult = CandidateExtractSchema.safeParse(JSON.parse(json));
-      if (!parseResult.success) {
-        this.logger.error('LLM returned invalid JSON structure', parseResult.error.issues);
-        throw new Error(`LLM output validation failed: ${parseResult.error.message}`);
-      }
-      this.logger.log('OpenRouter extraction successful', parseResult.data);
-
-      // Issue 3 fix: post-processing override — if we resolved the agency deterministically,
-      // force source_agency to the canonical name regardless of what the AI returned.
-      const data = parseResult.data;
-      if (resolvedAgency !== null) {
-        return { ...data, source_hint: 'agency', source_agency: resolvedAgency };
-      }
-      return data;
-    } catch (error) {
-      if (error instanceof Error && (error.message.includes('400') || error.message.includes('413'))) {
-        this.logger.error(`LLM context window exceeded: ${error.message}`);
-        throw new Error('EXTRACTION_CONTEXT_EXCEEDED');
-      }
-      throw error;
+    if (resolvedAgency !== null) {
+      return { ...object, source_hint: 'agency', source_agency: resolvedAgency };
     }
-  }
-
-  extractDeterministically(fullText: string): Omit<CandidateExtract, 'suspicious'> {
-    const lines = fullText
-      .split('\n')
-      .map((l) => l.trim())
-      .filter((l) => l.length > 0);
-
-    // Skip injected headers like "--- Email Body ---" or "--- Attachment ---"
-    const realLines = lines.filter(
-      (line) =>
-        !line.startsWith('--- Email Body ---') &&
-        !line.startsWith('--- Attachment') &&
-        !line.startsWith('--- Email Metadata ---') &&
-        !line.startsWith('Subject:') &&
-        !line.startsWith('From:') &&
-        !/^(Curriculum Vitae|Professional Summary|CONFIDENTIAL|Private & Confidential|Resume|CV)\b/i.test(line),
-    );
-    const realText = realLines.join('\n');
-
-    /**
-     * Heuristic: a line "looks like a name" if it has 2-5 short words,
-     * contains at least one Unicode letter, and doesn't look like a date,
-     * year, greeting, or sentence.
-     * Supports Latin ("John Doe"), Hebrew ("אבי לוי"), Arabic ("محمد علي"),
-     * hyphenated names ("Jean-Pierre Dupont"), and multi-part names ("Maria de la Cruz").
-     */
-    const looksLikeName = (line: string): boolean => {
-      const trimmed = line.trim();
-      const words = trimmed.split(/\s+/);
-
-      if (
-        trimmed.length < 3 ||
-        trimmed.length > 80 ||
-        /^\d{1,2}[/.-]\d{1,2}/.test(trimmed) || // date patterns: 01/15, 15-01
-        /\d{4}/.test(trimmed) || // contains a year
-        /^(dear|hello|hi|to|from|subject|re:|tel:|phone:|email:)/i.test(trimmed) ||
-        words.length < 2 || // single word: "Summary", "Jerusalem"
-        words.length > 5 // 6+ words = likely a sentence
-      ) {
-        return false;
-      }
-
-      return /\p{L}/u.test(trimmed);
-    };
-
-    // 1. Full Name: first line that looks like a name (best guess)
-    const fullName = realLines.find((line) => looksLikeName(line)) || 'Unknown Candidate';
-
-    // 2. Email: simple regex
-    const emailMatch = realText.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    const email = emailMatch ? emailMatch[0] : null;
-
-    // 3. Phone: simple regex (supports + and numbers/dashes, flexible for international/Israeli formats)
-    const phoneMatch = realText.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,3}\)?[-.\s]?\d{2,4}[-.\s]?\d{4}/);
-    const phone = phoneMatch ? phoneMatch[0] : null;
-
-    // 4. Skills: keyword matching (example set)
-    const commonSkills = [
-      'javascript',
-      'typescript',
-      'nest',
-      'react',
-      'node',
-      'python',
-      'java',
-      'sql',
-      'docker',
-      'aws',
-      'kubernetes',
-      'html',
-      'css',
-      'git',
-    ];
-    const skills = commonSkills.filter((skill) => new RegExp(`\\b${skill}\\b`, 'i').test(realText));
-
-    return {
-      full_name: fullName,
-      email,
-      phone,
-      current_role: null, // deterministic cannot infer role
-      years_experience: null, // deterministic cannot infer years
-      location: null, // deterministic cannot infer location
-      skills,
-      ai_summary: `Deterministic extraction: Found ${skills.length} skills. Name: ${fullName}`,
-      source_hint: null, // deterministic cannot infer source
-      source_agency: null, // deterministic cannot infer agency
-    };
-  }
-
-  // FALLBACK is kept for potential use in processor deterministic fallback paths
-  getFallback(): Omit<CandidateExtract, 'suspicious'> {
-    return { ...FALLBACK };
+    return object;
   }
 }
