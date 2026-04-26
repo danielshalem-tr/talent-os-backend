@@ -123,4 +123,39 @@ describe('StorageService', () => {
       service.upload([pdfAttachment()], 'tenant-123', 'msg-456'),
     ).rejects.toThrow('R2 temporarily unavailable');
   });
+
+  describe('uploadPayload / downloadPayload', () => {
+    it('uploadPayload calls PutObjectCommand with correct key and JSON body', async () => {
+      mockS3Send.mockResolvedValue({});
+      const payload = { MessageID: 'msg-1', From: 'a@b.com' } as any;
+
+      const key = await service.uploadPayload(payload, 'tenant-1', 'msg-1');
+
+      expect(key).toBe('emails/tenant-1/msg-1/payload.json');
+      expect(mockS3Send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({
+            Key: 'emails/tenant-1/msg-1/payload.json',
+            ContentType: 'application/json',
+          }),
+        }),
+      );
+    });
+
+    it('downloadPayload fetches and parses the payload from R2', async () => {
+      const payload = { MessageID: 'msg-1', From: 'a@b.com' };
+      mockS3Send.mockResolvedValue({
+        Body: { transformToString: jest.fn().mockResolvedValue(JSON.stringify(payload)) },
+      });
+
+      const result = await service.downloadPayload('tenant-1', 'msg-1');
+
+      expect(result).toEqual(payload);
+      expect(mockS3Send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          input: expect.objectContaining({ Key: 'emails/tenant-1/msg-1/payload.json' }),
+        }),
+      );
+    });
+  });
 });

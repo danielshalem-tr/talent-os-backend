@@ -7,6 +7,7 @@ describe('WebhooksService', () => {
   let mockPrisma: any;
   let mockQueue: any;
   let mockConfigService: Partial<ConfigService>;
+  let mockStorageService: any;
 
   const tenantId = '00000000-0000-0000-0000-000000000001';
 
@@ -34,10 +35,16 @@ describe('WebhooksService', () => {
       get: jest.fn().mockReturnValue(tenantId),
     };
 
+    mockStorageService = {
+      uploadPayload: jest.fn().mockResolvedValue('emails/tenant/msg/payload.json'),
+      upload: jest.fn().mockResolvedValue(null),
+    };
+
     service = new WebhooksService(
       mockPrisma,
       mockQueue,
       mockConfigService as ConfigService,
+      mockStorageService,
     );
   });
 

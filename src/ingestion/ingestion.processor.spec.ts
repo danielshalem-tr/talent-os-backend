@@ -22,11 +22,22 @@ jest.mock('mammoth', () => ({
   convertToHtml: jest.fn().mockResolvedValue({ value: 'docx text' }),
 }));
 
+/** Helper: build a slim job with new IngestJobData shape */
+function makeJob(id: string, payload: ReturnType<typeof mockPostmarkPayload>) {
+  return {
+    id,
+    name: 'ingest-email',
+    attemptsMade: 0,
+    opts: { attempts: 3 },
+    data: { tenantId: 'test-tenant-id', messageId: payload.MessageID },
+  } as any;
+}
+
 describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
   let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
-  let storageService: { upload: jest.Mock };
+  let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
 
   beforeEach(async () => {
@@ -36,7 +47,7 @@ describe('IngestionProcessor', () => {
       $executeRaw: jest.fn().mockResolvedValue(0),
     };
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
@@ -50,6 +61,7 @@ describe('IngestionProcessor', () => {
 
     storageService = {
       upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/msg-id.pdf'),
+      downloadPayload: jest.fn(),
     };
 
     dedupService = {
@@ -91,7 +103,8 @@ describe('IngestionProcessor', () => {
       TextBody: 'hi',
       Attachments: [],
     });
-    const job = { id: 'test-job-1', data: payload } as any;
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-job-1', payload);
 
     await processor.process(job);
 
@@ -114,7 +127,8 @@ describe('IngestionProcessor', () => {
                 'Please find my CV attached.',
       Attachments: [],
     });
-    const job = { id: 'test-job-2', data: payload } as any;
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-job-2', payload);
 
     await processor.process(job);
 
@@ -137,7 +151,8 @@ describe('IngestionProcessor', () => {
         'Please find my CV attached.',
       Attachments: [],
     });
-    const job = { id: 'test-job-3', data: payload } as any;
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-job-3', payload);
 
     await expect(processor.process(job)).rejects.toThrow('LLM timeout');
 
@@ -150,8 +165,10 @@ describe('IngestionProcessor', () => {
     );
   });
 
-  // BUG-CV-LOSS: upload is called before extraction, so file is persisted even if AI fails
-  it('upload is called before extraction even when extraction fails', async () => {
+  // BUG-CV-LOSS: CV upload now happens in WebhooksService before enqueueing.
+  // The processor reads cvFileKey from existingIntake (set by webhook).
+  // This test verifies the processor does NOT call storageService.upload (that's the webhook's job).
+  it('processor does NOT call storageService.upload (CV upload moved to webhook)', async () => {
     extractionAgent.extract.mockRejectedValueOnce(new Error('LLM timeout'));
 
     const payload = mockPostmarkPayload({
@@ -162,12 +179,13 @@ describe('IngestionProcessor', () => {
         'Please find my CV attached.',
       Attachments: [],
     });
-    const job = { id: 'test-job-upload-before', data: payload } as any;
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-job-upload-before', payload);
 
     await expect(processor.process(job)).rejects.toThrow('LLM timeout');
 
-    // storageService.upload must have been called before extraction failed
-    expect(storageService.upload).toHaveBeenCalled();
+    // storageService.upload must NOT be called — CV upload is now done in WebhooksService
+    expect(storageService.upload).not.toHaveBeenCalled();
   });
 
   // 4-02-02: AIEX-02 — successful extraction does not update status to failed
@@ -184,7 +202,8 @@ describe('IngestionProcessor', () => {
         'Please find my CV attached.',
       Attachments: [],
     });
-    const job = { id: 'test-job-4', data: payload } as any;
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-job-4', payload);
 
     await processor.process(job);
 
@@ -209,7 +228,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
   let processor: IngestionProcessor;
   let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
-  let storageService: { upload: jest.Mock };
+  let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
 
   beforeEach(async () => {
@@ -219,7 +238,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
       $executeRaw: jest.fn().mockResolvedValue(0),
     };
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
@@ -231,6 +250,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
     };
     storageService = {
       upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/test-message-id.pdf'),
+      downloadPayload: jest.fn(),
     };
     dedupService = {
       check: jest.fn().mockResolvedValue(null),
@@ -264,8 +284,10 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
     jest.clearAllMocks();
   });
 
-  // 5-02-01: STOR-01 — storageService.upload called with correct args
-  it('5-02-01: calls storageService.upload with attachments, tenantId, messageId', async () => {
+  // 5-02-01: CV upload now happens in WebhooksService (P1 change).
+  // Processor reads cvFileKey from existingIntake.cvFileKey (set by webhook).
+  // This test verifies the processor uses the cvFileKey from existingIntake.
+  it('5-02-01: processor reads cvFileKey from existingIntake (set by webhook, not processor)', async () => {
     const payload = mockPostmarkPayload({
       MessageID: 'test-message-id',
       Subject: 'Job Application from Jane Doe',
@@ -280,20 +302,29 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
         },
       ],
     });
-    const job = { id: 'test-job-5', data: payload } as any;
+    // Simulate webhook having set cvFileKey on the intake log
+    prisma.emailIntakeLog.findUnique.mockResolvedValue({ candidateId: null, cvFileKey: 'cvs/test-tenant-id/test-message-id.pdf' });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-job-5', payload);
 
     await processor.process(job);
 
-    expect(storageService.upload).toHaveBeenCalledWith(
-      payload.Attachments,
-      'test-tenant-id',
-      payload.MessageID,
+    // Processor must NOT call storageService.upload — CV upload is webhook's responsibility now
+    expect(storageService.upload).not.toHaveBeenCalled();
+
+    // Candidate enrichment should have been called with the cvFileKey from intake log
+    expect(prisma.candidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          cvFileUrl: 'cvs/test-tenant-id/test-message-id.pdf',
+        }),
+      }),
     );
   });
 
-  // 5-02-02: D-07 — upload errors propagate (no inline catch in processor)
-  it('5-02-02: propagates upload error to BullMQ (no inline catch)', async () => {
-    storageService.upload.mockRejectedValueOnce(new Error('R2 service unavailable'));
+  // 5-02-02: D-07 — processor no longer calls upload; downloadPayload error propagates
+  it('5-02-02: propagates downloadPayload error to BullMQ (no inline catch)', async () => {
+    storageService.downloadPayload.mockRejectedValueOnce(new Error('R2 service unavailable'));
 
     const payload = mockPostmarkPayload({
       Subject: 'Job Application from Jane Doe',
@@ -308,26 +339,27 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
         },
       ],
     });
-    const job = { id: 'test-job-6', data: payload } as any;
+    const job = makeJob('test-job-6', payload);
 
     await expect(processor.process(job)).rejects.toThrow('R2 service unavailable');
   });
 
-  // 5-02-03: D-02, STOR-03 — null fileKey + processor continues normally
+  // 5-02-03: D-02, STOR-03 — null cvFileKey in existingIntake + processor continues normally
   it('5-02-03: passes null fileKey and cvText through ProcessingContext when no CV attachment', async () => {
-    storageService.upload.mockResolvedValueOnce(null);
-
     const payload = mockPostmarkPayload({
       Subject: 'Job Application from Jane Doe',
       TextBody:
         'Dear Hiring Manager, I have 5 years of experience in software engineering. Please find my CV attached.',
       Attachments: [],
     });
-    const job = { id: 'test-job-7', data: payload } as any;
+    // existingIntake has null cvFileKey (webhook found no CV attachment)
+    prisma.emailIntakeLog.findUnique.mockResolvedValue({ candidateId: null, cvFileKey: null });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-job-7', payload);
 
-    // Processor should not throw; upload was called and returned null gracefully
+    // Processor should not throw; continues normally with null fileKey
     await expect(processor.process(job)).resolves.not.toThrow();
-    expect(storageService.upload).toHaveBeenCalled();
+    expect(storageService.upload).not.toHaveBeenCalled();
   });
 });
 
@@ -335,7 +367,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   let processor: IngestionProcessor;
   let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
-  let storageService: { upload: jest.Mock };
+  let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: {
     check: jest.Mock;
     insertCandidate: jest.Mock;
@@ -351,7 +383,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     };
 
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
       // Simulate prisma.$transaction by invoking the callback with a tx client
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => {
         return cb(txClient);
@@ -379,6 +411,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     };
     storageService = {
       upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/msg-id.pdf'),
+      downloadPayload: jest.fn(),
     };
     dedupService = {
       check: jest.fn().mockResolvedValue(null),
@@ -425,7 +458,9 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     dedupService.check.mockResolvedValue(null);
     dedupService.insertCandidate.mockResolvedValue('new-candidate-id');
 
-    const job = { id: 'test-dedup-1', data: validJobPayload() } as any;
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-dedup-1', payload);
     await processor.process(job);
 
     expect(dedupService.check).toHaveBeenCalledTimes(1);
@@ -444,7 +479,9 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     });
     dedupService.insertCandidate.mockResolvedValue('new-candidate-id');
 
-    const job = { id: 'test-dedup-2', data: validJobPayload() } as any;
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-dedup-2', payload);
     await processor.process(job);
 
     // New candidate inserted — existing NOT overwritten
@@ -472,7 +509,9 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     });
     dedupService.insertCandidate.mockResolvedValue('phone-missing-candidate-id');
 
-    const job = { id: 'test-dedup-3', data: validJobPayload() } as any;
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-dedup-3', payload);
     await processor.process(job);
 
     expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
@@ -505,7 +544,9 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
       return cb(txClient);
     });
 
-    const job = { id: 'test-atomicity', data: validJobPayload() } as any;
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-atomicity', payload);
 
     // The transaction callback throws — processor should propagate the error
     await expect(processor.process(job)).rejects.toThrow('DB connection lost');
@@ -527,7 +568,9 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     });
     dedupService.insertCandidate.mockResolvedValue('new-phone-cand-id');
 
-    const job = { id: 'test-phone-match', data: validJobPayload() } as any;
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-phone-match', payload);
     await processor.process(job);
 
     // INSERT new candidate — existing untouched
@@ -560,7 +603,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     candidateJobScore: { create: jest.Mock };
   };
   let extractionAgent: { extract: jest.Mock };
-  let storageService: { upload: jest.Mock };
+  let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
   let scoringService: { score: jest.Mock };
 
@@ -574,7 +617,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     };
 
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: {
@@ -604,6 +647,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     storageService = {
       upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/msg-id.pdf'),
+      downloadPayload: jest.fn(),
     };
 
     dedupService = {
@@ -657,7 +701,9 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
   // 7-02-01: CAND-01 — candidate.update called with all enrichment fields
   it('7-02-01: CAND-01 — candidate.update called with all enrichment fields', async () => {
-    const job = { id: 'test-p7-1', data: validJobPayload() } as any;
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-p7-1', payload);
     await processor.process(job);
 
     expect(prisma.candidate.update).toHaveBeenCalledWith(
@@ -668,7 +714,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           yearsExperience: 7,
           skills: ['TypeScript', 'Node.js'],
           cvText: expect.any(String),
-          cvFileUrl: expect.any(String),
+          // cvFileUrl comes from existingIntake.cvFileKey (set by webhook) — null when no CV attached
           aiSummary: 'Experienced engineer. Strong in distributed systems.',
           metadata: Prisma.JsonNull,
         }),
@@ -686,7 +732,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         'Dear Hiring Manager, I have 5 years of experience and interested in position 101. Please find my CV attached.',
       Attachments: [],
     });
-    const job = { id: 'test-p7-2', data: jobPayloadWithId } as any;
+    storageService.downloadPayload.mockResolvedValue(jobPayloadWithId);
+    const job = makeJob('test-p7-2', jobPayloadWithId);
     await processor.process(job);
 
     // Phase 15: job.findMany called with status:open and matched shortIds
@@ -702,7 +749,9 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
   // 7-02-03: SCOR-02 + SCOR-04 — application upserted then score created per active job
   it('7-02-03: SCOR-02 + SCOR-04 — application upserted and candidateJobScore created per job', async () => {
-    const job = { id: 'test-p7-3', data: validJobPayload() } as any;
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-p7-3', payload);
     await processor.process(job);
 
     expect(prisma.application.upsert).toHaveBeenCalledTimes(1);
@@ -731,7 +780,9 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     prisma.job.findMany.mockReset();
     prisma.job.findMany.mockResolvedValueOnce([]); // shortId lookup returns no jobs
 
-    const job = { id: 'test-p7-4', data: validJobPayload() } as any;
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-p7-4', payload);
     await processor.process(job);
 
     // When no job is found, no application is created and scoring is skipped
@@ -745,7 +796,9 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
   // 7-02-05: D-16 — processingStatus 'completed' is set as the LAST prisma call
   it('7-02-05: D-16 — processingStatus=completed set after all scoring (last prisma call)', async () => {
-    const job = { id: 'test-p7-5', data: validJobPayload() } as any;
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-p7-5', payload);
     await processor.process(job);
 
     const allUpdateCalls: Array<{ data: Record<string, unknown> }> = prisma.emailIntakeLog.update.mock.calls.map(
@@ -761,7 +814,9 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
   it('7-02-06: Scoring error on matched job — marks intake as failed and throws for retry', async () => {
     scoringService.score.mockRejectedValueOnce(new Error('Anthropic API timeout'));
 
-    const jobData = { id: 'test-p7-6', data: validJobPayload() } as any;
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const jobData = makeJob('test-p7-6', payload);
 
     await expect(processor.process(jobData)).rejects.toThrow('Anthropic API timeout');
 
@@ -786,6 +841,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     let processor: IngestionProcessor;
     let prisma: any;
     let extractionAgent: any;
+    let storageService: any;
 
     const job1 = { id: 'job-1', title: 'Senior Software Engineer', shortId: '100', description: null, requirements: [], hiringStages: [{ id: 'stage-1' }] };
     const job2 = { id: 'job-2', title: 'Product Manager', shortId: '101', description: null, requirements: [], hiringStages: [{ id: 'stage-2' }] };
@@ -797,7 +853,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       $executeRaw: jest.fn().mockResolvedValue(0),
       };
       prisma = {
-        emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
+        emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
         $transaction: jest.fn().mockImplementation(async (cb) => cb(txClient)),
         candidate: { update: jest.fn().mockResolvedValue({}) },
         job: {
@@ -808,6 +864,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
       };
       extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };
+      storageService = { upload: jest.fn().mockResolvedValue('key'), downloadPayload: jest.fn() };
 
       const module: TestingModule = await Test.createTestingModule({
         providers: [
@@ -817,7 +874,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           { provide: PrismaService, useValue: prisma },
           { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-tenant-id') } },
           { provide: ExtractionAgentService, useValue: extractionAgent },
-          { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key') } },
+          { provide: StorageService, useValue: storageService },
           { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
           { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, modelUsed: 'test', reasoning: '', strengths: [], gaps: [] }) } },
           { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
@@ -829,7 +886,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     it('15-01: extracts numeric short_id from subject', async () => {
       prisma.job.findMany.mockResolvedValueOnce([job1]);
       const payload = mockPostmarkPayload({ Subject: 'CV for position 100', TextBody: 'a'.repeat(101) });
-      const job = { id: 'test-1', data: payload } as any;
+      storageService.downloadPayload.mockResolvedValue(payload);
+      const job = makeJob('test-1', payload);
 
       await processor.process(job);
 
@@ -848,7 +906,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     it('15-02: ignores numbers < 100', async () => {
       prisma.job.findMany.mockResolvedValueOnce([]);
       const payload = mockPostmarkPayload({ Subject: 'I am 25 years old', TextBody: 'Position 50 is closed. a'.repeat(10) });
-      const job = { id: 'test-2', data: payload } as any;
+      storageService.downloadPayload.mockResolvedValue(payload);
+      const job = makeJob('test-2', payload);
 
       await processor.process(job);
 
@@ -870,7 +929,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         Subject: 'CV Submission',
         TextBody: 'I am interested in both position 100 and 101. a'.repeat(5),
       });
-      const job = { id: 'test-3', data: payload } as any;
+      storageService.downloadPayload.mockResolvedValue(payload);
+      const job = makeJob('test-3', payload);
 
       await processor.process(job);
 
@@ -885,7 +945,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     it('15-04: gracefully handles no numeric short_ids in email', async () => {
       const payload = mockPostmarkPayload({ Subject: 'Random CV', TextBody: 'a'.repeat(101) });
-      const job = { id: 'test-4', data: payload } as any;
+      storageService.downloadPayload.mockResolvedValue(payload);
+      const job = makeJob('test-4', payload);
 
       await processor.process(job);
 
@@ -903,7 +964,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     it('15-05: includes years as false positives (filtered by DB)', async () => {
       prisma.job.findMany.mockResolvedValueOnce([]);
       const payload = mockPostmarkPayload({ Subject: 'In 2024 I applied', TextBody: 'Job 101 is open. ' + 'a'.repeat(101) });
-      const job = { id: 'test-5', data: payload } as any;
+      storageService.downloadPayload.mockResolvedValue(payload);
+      const job = makeJob('test-5', payload);
 
       await processor.process(job);
 
@@ -923,7 +985,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         Subject: 'position 100',
         TextBody: 'Very interested in position 100. a'.repeat(20),
       });
-      const job = { id: 'test-6', data: payload } as any;
+      storageService.downloadPayload.mockResolvedValue(payload);
+      const job = makeJob('test-6', payload);
 
       await processor.process(job);
 
@@ -947,7 +1010,7 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
       $executeRaw: jest.fn().mockResolvedValue(0),
     };
     const prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: { findMany: jest.fn().mockResolvedValue([]) },
@@ -962,7 +1025,7 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-tenant-id') } },
         { provide: ExtractionAgentService, useValue: { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) } },
-        { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key') } },
+        { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key'), downloadPayload: jest.fn() } },
         { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
         { provide: ScoringAgentService, useValue: { score: jest.fn() } },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
@@ -1013,6 +1076,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
   let processor: IngestionProcessor;
   let prisma: any;
   let dedupService: any;
+  let storageService: any;
 
   const validPayload = () => mockPostmarkPayload({
     MessageID: 'msg-idempotency-test',
@@ -1029,7 +1093,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
       $executeRaw: jest.fn().mockResolvedValue(0),
     };
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null }) },
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1042,6 +1106,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
       upsertCandidate: jest.fn().mockResolvedValue(undefined),
       createFlag: jest.fn().mockResolvedValue(undefined),
     };
+    storageService = { upload: jest.fn().mockResolvedValue('key'), downloadPayload: jest.fn() };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         IngestionProcessor,
@@ -1050,7 +1115,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
         { provide: PrismaService, useValue: prisma },
         { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue('test-tenant-id') } },
         { provide: ExtractionAgentService, useValue: { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) } },
-        { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key') } },
+        { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn() } },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
@@ -1060,9 +1125,11 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
   });
 
   it('should skip Phase 6 when intake already has candidateId (retry scenario)', async () => {
-    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: 'existing-candidate-id' });
+    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: 'existing-candidate-id', cvFileKey: null });
+    const payload = validPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
 
-    const job = { id: 'test-idempotency-1', data: validPayload() } as any;
+    const job = makeJob('test-idempotency-1', payload);
     await processor.process(job);
 
     expect(dedupService.check).not.toHaveBeenCalled();
@@ -1070,18 +1137,22 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
   });
 
   it('should run Phase 6 normally on first attempt (no candidateId)', async () => {
-    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: null });
+    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: null, cvFileKey: null });
+    const payload = validPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
 
-    const job = { id: 'test-idempotency-2', data: validPayload() } as any;
+    const job = makeJob('test-idempotency-2', payload);
     await processor.process(job);
 
     expect(dedupService.check).toHaveBeenCalled();
   });
 
   it('should not create duplicate candidate on retry', async () => {
-    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: 'existing-candidate-id' });
+    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: 'existing-candidate-id', cvFileKey: null });
+    const payload = validPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
 
-    const job = { id: 'test-idempotency-3', data: validPayload() } as any;
+    const job = makeJob('test-idempotency-3', payload);
     await processor.process(job);
 
     expect(dedupService.insertCandidate).not.toHaveBeenCalled();

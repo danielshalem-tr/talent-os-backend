@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
-import { PostmarkAttachmentDto } from '../webhooks/dto/postmark-payload.dto';
+import { PostmarkAttachmentDto, PostmarkPayloadDto } from '../webhooks/dto/postmark-payload.dto';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 const CV_MIME_TYPES = [
@@ -107,6 +107,32 @@ export class StorageService {
     });
     await this.s3Client.send(command);
     this.logger.log(`Uploaded logo ${key} to R2 (${buffer.length} bytes)`);
+  }
+
+  async uploadPayload(payload: PostmarkPayloadDto, tenantId: string, messageId: string): Promise<string> {
+    const key = `emails/${tenantId}/${messageId}/payload.json`;
+    await this.s3Client.send(
+      new PutObjectCommand({
+        Bucket: this.config.get<string>('R2_BUCKET_NAME')!,
+        Key: key,
+        Body: JSON.stringify(payload),
+        ContentType: 'application/json',
+      }),
+    );
+    this.logger.log(`Uploaded payload ${key} to R2`);
+    return key;
+  }
+
+  async downloadPayload(tenantId: string, messageId: string): Promise<PostmarkPayloadDto> {
+    const key = `emails/${tenantId}/${messageId}/payload.json`;
+    const response = await this.s3Client.send(
+      new GetObjectCommand({
+        Bucket: this.config.get<string>('R2_BUCKET_NAME')!,
+        Key: key,
+      }),
+    );
+    const body = await response.Body!.transformToString();
+    return JSON.parse(body) as PostmarkPayloadDto;
   }
 
   private selectLargestCvAttachment(attachments: PostmarkAttachmentDto[]): PostmarkAttachmentDto | null {

@@ -2,9 +2,8 @@ import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { Prisma } from '@prisma/client';
-import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
-import { PostmarkPayloadDto } from '../webhooks/dto/postmark-payload.dto';
+import { IngestJobData } from '../webhooks/webhooks.service';
 import { SpamFilterService } from './services/spam-filter.service';
 import { AttachmentExtractorService } from './services/attachment-extractor.service';
 import { ExtractionAgentService, CandidateExtract } from './services/extraction-agent.service';
@@ -30,7 +29,6 @@ export class IngestionProcessor extends WorkerHost {
     private readonly spamFilter: SpamFilterService,
     private readonly attachmentExtractor: AttachmentExtractorService,
     private readonly prisma: PrismaService,
-    private readonly config: ConfigService,
     private readonly extractionAgent: ExtractionAgentService,
     private readonly storageService: StorageService,
     private readonly dedupService: DedupService,
@@ -61,12 +59,18 @@ export class IngestionProcessor extends WorkerHost {
     return [...new Set(matches.map((m) => m[1]).filter((s) => parseInt(s, 10) >= 100))];
   }
 
-  async process(job: Job<PostmarkPayloadDto>): Promise<void> {
-    const payload = job.data;
-    const tenantId = this.config.get<string>('TENANT_ID')!;
+  async process(job: Job<IngestJobData>): Promise<void> {
+    const { tenantId, messageId: jobMessageId } = job.data;
+    const payload = await this.storageService.downloadPayload(tenantId, jobMessageId);
 
     this.pinoLogger.log({ jobId: job.id, jobName: job.name, tenantId }, 'Job started');
     this.pinoLogger.log({ jobId: job.id, messageId: payload.MessageID }, 'Job processing started');
+
+    // Fetch intake once — used for idempotency guard (Phase 6) and cvFileKey
+    const existingIntake = await this.prisma.emailIntakeLog.findUnique({
+      where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+      select: { candidateId: true, cvFileKey: true },
+    });
 
     // Step 0: Spam filter FIRST — before any parsing (D-11)
     const filterResult = this.spamFilter.check(payload);
@@ -103,18 +107,10 @@ export class IngestionProcessor extends WorkerHost {
     const context: ProcessingContext = {
       fullText,
       suspicious: filterResult.suspicious,
-      fileKey: null, // populated after Phase 5 upload below
-      cvText: fullText, // same as fullText — alias for Phase 7 clarity
-      candidateId: '', // set by Phase 6 below
+      fileKey: existingIntake?.cvFileKey ?? null, // set by webhook (P1)
+      cvText: fullText,
+      candidateId: '',
     };
-
-    // Phase 5: Upload original CV to Cloudflare R2 BEFORE AI extraction (D-07: errors propagate to BullMQ, no catch)
-    // BUG-CV-LOSS fix: upload must happen before extraction so the file is persisted even if AI fails
-    const fileKey = await this.storageService.upload(payload.Attachments ?? [], tenantId, payload.MessageID);
-    context.fileKey = fileKey;
-    context.cvText = fullText;
-
-    this.pinoLogger.log({ messageId: payload.MessageID, fileKey: fileKey ?? null }, 'Phase 5 complete');
 
     // Phase 4: AI extraction — passes metadata for context (Phase 14: metadata enables source_hint detection)
     let extraction: CandidateExtract;
@@ -173,11 +169,6 @@ export class IngestionProcessor extends WorkerHost {
     // === IDEMPOTENCY GUARD ===
     // If this is a BullMQ retry and Phase 6 already completed (candidateId is set),
     // skip the entire dedup + insert transaction and reuse the existing candidateId.
-    const existingIntake = await this.prisma.emailIntakeLog.findUnique({
-      where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-      select: { candidateId: true },
-    });
-
     let candidateId!: string;
 
     if (existingIntake?.candidateId) {

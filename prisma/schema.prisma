@@ -256,6 +256,8 @@ model EmailIntakeLog {
   errorMessage     String?  @map("error_message") @db.Text
   candidateId      String?  @map("candidate_id") @db.Uuid
   rawPayload       Json?    @map("raw_payload") @db.JsonB
+  rawPayloadKey    String?  @map("raw_payload_key") @db.Text
+  cvFileKey        String?  @map("cv_file_key") @db.Text
   createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   // Relations

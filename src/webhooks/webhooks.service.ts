@@ -4,6 +4,12 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { PostmarkPayloadDto } from './dto/postmark-payload.dto';
+import { StorageService } from '../storage/storage.service';
+
+export interface IngestJobData {
+  tenantId: string;
+  messageId: string;
+}
 
 @Injectable()
 export class WebhooksService {
@@ -13,20 +19,18 @@ export class WebhooksService {
     private readonly prisma: PrismaService,
     @InjectQueue('ingest-email') private readonly ingestQueue: Queue,
     private readonly configService: ConfigService,
+    private readonly storageService: StorageService,
   ) {}
 
   async enqueue(payload: PostmarkPayloadDto): Promise<{ status: string }> {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
     const messageId = payload.MessageID;
 
-    // Step 0: Identify and skip Postmark test payloads (Ping)
-    // Postmark "Test" button sends this specific MessageID
     if (messageId === '00000000-0000-0000-0000-000000000000') {
       this.logger.log('Skipping Postmark test payload (Ping)');
       return { status: 'queued' };
     }
 
-    // Step 1: Check for existing intake log row (idempotency per D-02)
     const existing = await this.prisma.emailIntakeLog.findUnique({
       where: { idx_intake_message_id: { tenantId, messageId } },
       select: { processingStatus: true },
@@ -34,25 +38,27 @@ export class WebhooksService {
 
     if (existing) {
       if (existing.processingStatus === 'pending') {
-        // Enqueue failed previously — re-attempt (D-02: status=pending means retry is needed)
-        await this.ingestQueue.add('ingest-email', payload, {
+        // Payload already in R2 from first attempt — re-enqueue reference only
+        await this.ingestQueue.add('ingest-email', { tenantId, messageId } satisfies IngestJobData, {
           jobId: messageId,
           attempts: 3,
           backoff: { type: 'exponential', delay: 5000 },
         });
         this.logger.log(`Re-enqueued job for MessageID: ${messageId}`);
       } else {
-        // Already completed/failed/spam — silently return 200 (idempotent delivery)
         this.logger.log(`Skipping duplicate MessageID: ${messageId} (status: ${existing.processingStatus})`);
       }
       return { status: 'queued' };
     }
 
-    // Step 2: INSERT intake log row BEFORE enqueueing — this IS the idempotency guard (WBHK-04)
-    // If process crashes after this INSERT but before queue.add() acks,
-    // a Postmark retry finds the row with status=pending and re-enqueues safely.
-    const sanitizedPayload = this.stripAttachmentBlobs(payload);
+    // Upload full payload JSON to R2 BEFORE inserting DB row.
+    // If R2 upload fails → return 5xx → Postmark retries → no orphaned DB row created.
+    const rawPayloadKey = await this.storageService.uploadPayload(payload, tenantId, messageId);
 
+    // Upload CV attachment to R2 (moved from worker Phase 5 — fixes M3 orphan risk).
+    const cvFileKey = await this.storageService.upload(payload.Attachments ?? [], tenantId, messageId);
+
+    const sanitizedPayload = this.stripAttachmentBlobs(payload);
     try {
       await this.prisma.emailIntakeLog.create({
         data: {
@@ -63,28 +69,26 @@ export class WebhooksService {
           receivedAt: new Date(payload.Date),
           processingStatus: 'pending',
           rawPayload: sanitizedPayload as object,
+          rawPayloadKey,
+          cvFileKey: cvFileKey ?? null,
         },
       });
     } catch (err) {
-      // BUG-RACE fix: P2002 = unique constraint violation — concurrent duplicate request won the race
       if ((err as any)?.code === 'P2002') {
         this.logger.log(`Concurrent duplicate for MessageID: ${messageId} — skipping`);
         return { status: 'queued' };
       }
-      throw err; // All other DB errors propagate normally
+      throw err;
     }
 
-    // Step 3: Enqueue to BullMQ — if this fails, return 5xx so Postmark retries (D-01)
     try {
-      await this.ingestQueue.add('ingest-email', payload, {
+      await this.ingestQueue.add('ingest-email', { tenantId, messageId } satisfies IngestJobData, {
         jobId: messageId,
         attempts: 3,
         backoff: { type: 'exponential', delay: 5000 },
       });
     } catch (error) {
       this.logger.error(`Failed to enqueue job for MessageID: ${messageId}`, error);
-      // D-01: return 5xx — Postmark will retry on non-2xx, and next delivery finds
-      // the pending row and re-enqueues it
       throw new InternalServerErrorException('Failed to enqueue job');
     }
 
@@ -126,7 +130,6 @@ export class WebhooksService {
   } {
     return {
       ...payload,
-      // D-03: strip only Content (binary blob); preserve Name, ContentType, ContentLength
       Attachments: (payload.Attachments ?? []).map(({ Content: _content, ...meta }) => meta),
     };
   }
