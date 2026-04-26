@@ -59,9 +59,11 @@ Example output:
 export class ScoringAgentService {
   private readonly logger = new Logger(ScoringAgentService.name);
   private readonly openrouter: ReturnType<typeof createOpenRouter>;
+  private readonly scoringModel: string;
 
   constructor(private readonly config: ConfigService) {
     this.openrouter = createOpenRouter({ apiKey: config.get<string>('OPENROUTER_API_KEY')! });
+    this.scoringModel = config.get<string>('SCORING_MODEL') ?? 'openai/gpt-4o-mini';
   }
 
   async score(input: ScoringInput): Promise<ScoreResult & { modelUsed: string }> {
@@ -89,7 +91,7 @@ export class ScoringAgentService {
     ].join('\n');
 
     const { object } = await generateObject({
-      model: this.openrouter.chat('openai/gpt-4o-mini'),
+      model: this.openrouter.chat(this.scoringModel),
       schema: ScoreSchema,
       schemaName: 'CandidateScore',
       system: SCORING_INSTRUCTIONS,
@@ -98,6 +100,6 @@ export class ScoringAgentService {
     });
 
     this.logger.log(`Scored candidate — score: ${object.score}`);
-    return { ...object, modelUsed: 'openai/gpt-4o-mini' };
+    return { ...object, modelUsed: this.scoringModel };
   }
 }

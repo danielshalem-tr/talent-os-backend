@@ -21,7 +21,10 @@ const mockGenerateObject = generateObject as jest.MockedFunction<typeof generate
 
 function makeService(storageService?: Partial<{ loadExtractionCache: jest.Mock; saveExtractionCache: jest.Mock }>): ExtractionAgentService {
   const configService = {
-    get: jest.fn().mockReturnValue('fake-openrouter-key'),
+    get: jest.fn().mockImplementation((key: string) => {
+      if (key === 'EXTRACTION_MODEL') return 'openai/gpt-4o-mini';
+      return 'fake-openrouter-key';
+    }),
   } as unknown as ConfigService;
   const mockStorage = {
     loadExtractionCache: jest.fn().mockResolvedValue(null),

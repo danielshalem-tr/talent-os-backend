@@ -16,7 +16,10 @@ const mockGenerateObject = generateObject as jest.MockedFunction<typeof generate
 
 function makeService(): ScoringAgentService {
   const configService = {
-    get: jest.fn().mockReturnValue('fake-openrouter-key'),
+    get: jest.fn().mockImplementation((key: string) => {
+      if (key === 'SCORING_MODEL') return 'openai/gpt-4o-mini';
+      return 'fake-openrouter-key';
+    }),
   } as unknown as ConfigService;
   return new ScoringAgentService(configService);
 }

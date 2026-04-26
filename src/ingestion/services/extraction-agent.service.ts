@@ -167,12 +167,14 @@ export interface ExtractionMetadata {
 export class ExtractionAgentService {
   private readonly logger = new Logger(ExtractionAgentService.name);
   private readonly openrouter: ReturnType<typeof createOpenRouter>;
+  private readonly extractionModel: string;
 
   constructor(
     private readonly config: ConfigService,
     private readonly storageService: StorageService,
   ) {
     this.openrouter = createOpenRouter({ apiKey: config.get<string>('OPENROUTER_API_KEY')! });
+    this.extractionModel = config.get<string>('EXTRACTION_MODEL') ?? 'openai/gpt-4o-mini';
   }
 
   async extract(fullText: string, suspicious: boolean, metadata: ExtractionMetadata): Promise<CandidateExtract> {
@@ -207,7 +209,7 @@ export class ExtractionAgentService {
     const instructions = buildInstructions(new Date().getFullYear());
 
     const { object } = await generateObject({
-      model: this.openrouter.chat('openai/gpt-4o-mini'),
+      model: this.openrouter.chat(this.extractionModel),
       schema: CandidateExtractSchema,
       schemaName: 'CandidateExtract',
       system: instructions,

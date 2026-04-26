@@ -21,6 +21,8 @@ export const envSchema = z.object({
   SMTP_FROM: z.string().optional(),
   FRONTEND_URL: z.url().default('http://localhost:5173'),
   GOOGLE_CLIENT_ID: z.string().optional(),
+  EXTRACTION_MODEL: z.string().default('openai/gpt-4o-mini'),
+  SCORING_MODEL: z.string().default('openai/gpt-4o-mini'),
 });
 
 export type Env = z.infer<typeof envSchema>;
