@@ -26,10 +26,7 @@ export class PostmarkAuthGuard implements CanActivate {
 
     const expected = this.configService.get<string>('POSTMARK_WEBHOOK_TOKEN') ?? '';
 
-    // Timing-safe comparison to prevent timing attacks
-    // Both buffers must be the same length — pre-allocate based on expected length
-    const providedBuf = Buffer.alloc(expected.length);
-    Buffer.from(password).copy(providedBuf);
+    const providedBuf = Buffer.from(password);
     const expectedBuf = Buffer.from(expected);
 
     if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {

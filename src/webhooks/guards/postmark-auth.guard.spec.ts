@@ -40,4 +40,10 @@ describe('PostmarkAuthGuard', () => {
     const result = guard.canActivate(ctx);
     expect(result).toBe(true);
   });
+
+  it('rejects token with correct prefix followed by extra characters — truncation attack blocked', () => {
+    const malicious = Buffer.from('user:test-tokenEXTRA_JUNK').toString('base64');
+    const ctx = buildContext(`Basic ${malicious}`);
+    expect(() => guard.canActivate(ctx)).toThrow(UnauthorizedException);
+  });
 });
