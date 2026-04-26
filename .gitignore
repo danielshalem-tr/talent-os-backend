@@ -63,3 +63,4 @@ local-test/files/
 
 # Database backups (local only, never commit)
 backups/
+benchmark/*
