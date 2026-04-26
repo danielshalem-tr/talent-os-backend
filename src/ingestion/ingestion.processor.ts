@@ -1,7 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger as PinoLogger } from 'nestjs-pino';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { IngestJobData } from '../webhooks/webhooks.service';
 import { SpamFilterService } from './services/spam-filter.service';
@@ -316,7 +315,6 @@ export class IngestionProcessor extends WorkerHost {
         cvText: context.cvText,
         cvFileUrl: context.fileKey, // R2 object key used as URL placeholder in Phase 1 (D-02)
         aiSummary: extraction!.ai_summary ?? null,
-        metadata: Prisma.JsonNull, // D-03: deferred to future phase (Prisma requires JsonNull not null)
       },
     });
 
@@ -359,9 +357,10 @@ export class IngestionProcessor extends WorkerHost {
             },
           } satisfies ScoringInput);
 
-          // SCOR-04, SCOR-05: append-only INSERT
-          await this.prisma.candidateJobScore.create({
-            data: {
+          // SCOR-04, SCOR-05: upsert — idempotent on BullMQ retry
+          await this.prisma.candidateJobScore.upsert({
+            where: { idx_scores_unique_per_app: { tenantId, applicationId: application.id } },
+            create: {
               tenantId,
               applicationId: application.id,
               score: scoreResult.score,
@@ -370,6 +369,7 @@ export class IngestionProcessor extends WorkerHost {
               gaps: scoreResult.gaps,
               modelUsed: scoreResult.modelUsed,
             },
+            update: {},
           });
 
           this.pinoLogger.log(

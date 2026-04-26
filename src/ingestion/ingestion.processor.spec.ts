@@ -10,7 +10,6 @@ import { mockCandidateExtract } from './services/extraction-agent.service.test-h
 import { StorageService } from '../storage/storage.service';
 import { DedupService } from '../dedup/dedup.service';
 import { ScoringAgentService } from '../scoring/scoring.service';
-import { Prisma } from '@prisma/client';
 
 // Mock AI SDK modules to prevent ESM parse errors (ExtractionAgentService is provided as a mock anyway)
 jest.mock('ai', () => ({ generateObject: jest.fn() }));
@@ -35,7 +34,7 @@ function makeJob(id: string, payload: ReturnType<typeof mockPostmarkPayload>) {
 
 describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
@@ -52,7 +51,7 @@ describe('IngestionProcessor', () => {
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
 
     extractionAgent = {
@@ -222,7 +221,7 @@ describe('IngestionProcessor', () => {
 
 describe('IngestionProcessor — Phase 5 StorageService', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
@@ -239,7 +238,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
     extractionAgent = {
       extract: jest.fn().mockResolvedValue(mockCandidateExtract()),
@@ -357,7 +356,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
 
 describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: {
@@ -383,7 +382,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
 
     extractionAgent = {
@@ -588,7 +587,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     candidate: { update: jest.Mock };
     job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
     application: { upsert: jest.Mock };
-    candidateJobScore: { create: jest.Mock };
+    candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
   };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
@@ -614,7 +613,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         findUnique: jest.fn().mockResolvedValue(activeJob),
       },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id-1' }) },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
 
     extractionAgent = {
@@ -703,7 +702,6 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           cvText: expect.any(String),
           // cvFileUrl comes from existingIntake.cvFileKey (set by webhook) — null when no CV attached
           aiSummary: 'Experienced engineer. Strong in distributed systems.',
-          metadata: Prisma.JsonNull,
         }),
       }),
     );
@@ -734,8 +732,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     );
   });
 
-  // 7-02-03: SCOR-02 + SCOR-04 — application upserted then score created per active job
-  it('7-02-03: SCOR-02 + SCOR-04 — application upserted and candidateJobScore created per job', async () => {
+  // 7-02-03: SCOR-02 + SCOR-04 — application upserted then score upserted per active job
+  it('7-02-03: SCOR-02 + SCOR-04 — application upserted and candidateJobScore upserted per job', async () => {
     const payload = validJobPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
     const job = makeJob('test-p7-3', payload);
@@ -749,16 +747,35 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         update: {},
       }),
     );
-    expect(prisma.candidateJobScore.create).toHaveBeenCalledTimes(1);
-    expect(prisma.candidateJobScore.create).toHaveBeenCalledWith(
+    expect(prisma.candidateJobScore.upsert).toHaveBeenCalledTimes(1);
+    expect(prisma.candidateJobScore.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: expect.objectContaining({
+        where: { idx_scores_unique_per_app: { tenantId: 'test-tenant-id', applicationId: 'app-id-1' } },
+        create: expect.objectContaining({
           applicationId: 'app-id-1',
           score: 72,
           modelUsed: 'claude-sonnet-4-6',
         }),
+        update: {},
       }),
     );
+    expect(prisma.candidateJobScore.create).not.toHaveBeenCalled();
+  });
+
+  // 7-02-03b: uses candidateJobScore.upsert instead of create — prevents duplicate rows on retry
+  it('uses candidateJobScore.upsert instead of create — prevents duplicate rows on retry', async () => {
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-p7-upsert', payload);
+    await processor.process(job);
+
+    expect(prisma.candidateJobScore.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { idx_scores_unique_per_app: { tenantId: 'test-tenant-id', applicationId: 'app-id-1' } },
+        update: {},
+      }),
+    );
+    expect(prisma.candidateJobScore.create).not.toHaveBeenCalled();
   });
 
   // 7-02-04: SCOR-01 job not found — scoring loop skipped, status still completed
@@ -794,7 +811,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     const lastUpdateCall = allUpdateCalls[allUpdateCalls.length - 1];
     expect(lastUpdateCall?.data).toEqual({ processingStatus: 'completed' });
     // Scoring happened before the final status update
-    expect(prisma.candidateJobScore.create).toHaveBeenCalled();
+    expect(prisma.candidateJobScore.upsert).toHaveBeenCalled();
   });
 
   // 7-02-06: Scoring error on matched job — marks intake as failed and throws (retried by BullMQ)
@@ -810,8 +827,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     // Application should have been created (SCOR-02 happens before scoring)
     expect(prisma.application.upsert).toHaveBeenCalledTimes(1);
 
-    // Score creation skipped due to error
-    expect(prisma.candidateJobScore.create).not.toHaveBeenCalled();
+    // Score upsert skipped due to error
+    expect(prisma.candidateJobScore.upsert).not.toHaveBeenCalled();
 
     // Intake marked as failed before throwing
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
@@ -848,7 +865,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           findUnique: jest.fn(),
         },
         application: { upsert: jest.fn().mockResolvedValue({ id: 'app-1' }) },
-        candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+        candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
       };
       extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };
       storageService = { upload: jest.fn().mockResolvedValue('key'), downloadPayload: jest.fn() };
@@ -926,7 +943,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         }),
       );
       expect(prisma.application.upsert).toHaveBeenCalledTimes(2);
-      expect(prisma.candidateJobScore.create).toHaveBeenCalledTimes(2);
+      expect(prisma.candidateJobScore.upsert).toHaveBeenCalledTimes(2);
     });
 
     it('15-04: gracefully handles no numeric short_ids in email', async () => {
@@ -1001,7 +1018,7 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: { findMany: jest.fn().mockResolvedValue([]) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -1083,7 +1100,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
       candidate: { update: jest.fn().mockResolvedValue({}) },
       job: { findMany: jest.fn().mockResolvedValue([]) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
     dedupService = {
       check: jest.fn().mockResolvedValue(null),

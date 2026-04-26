@@ -219,6 +219,7 @@ model CandidateJobScore {
   application Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 
   @@index([applicationId], name: "idx_scores_application")
+  @@unique([tenantId, applicationId], name: "idx_scores_unique_per_app")
   @@map("candidate_job_scores")
 }
 
