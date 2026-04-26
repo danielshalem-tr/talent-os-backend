@@ -9,7 +9,7 @@ import { AttachmentExtractorService } from './services/attachment-extractor.serv
 import { ExtractionAgentService, CandidateExtract } from './services/extraction-agent.service';
 import { StorageService } from '../storage/storage.service';
 import { DedupService, DedupResult } from '../dedup/dedup.service';
-import { ScoringAgentService, ScoringInput, ScoreResult } from '../scoring/scoring.service';
+import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
 
 export interface ProcessingContext {
   fullText: string;
@@ -330,71 +330,69 @@ export class IngestionProcessor extends WorkerHost {
       return;
     }
 
-    // Phase 7: Score candidate against ALL matched jobs (SCOR-01, D-11)
-    // Loop over each matched job and create application + score record
-    // Track MAX score across all jobs for denormalized aiScore field
-    let maxAiScore = -1;
+    // Phase 7: Score candidate against ALL matched jobs in parallel (SCOR-01, D-11, P3)
+    // Promise.all runs N scoring calls concurrently — one per matched job
+    let scores: number[];
+    try {
+      scores = await Promise.all(
+        matchedJobs.map(async (activeJob) => {
+          // SCOR-02: upsert application row first — idempotent on retry
+          const application = await this.prisma.application.upsert({
+            where: { idx_applications_unique: { tenantId, candidateId: context.candidateId, jobId: activeJob.id } },
+            create: { tenantId, candidateId: context.candidateId, jobId: activeJob.id, stage: 'new' },
+            update: {}, // No-op on retry
+            select: { id: true },
+          });
 
-    for (const activeJob of matchedJobs) {
-      // SCOR-02: upsert application row first — idempotent on retry
-      const application = await this.prisma.application.upsert({
-        where: {
-          idx_applications_unique: {
-            tenantId,
-            candidateId: context.candidateId,
-            jobId: activeJob.id,
-          },
-        },
-        create: { tenantId, candidateId: context.candidateId, jobId: activeJob.id, stage: 'new' },
-        update: {}, // No-op on retry
-        select: { id: true },
+          // SCOR-03: score candidate against this job
+          const scoreResult = await this.scoringService.score({
+            cvText: context.cvText,
+            candidateFields: {
+              currentRole: extraction!.current_role ?? null,
+              yearsExperience: extraction!.years_experience ?? null,
+              skills: extraction!.skills ?? [],
+            },
+            job: {
+              title: activeJob.title,
+              description: activeJob.description ?? null,
+              requirements: activeJob.requirements,
+            },
+          } satisfies ScoringInput);
+
+          // SCOR-04, SCOR-05: append-only INSERT
+          await this.prisma.candidateJobScore.create({
+            data: {
+              tenantId,
+              applicationId: application.id,
+              score: scoreResult.score,
+              reasoning: scoreResult.reasoning,
+              strengths: scoreResult.strengths,
+              gaps: scoreResult.gaps,
+              modelUsed: scoreResult.modelUsed,
+            },
+          });
+
+          this.pinoLogger.log(
+            { messageId: payload.MessageID, candidateId: context.candidateId, jobId: activeJob.id, score: scoreResult.score },
+            'Phase 7 scored',
+          );
+
+          return scoreResult.score;
+        }),
+      );
+    } catch (err) {
+      this.pinoLogger.error(
+        { messageId: payload.MessageID, candidateId: context.candidateId, error: (err as Error).message },
+        'Scoring failed for one or more jobs',
+      );
+      await this.prisma.emailIntakeLog.update({
+        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+        data: { processingStatus: 'failed', errorMessage: (err as Error).message },
       });
-
-      // SCOR-03: score candidate against this job
-      let scoreResult: ScoreResult & { modelUsed: string };
-      try {
-        scoreResult = await this.scoringService.score({
-          cvText: context.cvText,
-          candidateFields: {
-            currentRole: extraction!.current_role ?? null,
-            yearsExperience: extraction!.years_experience ?? null,
-            skills: extraction!.skills ?? [],
-          },
-          job: {
-            title: activeJob.title,
-            description: activeJob.description ?? null,
-            requirements: activeJob.requirements,
-          },
-        } satisfies ScoringInput);
-      } catch (err) {
-        this.pinoLogger.error({ messageId: payload.MessageID, candidateId: context.candidateId, jobId: activeJob.id, error: (err as Error).message }, 'Scoring failed');
-        // Mark intake as failed if scoring fails for ANY matched job
-        await this.prisma.emailIntakeLog.update({
-          where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-          data: { processingStatus: 'failed', errorMessage: (err as Error).message },
-        });
-        throw err;
-      }
-
-      // SCOR-04, SCOR-05: append-only INSERT
-      await this.prisma.candidateJobScore.create({
-        data: {
-          tenantId,
-          applicationId: application.id,
-          score: scoreResult.score,
-          reasoning: scoreResult.reasoning,
-          strengths: scoreResult.strengths,
-          gaps: scoreResult.gaps,
-          modelUsed: scoreResult.modelUsed,
-        },
-      });
-
-      // Track maximum score across all jobs for denormalized aiScore
-      // (C-5 fix: prevents race condition from repeated updates in loop)
-      maxAiScore = Math.max(maxAiScore, scoreResult.score);
-
-      this.pinoLogger.log({ messageId: payload.MessageID, candidateId: context.candidateId, jobId: activeJob.id, score: scoreResult.score }, 'Phase 7 scored');
+      throw err;
     }
+
+    const maxAiScore = Math.max(-1, ...scores);
 
     // Update denormalized aiScore once after all jobs scored
     // Only set if we actually scored any jobs (maxAiScore > -1)
