@@ -307,8 +307,8 @@ describe('ExtractionAgentService', () => {
     );
   });
 
-  // extract re-throws when saveExtractionCache rejects — AI result discarded, BullMQ will retry
-  it('extract re-throws when saveExtractionCache rejects — AI result discarded, BullMQ will retry', async () => {
+  // extract soft-fails when saveExtractionCache rejects — AI result still returned, retry will re-call AI
+  it('extract returns AI result even when saveExtractionCache rejects', async () => {
     const aiResult = {
       full_name: 'New Candidate',
       email: null, phone: null, current_role: null,
@@ -322,7 +322,8 @@ describe('ExtractionAgentService', () => {
     };
     const service = makeService(mockStorage);
 
-    await expect(service.extract('cv text', false, DEFAULT_METADATA)).rejects.toThrow('R2 unavailable');
+    const result = await service.extract('cv text', false, DEFAULT_METADATA);
+    expect(result.full_name).toBe('New Candidate');
     expect(mockGenerateObject).toHaveBeenCalledTimes(1);
   });
 });

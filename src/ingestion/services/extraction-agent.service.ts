@@ -188,8 +188,11 @@ export class ExtractionAgentService {
 
     const extracted = await this.callAI(fullText, metadata);
 
-    // Cache result to R2 — retries will use this instead of calling AI again
-    await this.storageService.saveExtractionCache(extracted, metadata.tenantId, metadata.messageId);
+    try {
+      await this.storageService.saveExtractionCache(extracted, metadata.tenantId, metadata.messageId);
+    } catch (cacheErr) {
+      this.logger.warn(`Failed to cache extraction for ${metadata.messageId} — retry will re-call AI: ${(cacheErr as Error).message}`);
+    }
 
     return { ...extracted, suspicious };
   }

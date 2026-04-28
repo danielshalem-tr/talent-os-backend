@@ -59,6 +59,9 @@ export class IngestionProcessor extends WorkerHost {
   }
 
   async process(job: Job<IngestJobData>): Promise<void> {
+    if (!job.data.tenantId || !job.data.messageId) {
+      throw new Error(`Job ${job.id} has pre-P1 format — drain queue before upgrading (job data: ${JSON.stringify(job.data).slice(0, 100)})`);
+    }
     const { tenantId, messageId: jobMessageId } = job.data;
     const payload = await this.storageService.downloadPayload(tenantId, jobMessageId);
 

@@ -157,6 +157,8 @@ describe('WebhooksService', () => {
           jobId: 'msg-abc-123',
           attempts: 3,
           backoff: { type: 'exponential', delay: 5000 },
+          removeOnFail: { count: 500 },
+          removeOnComplete: { count: 1000 },
         }),
       );
     });
