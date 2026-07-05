@@ -370,6 +370,42 @@ export class JiraGatewayService {
     }
   }
 
+  // Moves an issue back to the To Do status category ('new'). Jira transition ids are
+  // workflow-specific, so we list the available transitions and pick the first whose
+  // target category is 'new' rather than hardcoding an id.
+  async transitionToTodo(key: string): Promise<void> {
+    const listRes = await fetch(`${this.baseUrl}/rest/api/3/issue/${key}/transitions`, {
+      method: 'GET',
+      headers: { Authorization: this.authHeader, Accept: 'application/json' },
+    });
+    if (!listRes.ok) {
+      const text = await listRes.text().catch(() => '');
+      this.logger.error(`Jira list transitions ${key} failed: ${listRes.status} — ${text}`);
+      throw this.jiraError(`Failed to read transitions for ${key}: ${listRes.status}`, text);
+    }
+
+    const data = (await listRes.json()) as {
+      transitions?: Array<{ id: string; to?: { statusCategory?: { key?: string } } }>;
+    };
+    const target = data.transitions?.find((t) => t.to?.statusCategory?.key === 'new');
+    if (!target) {
+      this.logger.error(`Jira issue ${key} has no transition to the To Do category`);
+      throw this.jiraError(`No To Do transition available for ${key}`, '');
+    }
+
+    const postRes = await fetch(`${this.baseUrl}/rest/api/3/issue/${key}/transitions`, {
+      method: 'POST',
+      headers: { Authorization: this.authHeader, 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ transition: { id: target.id } }),
+    });
+    if (!postRes.ok) {
+      const text = await postRes.text().catch(() => '');
+      this.logger.error(`Jira transition ${key} failed: ${postRes.status} — ${text}`);
+      throw this.jiraError(`Failed to move ${key} back to To Do: ${postRes.status}`, text);
+    }
+    this.logger.log(`Jira ${key} transitioned back to To Do`);
+  }
+
   private jiraError(message: string, _detail: string): HttpException {
     // 502 Bad Gateway — the failure originates upstream (Jira), not in the caller's request.
     // Use the same { error: { code, message } } envelope as the rest of the API so the

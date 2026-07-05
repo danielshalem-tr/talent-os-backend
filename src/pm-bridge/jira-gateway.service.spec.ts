@@ -269,3 +269,61 @@ describe('JiraGatewayService.readDoneSince', () => {
     }
   });
 });
+
+describe('JiraGatewayService.transitionToTodo', () => {
+  let fetchMock: jest.SpyInstance;
+  beforeEach(() => {
+    fetchMock = jest.spyOn(global, 'fetch');
+  });
+  afterEach(() => fetchMock.mockRestore());
+
+  const TRANSITIONS = {
+    transitions: [
+      { id: '31', name: 'Done', to: { statusCategory: { key: 'done' } } },
+      { id: '11', name: 'To Do', to: { statusCategory: { key: 'new' } } },
+      { id: '21', name: 'In Progress', to: { statusCategory: { key: 'indeterminate' } } },
+    ],
+  };
+
+  it('picks the first transition whose target category is new and POSTs it', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson(TRANSITIONS)) // GET transitions
+      .mockResolvedValueOnce({ ok: true, json: async () => ({}), text: async () => '' } as any); // POST
+    await makeService().transitionToTodo('TP-7');
+
+    const [getUrl, getInit] = fetchMock.mock.calls[0];
+    expect(getUrl).toBe(`${BASE_URL}/rest/api/3/issue/TP-7/transitions`);
+    expect((getInit as RequestInit).method).toBe('GET');
+
+    const [postUrl, postInit] = fetchMock.mock.calls[1];
+    expect(postUrl).toBe(`${BASE_URL}/rest/api/3/issue/TP-7/transitions`);
+    expect((postInit as RequestInit).method).toBe('POST');
+    expect(JSON.parse((postInit as RequestInit).body as string)).toEqual({ transition: { id: '11' } });
+  });
+
+  it('throws 502 naming the key when no To Do transition exists', async () => {
+    expect.assertions(3);
+    fetchMock.mockResolvedValueOnce(
+      okJson({ transitions: [{ id: '31', name: 'Done', to: { statusCategory: { key: 'done' } } }] }),
+    );
+    try {
+      await makeService().transitionToTodo('TP-7');
+    } catch (e) {
+      expect(e).toBeInstanceOf(HttpException);
+      expect((e as HttpException).getStatus()).toBe(HttpStatus.BAD_GATEWAY);
+      expect(JSON.stringify((e as HttpException).getResponse())).toContain('TP-7');
+    }
+  });
+
+  it('throws 502 when listing transitions fails', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 404, text: async () => 'nope' } as any);
+    await expect(makeService().transitionToTodo('TP-7')).rejects.toThrow(HttpException);
+  });
+
+  it('throws 502 when the transition POST fails', async () => {
+    fetchMock
+      .mockResolvedValueOnce(okJson(TRANSITIONS))
+      .mockResolvedValueOnce({ ok: false, status: 400, text: async () => 'bad' } as any);
+    await expect(makeService().transitionToTodo('TP-7')).rejects.toThrow(HttpException);
+  });
+});
