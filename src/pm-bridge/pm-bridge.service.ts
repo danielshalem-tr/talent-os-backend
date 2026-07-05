@@ -1,7 +1,7 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { JiraGatewayService } from './jira-gateway.service';
+import { JiraGatewayService, type DoneTicket } from './jira-gateway.service';
 import { PmAiService } from './pm-ai.service';
 import { PmNotifyService } from './pm-notify.service';
 import type { ConverseRequest, ConverseResponse, Turn } from './dto/converse.dto';
@@ -10,6 +10,7 @@ import type { CreateDecision, UpdateDecision } from './dto/decision.dto';
 import type { InternalBrief } from './dto/brief.dto';
 
 const MAX_CLARIFY_ROUNDS = 3;
+const TRACKER_WINDOW_DAYS = 14;
 
 @Injectable()
 export class PmBridgeService {
@@ -166,6 +167,71 @@ export class PmBridgeService {
 
   private firstPmText(messages: Turn[]): string {
     return messages.find((m) => m.role === 'pm')?.content ?? '';
+  }
+
+  // ── tracker (Done-review queue) ────────────────────────────────────────────
+
+  async getTracker(tenantId: string): Promise<{ tickets: DoneTicket[] }> {
+    const done = await this.jiraGateway.readDoneSince(TRACKER_WINDOW_DAYS);
+    if (done.length === 0) return { tickets: [] };
+
+    const reviews = await this.prisma.pmTicketReview.findMany({
+      where: { tenantId, jiraKey: { in: done.map((t) => t.key) } },
+      orderBy: { createdAt: 'desc' },
+    });
+    // Latest row per key wins (rows arrive newest-first).
+    const latestByKey = new Map<string, (typeof reviews)[number]>();
+    for (const r of reviews) if (!latestByKey.has(r.jiraKey)) latestByKey.set(r.jiraKey, r);
+
+    // Hide only tickets verified AFTER their latest Done transition. A verify older than
+    // doneAt means the ticket was reopened (by anyone) and finished again — review it afresh.
+    const tickets = done.filter((t) => {
+      const latest = latestByKey.get(t.key);
+      if (!latest) return true;
+      return !(latest.action === 'verified' && latest.createdAt > new Date(t.doneAt));
+    });
+    return { tickets };
+  }
+
+  async verifyTicket(key: string, tenantId: string, createdBy: string): Promise<{ status: 'verified' }> {
+    await this.prisma.pmTicketReview.create({
+      data: { tenantId, jiraKey: key, action: 'verified', createdBy },
+    });
+    this.logger.log(`PM Bridge verified ${key}`);
+    return { status: 'verified' };
+  }
+
+  async reopenTicket(
+    key: string,
+    comment: string,
+    tenantId: string,
+    createdBy: string,
+  ): Promise<{ status: 'reopened' }> {
+    // Comment first so the bounce always carries its reason, even if the transition fails.
+    await this.jiraGateway.addComment(key, `Reopened via PM Bridge by ${createdBy}:\n\n${comment}`);
+    try {
+      await this.jiraGateway.transitionToTodo(key);
+    } catch {
+      // Record the verdict anyway — the queue must reflect what the PM decided.
+      await this.prisma.pmTicketReview.create({
+        data: { tenantId, jiraKey: key, action: 'reopened', comment, createdBy },
+      });
+      this.logger.error(`PM Bridge reopen ${key}: comment posted but the transition failed`);
+      throw new HttpException(
+        {
+          error: {
+            code: 'JIRA_ERROR',
+            message: 'Comment posted, but moving the ticket back failed — move it in Jira manually.',
+          },
+        },
+        HttpStatus.BAD_GATEWAY,
+      );
+    }
+    await this.prisma.pmTicketReview.create({
+      data: { tenantId, jiraKey: key, action: 'reopened', comment, createdBy },
+    });
+    this.logger.log(`PM Bridge reopened ${key}`);
+    return { status: 'reopened' };
   }
 
   // ── decisions (unchanged) ───────────────────────────────────────────────────

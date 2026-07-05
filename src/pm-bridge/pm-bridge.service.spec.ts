@@ -16,11 +16,17 @@ function make(overrides: any = {}) {
       findUnique: jest.fn(),
       update: jest.fn().mockResolvedValue({}),
     },
+    pmTicketReview: {
+      findMany: jest.fn().mockResolvedValue([]),
+      create: jest.fn().mockResolvedValue({}),
+    },
   };
   const jira = {
     readBoard: jest.fn().mockResolvedValue([]),
     createIssueTree: jest.fn().mockResolvedValue({ keys: ['TO-1', 'TO-2'] }),
     addComment: jest.fn().mockResolvedValue(undefined),
+    readDoneSince: jest.fn().mockResolvedValue([]),
+    transitionToTodo: jest.fn().mockResolvedValue(undefined),
   };
   const ai = {
     clarify: jest.fn(),
@@ -125,5 +131,140 @@ describe('PmBridgeService.approveHold / rejectHold', () => {
     const r = await svc.rejectHold('hold-1');
     expect(r.status).toBe('rejected');
     expect(jira.createIssueTree).not.toHaveBeenCalled();
+  });
+});
+
+describe('PmBridgeService.getTracker', () => {
+  const ticket = (key: string, doneAt: string) => ({
+    key, type: 'Story', summary: `s-${key}`, doneAt, url: `https://x.atlassian.net/browse/${key}`,
+  });
+  const review = (jiraKey: string, action: string, createdAt: string) => ({
+    id: 'r', tenantId: 'tenant-1', jiraKey, action, comment: null, createdBy: 'pm@x.com',
+    createdAt: new Date(createdAt),
+  });
+
+  it('reads a 14-day window and queries reviews only for the returned keys', async () => {
+    const { svc, jira, prisma } = make();
+    jira.readDoneSince.mockResolvedValue([ticket('TO-1', '2026-07-01T10:00:00.000+0000')]);
+    await svc.getTracker('tenant-1');
+    expect(jira.readDoneSince).toHaveBeenCalledWith(14);
+    expect(prisma.pmTicketReview.findMany).toHaveBeenCalledWith({
+      where: { tenantId: 'tenant-1', jiraKey: { in: ['TO-1'] } },
+      orderBy: { createdAt: 'desc' },
+    });
+  });
+
+  it('shows an unreviewed ticket', async () => {
+    const { svc, jira } = make();
+    jira.readDoneSince.mockResolvedValue([ticket('TO-1', '2026-07-01T10:00:00.000+0000')]);
+    const r = await svc.getTracker('tenant-1');
+    expect(r.tickets.map((t: any) => t.key)).toEqual(['TO-1']);
+  });
+
+  it('hides a ticket verified after its Done transition', async () => {
+    const { svc, jira, prisma } = make();
+    jira.readDoneSince.mockResolvedValue([ticket('TO-1', '2026-07-01T10:00:00.000+0000')]);
+    prisma.pmTicketReview.findMany.mockResolvedValue([review('TO-1', 'verified', '2026-07-02T10:00:00.000Z')]);
+    const r = await svc.getTracker('tenant-1');
+    expect(r.tickets).toEqual([]);
+  });
+
+  it('re-shows a redone ticket (verify older than the latest Done transition)', async () => {
+    const { svc, jira, prisma } = make();
+    jira.readDoneSince.mockResolvedValue([ticket('TO-1', '2026-07-03T10:00:00.000+0000')]);
+    prisma.pmTicketReview.findMany.mockResolvedValue([review('TO-1', 'verified', '2026-07-02T10:00:00.000Z')]);
+    const r = await svc.getTracker('tenant-1');
+    expect(r.tickets.map((t: any) => t.key)).toEqual(['TO-1']);
+  });
+
+  it('latest row wins — a fresh verify hides even if an older reopen exists', async () => {
+    const { svc, jira, prisma } = make();
+    jira.readDoneSince.mockResolvedValue([ticket('TO-1', '2026-07-01T10:00:00.000+0000')]);
+    // findMany returns createdAt DESC — newest first
+    prisma.pmTicketReview.findMany.mockResolvedValue([
+      review('TO-1', 'verified', '2026-07-04T10:00:00.000Z'),
+      review('TO-1', 'reopened', '2026-07-02T10:00:00.000Z'),
+    ]);
+    const r = await svc.getTracker('tenant-1');
+    expect(r.tickets).toEqual([]);
+  });
+
+  it('shows a ticket whose latest review is reopened', async () => {
+    const { svc, jira, prisma } = make();
+    jira.readDoneSince.mockResolvedValue([ticket('TO-1', '2026-07-01T10:00:00.000+0000')]);
+    prisma.pmTicketReview.findMany.mockResolvedValue([
+      review('TO-1', 'reopened', '2026-07-04T10:00:00.000Z'),
+      review('TO-1', 'verified', '2026-07-02T10:00:00.000Z'),
+    ]);
+    const r = await svc.getTracker('tenant-1');
+    expect(r.tickets.map((t: any) => t.key)).toEqual(['TO-1']);
+  });
+
+  it('skips the review query entirely when Jira returns nothing', async () => {
+    const { svc, prisma } = make();
+    const r = await svc.getTracker('tenant-1');
+    expect(r).toEqual({ tickets: [] });
+    expect(prisma.pmTicketReview.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('PmBridgeService.verifyTicket', () => {
+  it('appends a verified row and never touches Jira', async () => {
+    const { svc, prisma, jira } = make();
+    const r = await svc.verifyTicket('TO-1', 'tenant-1', 'pm@x.com');
+    expect(r).toEqual({ status: 'verified' });
+    expect(prisma.pmTicketReview.create).toHaveBeenCalledWith({
+      data: { tenantId: 'tenant-1', jiraKey: 'TO-1', action: 'verified', createdBy: 'pm@x.com' },
+    });
+    expect(jira.addComment).not.toHaveBeenCalled();
+    expect(jira.transitionToTodo).not.toHaveBeenCalled();
+  });
+});
+
+describe('PmBridgeService.reopenTicket', () => {
+  it('comments first, then transitions, then records the verdict', async () => {
+    const { svc, prisma, jira } = make();
+    const r = await svc.reopenTicket('TO-1', 'export button missing', 'tenant-1', 'pm@x.com');
+    expect(r).toEqual({ status: 'reopened' });
+    expect(jira.addComment).toHaveBeenCalledWith(
+      'TO-1',
+      'Reopened via PM Bridge by pm@x.com:\n\nexport button missing',
+    );
+    // comment must land BEFORE the transition so the bounce always carries its reason
+    expect(jira.addComment.mock.invocationCallOrder[0]).toBeLessThan(
+      jira.transitionToTodo.mock.invocationCallOrder[0],
+    );
+    expect(prisma.pmTicketReview.create).toHaveBeenCalledWith({
+      data: { tenantId: 'tenant-1', jiraKey: 'TO-1', action: 'reopened', comment: 'export button missing', createdBy: 'pm@x.com' },
+    });
+  });
+
+  it('partial failure: transition fails → verdict row still written, 502 with the manual-move message', async () => {
+    expect.assertions(4);
+    const { svc, prisma, jira } = make();
+    jira.transitionToTodo.mockRejectedValue(new Error('jira down'));
+    try {
+      await svc.reopenTicket('TO-1', 'not really done', 'tenant-1', 'pm@x.com');
+    } catch (e: any) {
+      expect(e.getStatus()).toBe(502);
+      expect(e.getResponse()).toEqual({
+        error: {
+          code: 'JIRA_ERROR',
+          message: 'Comment posted, but moving the ticket back failed — move it in Jira manually.',
+        },
+      });
+    }
+    expect(prisma.pmTicketReview.create).toHaveBeenCalledWith({
+      data: { tenantId: 'tenant-1', jiraKey: 'TO-1', action: 'reopened', comment: 'not really done', createdBy: 'pm@x.com' },
+    });
+    expect(jira.addComment).toHaveBeenCalled();
+  });
+
+  it('comment failure: nothing else happens and the gateway error propagates', async () => {
+    const { svc, prisma, jira } = make();
+    jira.addComment.mockRejectedValue(new Error('502'));
+    await expect(svc.reopenTicket('TO-1', 'reason here', 'tenant-1', 'pm@x.com')).rejects.toThrow();
+    expect(jira.transitionToTodo).not.toHaveBeenCalled();
+    expect(prisma.pmTicketReview.create).not.toHaveBeenCalled();
   });
 });
