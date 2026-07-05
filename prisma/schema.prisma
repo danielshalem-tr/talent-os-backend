@@ -38,6 +38,7 @@ model Organization {
   // Relations — pm-bridge
   pmProductDecisions PmProductDecision[]
   pmHeldRequests     PmHeldRequest[]
+  pmTicketReviews    PmTicketReview[]
 
   @@map("tenants")
 }
@@ -368,6 +369,24 @@ model PmHeldRequest {
 
   @@index([tenantId, status], name: "idx_pm_held_tenant_status")
   @@map("pm_held_requests")
+}
+
+// ─── pm_ticket_reviews ────────────────────────────────────────────────────────
+// PM verdicts on Done tickets, append-only; the latest row per (tenant, jiraKey)
+// wins. action CHECK ('verified','reopened') added via raw SQL migration.
+model PmTicketReview {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  jiraKey   String   @map("jira_key") @db.Text
+  action    String   @db.Text            // 'verified' | 'reopened'
+  comment   String?  @db.Text            // reopen reason (null for verified)
+  createdBy String   @map("created_by") @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  organization Organization @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, jiraKey], name: "idx_pm_ticket_reviews_tenant_key")
+  @@map("pm_ticket_reviews")
 }
 
 // ─── candidate_stage_summaries ────────────────────────────────────────────────
