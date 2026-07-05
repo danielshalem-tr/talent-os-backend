@@ -15,6 +15,14 @@ export interface JiraIssueResult {
   url: string;
 }
 
+export interface DoneTicket {
+  key: string;
+  type: string;
+  summary: string;
+  doneAt: string; // ISO — when the issue's status category last changed (to Done)
+  url: string;
+}
+
 interface JiraSearchResponse {
   issues: Array<{
     key: string;
@@ -22,6 +30,17 @@ interface JiraSearchResponse {
       issuetype: { name: string };
       summary: string;
       status: { name: string };
+    };
+  }>;
+}
+
+interface JiraDoneSearchResponse {
+  issues: Array<{
+    key: string;
+    fields: {
+      issuetype: { name: string };
+      summary: string;
+      statuscategorychangedate: string;
     };
   }>;
 }
@@ -98,6 +117,40 @@ export class JiraGatewayService {
       type: issue.fields.issuetype.name,
       summary: issue.fields.summary,
       status: issue.fields.status.name,
+    }));
+  }
+
+  async readDoneSince(days: number): Promise<DoneTicket[]> {
+    const jql = `project = "${this.projectKey}" AND statusCategory = Done AND statusCategoryChangedDate >= -${days}d ORDER BY statusCategoryChangedDate DESC`;
+    const res = await fetch(`${this.baseUrl}/rest/api/3/search/jql`, {
+      method: 'POST',
+      headers: {
+        Authorization: this.authHeader,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({
+        jql,
+        fields: ['issuetype', 'summary', 'status', 'statuscategorychangedate'],
+        maxResults: 200,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      this.logger.error(`Jira readDoneSince failed: ${res.status} — ${text}`);
+      throw this.jiraError(`Failed to read Done tickets: ${res.status}`, text);
+    }
+
+    const data = (await res.json()) as JiraDoneSearchResponse;
+    this.logger.log(`Jira Done read: ${data.issues.length} issues in the last ${days}d`);
+
+    return data.issues.map((issue) => ({
+      key: issue.key,
+      type: issue.fields.issuetype.name,
+      summary: issue.fields.summary,
+      doneAt: issue.fields.statuscategorychangedate,
+      url: `${this.baseUrl}/browse/${issue.key}`,
     }));
   }
 

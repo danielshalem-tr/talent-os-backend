@@ -208,3 +208,64 @@ describe('JiraGatewayService.addComment', () => {
     expect(JSON.parse((opts as any).body).body.type).toBe('doc');
   });
 });
+
+describe('JiraGatewayService.readDoneSince', () => {
+  let fetchMock: jest.SpyInstance;
+  beforeEach(() => {
+    fetchMock = jest.spyOn(global, 'fetch');
+  });
+  afterEach(() => fetchMock.mockRestore());
+
+  it('POSTs a Done-window JQL with the right fields and maxResults', async () => {
+    fetchMock.mockResolvedValue(okJson({ issues: [] }));
+    await makeService().readDoneSince(14);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe(`${BASE_URL}/rest/api/3/search/jql`);
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body.jql).toBe(
+      `project = "${PROJECT_KEY}" AND statusCategory = Done AND statusCategoryChangedDate >= -14d ORDER BY statusCategoryChangedDate DESC`,
+    );
+    expect(body.fields).toEqual(['issuetype', 'summary', 'status', 'statuscategorychangedate']);
+    expect(body.maxResults).toBe(200);
+  });
+
+  it('maps issues to DoneTickets with a browse url and ISO doneAt', async () => {
+    fetchMock.mockResolvedValue(
+      okJson({
+        issues: [
+          {
+            key: 'TP-7',
+            fields: {
+              issuetype: { name: 'Story' },
+              summary: 'Faster search',
+              status: { name: 'Done' },
+              statuscategorychangedate: '2026-07-03T10:22:33.000+0300',
+            },
+          },
+        ],
+      }),
+    );
+    const tickets = await makeService().readDoneSince(14);
+    expect(tickets).toEqual([
+      {
+        key: 'TP-7',
+        type: 'Story',
+        summary: 'Faster search',
+        doneAt: '2026-07-03T10:22:33.000+0300',
+        url: `${BASE_URL}/browse/TP-7`,
+      },
+    ]);
+  });
+
+  it('throws a 502 JIRA_ERROR envelope on non-2xx', async () => {
+    expect.assertions(3);
+    fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' } as any);
+    try {
+      await makeService().readDoneSince(14);
+    } catch (e) {
+      expect(e).toBeInstanceOf(HttpException);
+      expect((e as HttpException).getStatus()).toBe(HttpStatus.BAD_GATEWAY);
+      expect((e as HttpException).getResponse()).toMatchObject({ error: { code: 'JIRA_ERROR' } });
+    }
+  });
+});
