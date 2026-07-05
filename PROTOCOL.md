@@ -1224,10 +1224,11 @@ All endpoints operate within a tenant context:
 
 ## PM Bridge
 
-All routes are under `/api/pm-bridge`. `/converse`, `/commit`, and `/decisions` require a
-session cookie and PM-Bridge allowlist membership. `/holds/:id/{approve,reject}` are public,
+All routes are under `/api/pm-bridge`. `/converse`, `/commit`, `/decisions`, and `/tracker`
+require a session cookie and PM-Bridge allowlist membership. `/holds/:id/{approve,reject}` are public,
 gated by a signed token from the notification email. The PM-facing payloads never contain
-Jira concepts (issue type, key, epic, acceptance criteria).
+Jira concepts (issue type, key, epic, acceptance criteria). The tracker endpoints are the
+deliberate exception: they surface issue keys and links so the PM can review finished work.
 
 ### POST /pm-bridge/converse
 Request: `{ "messages": [{ "role": "pm"|"assistant", "content": string }], "page": { "name": string, "route": string } }`
@@ -1250,6 +1251,26 @@ and returns an HTML result page.
 
 ### GET/POST /pm-bridge/decisions · PATCH /pm-bridge/decisions/:id
 Unchanged from the existing decisions contract.
+
+### GET /pm-bridge/tracker
+Done-review queue: board tickets whose status category became Done in the last 14 days,
+minus tickets whose latest review is a `verified` newer than the ticket's Done transition
+(a verify older than the latest Done means the ticket was reopened and redone — it reappears).
+Response: `{ "tickets": [{ "key": string, "type": string, "summary": string, "doneAt": string (ISO), "url": string }] }`
+
+### POST /pm-bridge/tracker/:key/verify
+Marks the ticket verified in the app DB only — Jira is untouched. Append-only, idempotent.
+`:key` must match `^[A-Z][A-Z0-9]*-\d+$` → 400 `VALIDATION_ERROR` otherwise.
+Response: `{ "status": "verified" }`
+
+### POST /pm-bridge/tracker/:key/reopen
+Request: `{ "comment": string }` — required, trimmed, min 3 chars → 400 `VALIDATION_ERROR`.
+Posts the comment to the Jira issue ("Reopened via PM Bridge by <email>: …"), transitions it
+back to To Do, and records the verdict.
+Response: `{ "status": "reopened" }`
+Partial failure (comment posted, transition failed): the verdict row is still recorded and the
+response is 502 `JIRA_ERROR` with
+`message: "Comment posted, but moving the ticket back failed — move it in Jira manually."`
 
 ---
 

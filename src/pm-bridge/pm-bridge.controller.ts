@@ -17,6 +17,7 @@ import { PmBridgeService } from './pm-bridge.service';
 import { ConverseRequestSchema } from './dto/converse.dto';
 import { CommitRequestSchema } from './dto/commit.dto';
 import { CreateDecisionSchema, UpdateDecisionSchema } from './dto/decision.dto';
+import { ReopenRequestSchema, JIRA_KEY_RE } from './dto/tracker.dto';
 
 @UseGuards(SessionGuard, PmBridgeGuard)
 @Controller('pm-bridge')
@@ -70,6 +71,37 @@ export class PmBridgeController {
       });
     }
     return this.service.updateDecision(id, result.data, req.session!.org);
+  }
+
+  @Get('tracker')
+  async getTracker(@Req() req: Request) {
+    return this.service.getTracker(req.session!.org);
+  }
+
+  @Post('tracker/:key/verify')
+  async verifyTicket(@Param('key') key: string, @Req() req: Request) {
+    this.assertJiraKey(key);
+    return this.service.verifyTicket(key, req.session!.org, req.pmBridgeEmail!);
+  }
+
+  @Post('tracker/:key/reopen')
+  async reopenTicket(@Param('key') key: string, @Body() body: unknown, @Req() req: Request) {
+    this.assertJiraKey(key);
+    const result = ReopenRequestSchema.safeParse(body);
+    if (!result.success) {
+      throw new BadRequestException({
+        error: { code: 'VALIDATION_ERROR', message: 'Validation failed', details: this.formatZodErrors(result.error) },
+      });
+    }
+    return this.service.reopenTicket(key, result.data.comment, req.session!.org, req.pmBridgeEmail!);
+  }
+
+  private assertJiraKey(key: string): void {
+    if (!JIRA_KEY_RE.test(key)) {
+      throw new BadRequestException({
+        error: { code: 'VALIDATION_ERROR', message: 'Invalid issue key' },
+      });
+    }
   }
 
   private formatZodErrors(error: ZodError): Record<string, string[]> {
