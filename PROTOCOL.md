@@ -1222,6 +1222,28 @@ All endpoints operate within a tenant context:
 - All data is automatically filtered by tenant
 - No cross-tenant data leakage is possible
 
+## PM Bridge Plugin Token (standalone Box)
+
+Used by the standalone PM Bridge widget (`@triolla-io/pmbridge-react`) when
+`VITE_PM_BRIDGE_MODE=plugin`. The embedded `/pm-bridge/*` endpoints below remain the
+contract while the mode is `embedded`.
+
+### GET /pmb-token
+
+Session-guarded. Mints a 5-minute host-vouch JWT for the logged-in user
+(`iss` = `PMB_API_KEY`, `aud` = `pm-bridge-box`, `email` claim, HS256 with
+`PMB_SIGNING_SECRET`). The widget sends it as `Authorization: Bearer` to the Box,
+which enforces the PM allowlist per tenant.
+
+Response `200`:
+
+```json
+{ "token": "eyJhbGciOiJIUzI1NiJ9..." }
+```
+
+Errors: `401` no/invalid session · `403` user missing or inactive ·
+`503 NOT_CONFIGURED` when `PMB_API_KEY`/`PMB_SIGNING_SECRET` are unset.
+
 ## PM Bridge
 
 All routes are under `/api/pm-bridge`. `/converse`, `/commit`, `/decisions`, and `/tracker`
