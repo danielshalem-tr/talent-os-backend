@@ -13,6 +13,7 @@ import { AppConfigModule } from './config/app-config/app-config.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
 import { PmBridgeModule } from './pm-bridge/pm-bridge.module';
+import { PmbTokenModule } from './pmb-token/pmb-token.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { PmBridgeModule } from './pm-bridge/pm-bridge.module';
     HealthModule,
     AuthModule,
     PmBridgeModule,
+    PmbTokenModule,
   ],
 })
 export class AppModule {}
