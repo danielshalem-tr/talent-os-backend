@@ -49,6 +49,11 @@ export const envSchema = z.object({
   // Optional extra Host header values allowed at /mcp (DNS-rebinding allowlist) when a reverse
   // proxy forwards a Host that differs from MCP_PUBLIC_URL's host. Comma-separated.
   MCP_ALLOWED_HOSTS: z.string().optional(),
+  // PM Bridge standalone plugin ("the Box") — host-app credentials used by the
+  // /pmb-token mint route. Optional: the route returns 503 NOT_CONFIGURED until both
+  // are set, and neither the API nor the worker requires them to boot.
+  PMB_API_KEY: z.string().min(1).optional(),
+  PMB_SIGNING_SECRET: z.string().min(32, 'PMB_SIGNING_SECRET must be at least 32 characters').optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

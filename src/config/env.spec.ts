@@ -80,3 +80,40 @@ describe('apiEnvSchema PM-Bridge smart-intake vars', () => {
     expect(() => envSchema.parse(noApiVars)).not.toThrow();
   });
 });
+
+describe('PMB (standalone pm-bridge plugin) vars', () => {
+  const base = {
+    DATABASE_URL: 'postgresql://u:p@localhost:5432/db',
+    REDIS_URL: 'redis://localhost:6379',
+    OPENROUTER_API_KEY: 'k',
+    MAILGUN_WEBHOOK_SIGNING_KEY: 'k',
+    R2_ACCOUNT_ID: 'a',
+    R2_ACCESS_KEY_ID: 'a',
+    R2_SECRET_ACCESS_KEY: 'a',
+    R2_BUCKET_NAME: 'b',
+    JWT_SECRET: 'x'.repeat(32),
+  };
+
+  it('parses without PMB vars (plugin unconfigured)', () => {
+    const result = envSchema.safeParse(base);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.PMB_API_KEY).toBeUndefined();
+      expect(result.data.PMB_SIGNING_SECRET).toBeUndefined();
+    }
+  });
+
+  it('accepts valid PMB vars', () => {
+    const result = envSchema.safeParse({
+      ...base,
+      PMB_API_KEY: 'pmb_abc123',
+      PMB_SIGNING_SECRET: 's'.repeat(64),
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects a short PMB_SIGNING_SECRET', () => {
+    const result = envSchema.safeParse({ ...base, PMB_SIGNING_SECRET: 'short' });
+    expect(result.success).toBe(false);
+  });
+});
