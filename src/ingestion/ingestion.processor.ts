@@ -93,6 +93,23 @@ export class IngestionProcessor extends WorkerHost {
       return;
     }
 
+    // INGEST GATE — per-tenant kill-switch for all AI spend in this pipeline.
+    // Sits after the (free) spam filter and before the first OpenRouter call.
+    // Payload is already durable (R2 + intake row), so holding loses nothing;
+    // POST /ingest-control/replay re-enqueues held messages through this same path.
+    const org = await this.prisma.organization.findUnique({
+      where: { id: tenantId },
+      select: { aiIngestEnabled: true },
+    });
+    if (org && !org.aiIngestEnabled) {
+      await this.prisma.emailIntakeLog.update({
+        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
+        data: { processingStatus: 'held' },
+      });
+      this.pinoLogger.log({ messageId: payload.MessageID }, 'Ingest gate: AI ingest disabled — email held');
+      return;
+    }
+
     // D-13: Passed spam filter — update status to 'processing'
     await this.prisma.emailIntakeLog.update({
       where: {

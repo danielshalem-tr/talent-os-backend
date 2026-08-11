@@ -35,7 +35,7 @@ function makeJob(id: string, payload: ReturnType<typeof mockEmailPayload>) {
 
 describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock; updateMany: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; organization: { findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock; updateMany: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
@@ -48,6 +48,7 @@ describe('IngestionProcessor', () => {
     };
     prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
@@ -223,7 +224,7 @@ describe('IngestionProcessor', () => {
 
 describe('IngestionProcessor — Phase 5 StorageService', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock; updateMany: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; organization: { findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock; updateMany: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
@@ -236,6 +237,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
     };
     prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
@@ -359,7 +361,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
 
 describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock; updateMany: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
+  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; organization: { findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock; updateMany: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: {
@@ -378,6 +380,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
 
     prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       // Simulate prisma.$transaction by invoking the callback with a tx client
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => {
         return cb(txClient);
@@ -647,6 +650,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
   let processor: IngestionProcessor;
   let prisma: {
     emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
+    organization: { findUnique: jest.Mock };
     $transaction: jest.Mock;
     candidate: { update: jest.Mock; updateMany: jest.Mock };
     job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
@@ -669,6 +673,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       job: {
@@ -971,6 +976,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       };
       prisma = {
         emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+        organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
         $transaction: jest.fn().mockImplementation(async (cb) => cb(txClient)),
         candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
         job: {
@@ -1128,6 +1134,7 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
     };
     const prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       job: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1211,6 +1218,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
     };
     prisma = {
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       job: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1305,6 +1313,7 @@ describe('IngestionProcessor — CV Classification Gate', () => {
         update: jest.fn().mockResolvedValue({}),
         findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
       },
+      organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       job: { findMany: jest.fn().mockResolvedValue([]) },
@@ -1397,6 +1406,107 @@ describe('IngestionProcessor — CV Classification Gate', () => {
     expect(cvClassifier.classify).not.toHaveBeenCalled();
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { processingStatus: 'spam' } }),
+    );
+  });
+});
+
+describe('ingest gate (ai_ingest_enabled)', () => {
+  let processor: IngestionProcessor;
+  let prisma: any;
+  let extractionAgent: { extract: jest.Mock };
+  let cvClassifier: { classify: jest.Mock };
+  let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
+
+  const longBody = 'A'.repeat(150); // passes the bodyLength >= 100 spam rule
+
+  beforeEach(async () => {
+    const txClient = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: jest.fn().mockResolvedValue(0),
+    };
+    prisma = {
+      emailIntakeLog: {
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+      },
+      organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
+      $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
+      candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      job: { findMany: jest.fn().mockResolvedValue([]) },
+      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
+      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
+    };
+    extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };
+    cvClassifier = { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'resume' }) };
+    storageService = { upload: jest.fn(), downloadPayload: jest.fn() };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        IngestionProcessor,
+        SpamFilterService,
+        AttachmentExtractorService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: ExtractionAgentService, useValue: extractionAgent },
+        { provide: StorageService, useValue: storageService },
+        {
+          provide: DedupService,
+          useValue: {
+            check: jest.fn().mockResolvedValue(null),
+            insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
+            upsertCandidate: jest.fn().mockResolvedValue(undefined),
+            createFlag: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: ScoringAgentService,
+          useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) },
+        },
+        { provide: CvClassifierService, useValue: cvClassifier },
+        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
+      ],
+    }).compile();
+    processor = module.get<IngestionProcessor>(IngestionProcessor);
+  });
+
+  afterEach(() => jest.clearAllMocks());
+
+  it('marks intake held and stops before any AI call when disabled', async () => {
+    prisma.organization.findUnique.mockResolvedValue({ aiIngestEnabled: false });
+    const payload = { ...mockEmailPayload(), TextBody: longBody };
+    storageService.downloadPayload.mockResolvedValue(payload);
+
+    await processor.process(makeJob('job-1', payload));
+
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { processingStatus: 'held' } }),
+    );
+    expect(cvClassifier.classify).not.toHaveBeenCalled();
+    expect(extractionAgent.extract).not.toHaveBeenCalled();
+  });
+
+  it('continues the normal pipeline when enabled', async () => {
+    prisma.organization.findUnique.mockResolvedValue({ aiIngestEnabled: true });
+    const payload = { ...mockEmailPayload(), TextBody: longBody };
+    storageService.downloadPayload.mockResolvedValue(payload);
+
+    await processor.process(makeJob('job-2', payload));
+
+    expect(cvClassifier.classify).toHaveBeenCalled();
+  });
+
+  it('spam is still rejected as spam while disabled (gate sits after spam filter)', async () => {
+    prisma.organization.findUnique.mockResolvedValue({ aiIngestEnabled: false });
+    const payload = mockEmailPayload(); // default payload IS spam (short body, no attachment)
+    storageService.downloadPayload.mockResolvedValue(payload);
+
+    await processor.process(makeJob('job-3', payload));
+
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { processingStatus: 'spam' } }),
+    );
+    expect(prisma.emailIntakeLog.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: { processingStatus: 'held' } }),
     );
   });
 });
