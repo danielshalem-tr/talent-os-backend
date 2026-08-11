@@ -18,6 +18,7 @@ model Organization {
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   onboardingCompletedAt DateTime? @map("onboarding_completed_at") @db.Timestamptz
+  aiIngestEnabled  Boolean   @default(true) @map("ai_ingest_enabled")
 
   // Relations — v1.0 relations
   jobs                    Job[]
