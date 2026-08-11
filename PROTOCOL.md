@@ -1180,6 +1180,56 @@ Remove an active member from the tenant. Immediately revokes access.
 - `403 Forbidden` — caller is not Owner, or target is themselves or another Owner
 - `404 Not Found` — member not found
 
+## 8. Ingest Control API
+
+Per-tenant kill-switch for AI calls in the email ingest pipeline. While disabled, incoming
+emails pass the spam filter and are stored with `processing_status='held'` (no AI calls, no
+data loss). Replay re-enqueues all held emails through the normal pipeline.
+
+Roles: `GET` endpoints — any authenticated member. `PATCH` / `POST /replay` — `owner` or `admin` only (403 otherwise).
+
+### `GET /ingest-control`
+
+Response `200`:
+
+```json
+{ "ai_ingest_enabled": true, "held_count": 0 }
+```
+
+### `PATCH /ingest-control`
+
+Request:
+
+```json
+{ "ai_ingest_enabled": false }
+```
+
+Response `200`: same shape as `GET /ingest-control`.
+
+### `GET /ingest-control/held`
+
+Held emails, newest first. No pagination (expected volume: dozens).
+
+Response `200`:
+
+```json
+{
+  "held": [
+    { "id": "uuid", "from_email": "agent@agency.co.il", "subject": "CV — Frontend dev", "received_at": "2026-08-11T10:00:00.000Z" }
+  ]
+}
+```
+
+### `POST /ingest-control/replay`
+
+Re-enqueues every held email (`held` → `pending` + queue job). Idempotent — safe to call again after partial failure.
+
+Response `200`:
+
+```json
+{ "replayed": 12 }
+```
+
 ## Error Response Format
 
 All error responses follow this structure:
