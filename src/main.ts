@@ -11,9 +11,15 @@ async function bootstrap() {
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     rawBody: true,
-    bodyParser: true,
+    // Parsers registered explicitly below so the ElevenLabs post-call webhook (large
+    // transcript JSON) fits — the express default is 100kb. useBodyParser keeps
+    // req.rawBody working because the app was created with rawBody: true.
+    bodyParser: false,
     bufferLogs: true,
   });
+
+  app.useBodyParser('json', { limit: '2mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '2mb' });
 
   app.useLogger(app.get(Logger));
 
