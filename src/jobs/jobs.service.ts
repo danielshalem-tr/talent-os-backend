@@ -241,7 +241,9 @@ export class JobsService {
     });
   }
 
-  async getOpenJobs(tenantId: string): Promise<{ jobs: Array<{ id: string; title: string; department: string | null }> }> {
+  async getOpenJobs(
+    tenantId: string,
+  ): Promise<{ jobs: Array<{ id: string; title: string; department: string | null }> }> {
     const jobs = await this.prisma.job.findMany({
       where: { tenantId, status: 'open' },
       select: {

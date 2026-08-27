@@ -19,7 +19,9 @@ export class VoiceControlController {
     // No global ValidationPipe — validate inline. A typo'd body must never coerce to false
     // and silently flip the kill switch (same rationale as ingest-control.controller.ts).
     if (typeof enabled !== 'boolean') {
-      throw new BadRequestException({ error: { code: 'VALIDATION_ERROR', message: 'voice_calls_enabled must be a boolean' } });
+      throw new BadRequestException({
+        error: { code: 'VALIDATION_ERROR', message: 'voice_calls_enabled must be a boolean' },
+      });
     }
     return this.voiceCalls.setEnabled(req.session as JwtPayload, enabled);
   }

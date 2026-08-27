@@ -69,7 +69,11 @@ describe('VoiceResultsService', () => {
         evaluation_criteria_results: { call_completed: { result: 'success' } },
         call_successful: 'success',
       });
-      expect(queue.add).toHaveBeenCalledWith('audio', { voiceCallId: 'vc1' }, expect.objectContaining({ jobId: 'audio:vc1' }));
+      expect(queue.add).toHaveBeenCalledWith(
+        'audio',
+        { voiceCallId: 'vc1' },
+        expect.objectContaining({ jobId: 'audio:vc1' }),
+      );
     });
 
     it('ignores unknown conversation ids (200-and-log, never throw)', async () => {
@@ -114,7 +118,10 @@ describe('VoiceResultsService', () => {
     it('busy → no_answer + schedules a retry when attempts remain', async () => {
       const { svc, prisma, voiceCalls } = makeMocks();
       await svc.handleInitiationFailure('conv_1', 'busy');
-      expect(prisma.voiceCall.update).toHaveBeenCalledWith({ where: { id: 'vc1' }, data: { status: 'no_answer', error: 'busy' } });
+      expect(prisma.voiceCall.update).toHaveBeenCalledWith({
+        where: { id: 'vc1' },
+        data: { status: 'no_answer', error: 'busy' },
+      });
       expect(voiceCalls.scheduleRetry).toHaveBeenCalledWith(expect.objectContaining({ id: 'vc1', attempt: 1 }));
     });
 
@@ -127,7 +134,10 @@ describe('VoiceResultsService', () => {
     it('unknown reason → failed, no retry', async () => {
       const { svc, prisma, voiceCalls } = makeMocks();
       await svc.handleInitiationFailure('conv_1', 'unknown');
-      expect(prisma.voiceCall.update).toHaveBeenCalledWith({ where: { id: 'vc1' }, data: { status: 'failed', error: 'unknown' } });
+      expect(prisma.voiceCall.update).toHaveBeenCalledWith({
+        where: { id: 'vc1' },
+        data: { status: 'failed', error: 'unknown' },
+      });
       expect(voiceCalls.scheduleRetry).not.toHaveBeenCalled();
     });
 
@@ -144,13 +154,19 @@ describe('VoiceResultsService', () => {
       const { svc, prisma } = makeMocks();
       prisma.voiceCall.update.mockRejectedValue(new Error('db down'));
       await expect(
-        svc.handleWebhookEvent({ type: 'post_call_transcription', data: { conversation_id: 'conv_1', ...TRANSCRIPTION_DATA } }),
+        svc.handleWebhookEvent({
+          type: 'post_call_transcription',
+          data: { conversation_id: 'conv_1', ...TRANSCRIPTION_DATA },
+        }),
       ).resolves.toBeUndefined();
     });
 
     it('ignores post_call_audio (audio is pulled, not pushed) and unknown types', async () => {
       const { svc, prisma } = makeMocks();
-      await svc.handleWebhookEvent({ type: 'post_call_audio', data: { conversation_id: 'conv_1', full_audio: 'AAAA' } });
+      await svc.handleWebhookEvent({
+        type: 'post_call_audio',
+        data: { conversation_id: 'conv_1', full_audio: 'AAAA' },
+      });
       await svc.handleWebhookEvent({ type: 'some_future_event', data: { conversation_id: 'conv_1' } });
       expect(prisma.voiceCall.update).not.toHaveBeenCalled();
     });

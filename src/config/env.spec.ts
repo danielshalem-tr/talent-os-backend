@@ -89,12 +89,9 @@ describe('envSchema', () => {
 
   it('defaults ELEVENLABS_TELEPHONY to sip (the Scheduler-proven number is a SIP-trunk import) and rejects unknown values', () => {
     expect(envSchema.parse(validEnv).ELEVENLABS_TELEPHONY).toBe('sip');
-    expect(envSchema.parse({ ...validEnv, ELEVENLABS_TELEPHONY: 'twilio' }).ELEVENLABS_TELEPHONY).toBe(
-      'twilio',
-    );
+    expect(envSchema.parse({ ...validEnv, ELEVENLABS_TELEPHONY: 'twilio' }).ELEVENLABS_TELEPHONY).toBe('twilio');
     expect(() => envSchema.parse({ ...validEnv, ELEVENLABS_TELEPHONY: 'pstn' })).toThrow();
   });
-
 });
 
 describe('apiEnvSchema PM-Bridge smart-intake vars', () => {

@@ -45,7 +45,10 @@ export class VoiceResultsService {
           await this.finalizeFromTranscription(conversationId, event.data as Record<string, any>);
           break;
         case 'call_initiation_failure':
-          await this.handleInitiationFailure(conversationId, String((event.data as Record<string, any>).failure_reason ?? 'unknown'));
+          await this.handleInitiationFailure(
+            conversationId,
+            String((event.data as Record<string, any>).failure_reason ?? 'unknown'),
+          );
           break;
         case 'post_call_audio':
           // Deliberately ignored: audio is PULLED via the API by the worker (plan D2).

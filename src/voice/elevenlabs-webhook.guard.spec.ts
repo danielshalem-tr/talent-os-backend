@@ -42,7 +42,9 @@ describe('ElevenLabsWebhookGuard', () => {
   });
 
   it('rejects when the secret env is unset (fail-closed)', async () => {
-    await expect(makeGuardWith(undefined).canActivate(makeContext(body, sign(body, now)))).rejects.toThrow(UnauthorizedException);
+    await expect(makeGuardWith(undefined).canActivate(makeContext(body, sign(body, now)))).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('rejects a missing or malformed header', async () => {
@@ -56,7 +58,9 @@ describe('ElevenLabsWebhookGuard', () => {
   });
 
   it('rejects a signature computed with the wrong secret', async () => {
-    await expect(makeGuard().canActivate(makeContext(body, sign(body, now, 'wrong')))).rejects.toThrow(UnauthorizedException);
+    await expect(makeGuard().canActivate(makeContext(body, sign(body, now, 'wrong')))).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('rejects a hex signature of the wrong length', async () => {

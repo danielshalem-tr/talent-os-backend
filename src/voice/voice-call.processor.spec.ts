@@ -53,7 +53,14 @@ function makeMocks(rowOverrides: Record<string, any> = {}) {
   const voiceResults = { finalizeFromTranscription: jest.fn().mockResolvedValue(undefined) };
   const storage = { uploadVoiceAudio: jest.fn().mockResolvedValue(`calls/${TENANT}/vc1/audio.mp3`) };
   const pinoLogger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
-  const processor = new VoiceCallProcessor(prisma as any, gateway as any, voiceResults as any, storage as any, queue as any, pinoLogger as any);
+  const processor = new VoiceCallProcessor(
+    prisma as any,
+    gateway as any,
+    voiceResults as any,
+    storage as any,
+    queue as any,
+    pinoLogger as any,
+  );
   return { prisma, gateway, queue, voiceResults, storage, processor };
 }
 
@@ -89,7 +96,10 @@ describe('VoiceCallProcessor', () => {
     });
 
     it('manual calls ignore the job toggle gate', async () => {
-      const { processor, gateway } = makeMocks({ trigger: 'manual', job: { ...ROW.job, voiceScreeningEnabled: false } });
+      const { processor, gateway } = makeMocks({
+        trigger: 'manual',
+        job: { ...ROW.job, voiceScreeningEnabled: false },
+      });
       await processor.process(makeJob('call'));
       expect(gateway.startOutboundCall).toHaveBeenCalled();
     });
@@ -102,7 +112,11 @@ describe('VoiceCallProcessor', () => {
       expect(prisma.voiceCall.update).toHaveBeenCalledWith(
         expect.objectContaining({ data: expect.objectContaining({ status: 'scheduled' }) }),
       );
-      expect(queue.add).toHaveBeenCalledWith('call', { voiceCallId: 'vc1' }, expect.objectContaining({ jobId: expect.stringMatching(/^call:vc1:/) }));
+      expect(queue.add).toHaveBeenCalledWith(
+        'call',
+        { voiceCallId: 'vc1' },
+        expect.objectContaining({ jobId: expect.stringMatching(/^call:vc1:/) }),
+      );
     });
 
     it('dials with the questions serialized in order + correlation id, then arms the watchdog', async () => {
@@ -122,7 +136,11 @@ describe('VoiceCallProcessor', () => {
         where: { id: 'vc1' },
         data: expect.objectContaining({ status: 'in_progress', conversationId: 'conv_1' }),
       });
-      expect(queue.add).toHaveBeenCalledWith('check', { voiceCallId: 'vc1' }, expect.objectContaining({ jobId: 'check:vc1:1' }));
+      expect(queue.add).toHaveBeenCalledWith(
+        'check',
+        { voiceCallId: 'vc1' },
+        expect.objectContaining({ jobId: 'check:vc1:1' }),
+      );
     });
 
     it('finalizes blocked (test mode) rows terminally — no rethrow, no retry', async () => {
@@ -166,7 +184,10 @@ describe('VoiceCallProcessor', () => {
     it('finalizes from the polled conversation when done', async () => {
       const { processor, voiceResults } = makeMocks({ status: 'in_progress', conversationId: 'conv_1' });
       await processor.process(makeJob('check'));
-      expect(voiceResults.finalizeFromTranscription).toHaveBeenCalledWith('conv_1', expect.objectContaining({ status: 'done' }));
+      expect(voiceResults.finalizeFromTranscription).toHaveBeenCalledWith(
+        'conv_1',
+        expect.objectContaining({ status: 'done' }),
+      );
     });
 
     it('re-schedules another check while the call is still processing and young', async () => {
@@ -177,7 +198,11 @@ describe('VoiceCallProcessor', () => {
       });
       gateway.getConversation.mockResolvedValue({ status: 'processing' });
       await processor.process(makeJob('check'));
-      expect(queue.add).toHaveBeenCalledWith('check', { voiceCallId: 'vc1' }, expect.objectContaining({ jobId: expect.stringMatching(/^check:vc1:/) }));
+      expect(queue.add).toHaveBeenCalledWith(
+        'check',
+        { voiceCallId: 'vc1' },
+        expect.objectContaining({ jobId: expect.stringMatching(/^check:vc1:/) }),
+      );
     });
 
     it('times out a call stuck in_progress for over 2 hours', async () => {
@@ -197,7 +222,11 @@ describe('VoiceCallProcessor', () => {
 
   describe('audio job', () => {
     it('pulls the MP3, stores it in R2 and records the key', async () => {
-      const { processor, storage, prisma } = makeMocks({ status: 'completed', conversationId: 'conv_1', audioKey: null });
+      const { processor, storage, prisma } = makeMocks({
+        status: 'completed',
+        conversationId: 'conv_1',
+        audioKey: null,
+      });
       await processor.process(makeJob('audio'));
       expect(storage.uploadVoiceAudio).toHaveBeenCalledWith(expect.any(Buffer), TENANT, 'vc1');
       expect(prisma.voiceCall.update).toHaveBeenCalledWith({
@@ -207,7 +236,11 @@ describe('VoiceCallProcessor', () => {
     });
 
     it('skips when audio already stored (redelivery)', async () => {
-      const { processor, storage } = makeMocks({ status: 'completed', conversationId: 'conv_1', audioKey: 'calls/x/audio.mp3' });
+      const { processor, storage } = makeMocks({
+        status: 'completed',
+        conversationId: 'conv_1',
+        audioKey: 'calls/x/audio.mp3',
+      });
       await processor.process(makeJob('audio'));
       expect(storage.uploadVoiceAudio).not.toHaveBeenCalled();
     });

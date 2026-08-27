@@ -39,8 +39,8 @@ export class ElevenLabsGatewayService {
   isConfigured(): boolean {
     return Boolean(
       this.config.get<string>('ELEVENLABS_API_KEY') &&
-        this.config.get<string>('ELEVENLABS_AGENT_ID') &&
-        this.config.get<string>('ELEVENLABS_AGENT_PHONE_NUMBER_ID'),
+      this.config.get<string>('ELEVENLABS_AGENT_ID') &&
+      this.config.get<string>('ELEVENLABS_AGENT_PHONE_NUMBER_ID'),
     );
   }
 

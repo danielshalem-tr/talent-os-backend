@@ -66,7 +66,9 @@ export class IngestionProcessor extends WorkerHost {
 
   async process(job: Job<IngestJobData>): Promise<void> {
     if (!job.data.tenantId || !job.data.messageId) {
-      throw new Error(`Job ${job.id} has pre-P1 format — drain queue before upgrading (job data: ${JSON.stringify(job.data).slice(0, 100)})`);
+      throw new Error(
+        `Job ${job.id} has pre-P1 format — drain queue before upgrading (job data: ${JSON.stringify(job.data).slice(0, 100)})`,
+      );
     }
     const { tenantId, messageId: jobMessageId } = job.data;
     const payload = await this.storageService.downloadPayload(tenantId, jobMessageId);
@@ -240,7 +242,10 @@ export class IngestionProcessor extends WorkerHost {
     let candidateId!: string;
 
     if (existingIntake?.candidateId) {
-      this.pinoLogger.log({ messageId: payload.MessageID, candidateId: existingIntake.candidateId }, 'Idempotency guard: skipping Phase 6');
+      this.pinoLogger.log(
+        { messageId: payload.MessageID, candidateId: existingIntake.candidateId },
+        'Idempotency guard: skipping Phase 6',
+      );
       candidateId = existingIntake.candidateId;
     } else {
       try {
@@ -261,7 +266,10 @@ export class IngestionProcessor extends WorkerHost {
           try {
             dedupResult = await this.dedupService.check(extraction!, tenantId, tx);
           } catch (err) {
-            this.pinoLogger.error({ messageId: payload.MessageID, error: (err as Error).message }, 'Dedup check failed');
+            this.pinoLogger.error(
+              { messageId: payload.MessageID, error: (err as Error).message },
+              'Dedup check failed',
+            );
             throw err; // Transaction will rollback
           }
 
@@ -327,7 +335,10 @@ export class IngestionProcessor extends WorkerHost {
           });
         });
       } catch (err) {
-        this.pinoLogger.error({ messageId: payload.MessageID, error: (err as Error).message }, 'Phase 6 transaction failed');
+        this.pinoLogger.error(
+          { messageId: payload.MessageID, error: (err as Error).message },
+          'Phase 6 transaction failed',
+        );
         this.pinoLogger.error(
           {
             jobId: job.id,
@@ -394,7 +405,10 @@ export class IngestionProcessor extends WorkerHost {
         matchedJobs = jobsData;
 
         if (matchedJobs.length > 0) {
-          this.pinoLogger.log({ messageId: payload.MessageID, count: matchedJobs.length }, 'Phase 15: matched jobs found');
+          this.pinoLogger.log(
+            { messageId: payload.MessageID, count: matchedJobs.length },
+            'Phase 15: matched jobs found',
+          );
         }
       } else {
         this.pinoLogger.debug({ messageId: payload.MessageID }, 'Phase 15: no matching job short_ids');
@@ -489,7 +503,12 @@ export class IngestionProcessor extends WorkerHost {
           });
 
           this.pinoLogger.log(
-            { messageId: payload.MessageID, candidateId: context.candidateId, jobId: activeJob.id, score: scoreResult.score },
+            {
+              messageId: payload.MessageID,
+              candidateId: context.candidateId,
+              jobId: activeJob.id,
+              score: scoreResult.score,
+            },
             'Phase 7 scored',
           );
 
