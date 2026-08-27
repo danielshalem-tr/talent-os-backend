@@ -134,6 +134,24 @@ export class StorageService {
     this.logger.log(`Uploaded logo ${key} to R2 (${buffer.length} bytes)`);
   }
 
+  /**
+   * Store a voice screening call recording (MP3 pulled from ElevenLabs).
+   * Key convention: calls/{tenantId}/{voiceCallId}/audio.mp3 (mirrors emails/...).
+   */
+  async uploadVoiceAudio(buffer: Buffer, tenantId: string, voiceCallId: string): Promise<string> {
+    const key = `calls/${tenantId}/${voiceCallId}/audio.mp3`;
+    const command = new PutObjectCommand({
+      Bucket: this.config.get<string>('R2_BUCKET_NAME')!,
+      Key: key,
+      Body: buffer,
+      ContentType: 'audio/mpeg',
+    });
+    // D-07 convention: transient R2 errors propagate to BullMQ for automatic retry.
+    await this.s3Client.send(command);
+    this.logger.log(`Uploaded voice audio: ${key} (${buffer.length} bytes)`);
+    return key;
+  }
+
   async uploadPayload(payload: EmailPayloadDto, tenantId: string, messageId: string): Promise<string> {
     const key = `emails/${tenantId}/${messageId}/payload.json`;
     await this.s3Client.send(
