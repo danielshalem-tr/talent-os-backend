@@ -156,9 +156,16 @@ Fetch a single candidate by ID.
   "ai_summary": "Experienced engineer with strong React skills. Recommended for senior roles.",
   "years_experience": 5,
   "salary_expectation_min": 10000,
-  "salary_expectation_max": 15000
+  "salary_expectation_max": 15000,
+  "latest_call": null
 }
 ```
+
+**Fields:**
+
+- `latest_call` (object | null) — most recent voice screening call, or null:
+  `{ "id": "uuid", "status": "scheduled", "attempt": 1, "scheduled_for": "2026-08-30T06:00:00.000Z", "summary": null }`
+  Full history: `GET /candidates/:id/calls` (§9).
 
 **Errors:**
 
@@ -459,6 +466,8 @@ Fetch all job openings with hiring stages and screening questions.
       "min_experience": 3,
       "max_experience": 8,
       "selected_org_types": ["startup", "enterprise"],
+      "voice_screening_enabled": false,
+      "voice_min_score": 70,
       "hiring_flow": [
         {
           "id": "uuid",
@@ -516,6 +525,8 @@ Fetch a single job by ID, including full hiring flow and screening questions.
   "min_experience": 3,
   "max_experience": 8,
   "selected_org_types": ["startup", "enterprise"],
+  "voice_screening_enabled": false,
+  "voice_min_score": 70,
   "hiring_flow": [
     {
       "id": "uuid",
@@ -565,6 +576,8 @@ Create a new job opening.
   "min_experience": 3,
   "max_experience": 8,
   "selected_org_types": ["startup", "enterprise"],
+  "voice_screening_enabled": false,
+  "voice_min_score": 70,
   "hiring_flow": [
     {
       "id": "temp-client-uuid",
@@ -616,6 +629,12 @@ Update an existing job opening.
 - `id` (required): Job UUID
 
 **Request Body:** Same structure as POST /jobs
+
+**Behavior:**
+
+- `voice_screening_enabled` / `voice_min_score` are optional and presence-guarded: omitting
+  them leaves the stored values unchanged (unlike most job fields, which reset to null).
+  `voice_min_score` must be an integer 0–100.
 
 **Response:** `200 OK` (returns updated job object)
 
@@ -1229,6 +1248,128 @@ Response `200`:
 ```json
 { "replayed": 12 }
 ```
+
+---
+
+## 9. Voice Screening API
+
+AI voice screening calls (ElevenLabs agent over Twilio or a SIP-trunk number). A call is scheduled automatically
+after CV scoring when the tenant switch (`voice_calls_enabled`), the job toggle
+(`voice_screening_enabled`) and the score threshold (`voice_min_score`) all pass — or manually
+from the candidate page. Calls run Sun–Thu 09:00–19:00 Asia/Jerusalem; up to 3 attempts,
+4 hours apart. In `test` mode only allowlisted numbers are ever dialed; everything else is
+recorded as `blocked` with no outbound call.
+
+Call `status` values: `scheduled | calling | in_progress | completed | no_answer | blocked | canceled | failed`.
+Roles: `GET` endpoints — any authenticated member. `POST` call/cancel — any role except `viewer`.
+`PUT /voice-control/enabled` — `owner` or `admin` only (403 otherwise).
+
+### `GET /candidates/:id/calls`
+
+All calls for the candidate, newest first.
+
+Response `200`:
+
+```json
+{
+  "calls": [
+    {
+      "id": "uuid",
+      "job_id": "uuid",
+      "job_title": "Frontend Engineer",
+      "status": "completed",
+      "trigger": "auto",
+      "attempt": 1,
+      "scheduled_for": "2026-08-30T06:00:00.000Z",
+      "started_at": "2026-08-30T06:00:12.000Z",
+      "duration_secs": 241,
+      "summary": "Candidate confirmed 5 years of React experience...",
+      "transcript": [{ "role": "agent", "message": "Hi, is this Dana?", "time_in_call_secs": 0 }],
+      "qa_results": {
+        "data_collection_results": { "answers": { "value": "1. Yes\n2. 5 years" } },
+        "evaluation_criteria_results": { "call_completed": { "result": "success" } },
+        "call_successful": "success"
+      },
+      "audio_available": true,
+      "cost": 830,
+      "error": null,
+      "created_at": "2026-08-27T14:03:00.000Z"
+    }
+  ]
+}
+```
+
+### `POST /candidates/:id/call`
+
+Manual "Call now". Skips the job toggle and score threshold; the tenant switch, mode gate and
+test-mode allowlist still apply.
+
+Request:
+
+```json
+{ "job_id": "uuid" }
+```
+
+Response `201`: the created call object (same shape as the list items).
+
+**Errors:**
+
+- `403 FORBIDDEN` — viewer role
+- `404 NOT_FOUND` — candidate or job not found
+- `409 VOICE_DISABLED` — tenant kill switch is off
+- `409 CALL_ACTIVE` — a scheduled/calling/in_progress call already exists for this candidate+job
+- `422 NO_PHONE` — candidate has no phone number
+
+### `POST /candidates/:id/calls/:call_id/cancel`
+
+Cancel a `scheduled` call (claim-based: only `scheduled` → `canceled`).
+
+Response `200`: `{ "success": true }`
+Errors: `403 FORBIDDEN` (viewer), `409 NOT_CANCELABLE` (already dialing/finished).
+
+### `GET /candidates/:id/calls/:call_id/audio`
+
+Stream the call recording **same-origin** (proxied from R2, `audio/mpeg`), mirroring
+`GET /candidates/:id/cv-file`. Tenant-scoped; requires an authenticated session.
+
+**Response:** `200 OK` — raw MP3 bytes (`Content-Disposition: inline`)
+**Errors:** `404 NOT_FOUND` (no such call) / `404 NO_AUDIO` (call has no stored recording)
+
+### `GET /voice-control/status`
+
+Response `200`:
+
+```json
+{ "voice_calls_enabled": false, "mode": "test", "allowlist_size": 2, "configured": true, "scheduled_count": 0 }
+```
+
+`mode` reflects `VOICE_CALL_MODE`; `configured` is true when the ElevenLabs API key, agent id
+and phone-number id are all set.
+
+### `PUT /voice-control/enabled`
+
+Tenant kill switch (safety layer 3).
+
+Request:
+
+```json
+{ "voice_calls_enabled": true }
+```
+
+Response `200`: same shape as `GET /voice-control/status`.
+
+### `POST /webhooks/elevenlabs`
+
+ElevenLabs post-call webhook (no session; HMAC-verified via the `ElevenLabs-Signature` header,
+30-minute tolerance). Handled events: `post_call_transcription` (finalizes the call),
+`call_initiation_failure` (busy / no-answer retry logic). `post_call_audio` is acknowledged and
+ignored — recordings are pulled server-side from the ElevenLabs API. Unknown conversation ids
+are acknowledged with `200` and ignored.
+
+Response `200`: `{ "status": "ok" }`
+Errors: `401` invalid/missing/stale signature.
+
+---
 
 ## Error Response Format
 
