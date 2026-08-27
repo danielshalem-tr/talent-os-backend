@@ -32,5 +32,8 @@ COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
 COPY prisma ./prisma
 
-# Worker does not run migrations (API handles that on startup)
-CMD ["node", "dist/src/worker.js"]
+# The API owns migrations (see Dockerfile CMD); the worker only waits for them. Without this
+# gate a deploy carrying a migration lets the worker consume jobs against the old schema —
+# each job burns its 3 BullMQ attempts on the missing column and strands the intake row in
+# 'pending', silently. See src/prisma/wait-for-migrations.ts.
+CMD ["sh", "-c", "node dist/src/prisma/wait-for-migrations.cli.js && node dist/src/worker.js"]
