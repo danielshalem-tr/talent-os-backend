@@ -74,4 +74,11 @@ JIRA_DEFAULT_ASSIGNEE_EMAIL       # optional — fallback to look up the account
 PM_HOLD_NOTIFY_EMAIL              # who gets held-item emails (default daniel.s@triolla.io)
 PM_HOLD_TOKEN_SECRET             # ≥32 chars — signs approve/reject email links (NOT JWT_SECRET)
 API_PUBLIC_URL                   # optional — public base URL of the API for email links
+
+# Voice screening (ElevenLabs) — all optional; feature is fail-closed until configured
+ELEVENLABS_API_KEY / ELEVENLABS_AGENT_ID / ELEVENLABS_AGENT_PHONE_NUMBER_ID   # api + worker
+ELEVENLABS_WEBHOOK_SECRET     # api only — HMAC for POST /webhooks/elevenlabs
+ELEVENLABS_TELEPHONY          # 'twilio' | 'sip' (default) — how the number is imported in ElevenLabs
+VOICE_CALL_MODE               # 'test' (default, allowlist enforced) | 'live'
+VOICE_CALL_ALLOWLIST          # comma-separated E.164 numbers callable in test mode; empty = block all
 ```

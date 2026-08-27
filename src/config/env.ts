@@ -54,6 +54,23 @@ export const envSchema = z.object({
   // are set, and neither the API nor the worker requires them to boot.
   PMB_API_KEY: z.string().min(1).optional(),
   PMB_SIGNING_SECRET: z.string().min(32, 'PMB_SIGNING_SECRET must be at least 32 characters').optional(),
+
+  // Voice screening (ElevenLabs). All optional in every schema: deploys ship before the
+  // one-time ElevenLabs setup (docs/voice-screening-setup.md), and the gateway fails
+  // closed ('not_configured') until the three ELEVENLABS_* core vars are set.
+  ELEVENLABS_API_KEY: z.string().min(1).optional(),
+  ELEVENLABS_AGENT_ID: z.string().min(1).optional(),
+  ELEVENLABS_AGENT_PHONE_NUMBER_ID: z.string().min(1).optional(),
+  // API-only in practice (webhook HMAC) but kept optional here — the guard 401s when unset.
+  ELEVENLABS_WEBHOOK_SECRET: z.string().min(1).optional(),
+  // How the agent's number lives in ElevenLabs: 'twilio' for numbers bought there / imported
+  // from Twilio, 'sip' for SIP-trunk imports (Telnyx etc.). Mirrors the Scheduler's switch;
+  // its production number is a SIP-trunk import, hence the default.
+  ELEVENLABS_TELEPHONY: z.enum(['twilio', 'sip']).default('sip'),
+  // Safety layer 2: anything other than the literal 'live' enforces the allowlist.
+  VOICE_CALL_MODE: z.enum(['test', 'live']).default('test'),
+  // Safety layer 1: comma-separated phone numbers callable in test mode. Empty ⇒ block ALL.
+  VOICE_CALL_ALLOWLIST: z.string().default(''),
 });
 
 export type Env = z.infer<typeof envSchema>;

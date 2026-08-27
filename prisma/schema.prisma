@@ -19,6 +19,7 @@ model Organization {
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   onboardingCompletedAt DateTime? @map("onboarding_completed_at") @db.Timestamptz
   aiIngestEnabled  Boolean   @default(true) @map("ai_ingest_enabled")
+  voiceCallsEnabled Boolean  @default(false) @map("voice_calls_enabled")
 
   // Relations — v1.0 relations
   jobs                    Job[]
@@ -30,6 +31,7 @@ model Organization {
   jobStages               JobStage[]
   screeningQuestions      ScreeningQuestion[]
   candidateStageSummaries CandidateStageSummary[]
+  voiceCalls              VoiceCall[]
 
   // Relations — v2.0 relations
   users       User[]
@@ -116,6 +118,9 @@ model Job {
   expYearsMax       Int?     @map("exp_years_max") @db.SmallInt
   preferredOrgTypes String[] @default([]) @map("preferred_org_types")
 
+  voiceScreeningEnabled Boolean @default(false) @map("voice_screening_enabled")
+  voiceMinScore         Int     @default(70) @map("voice_min_score")
+
   // Relations
   // relation field name kept as 'tenant' intentionally — see D-31 in 18-CONTEXT.md
   tenant             Organization        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
@@ -123,6 +128,7 @@ model Job {
   applications       Application[]
   hiringStages       JobStage[]
   screeningQuestions ScreeningQuestion[]
+  voiceCalls         VoiceCall[]
 
   @@unique([id, tenantId], name: "id_tenantId")
   @@unique([tenantId, shortId], name: "idx_job_short_id_tenant")
@@ -171,6 +177,7 @@ model Candidate {
   matchedIn               DuplicateFlag[]         @relation("MatchedCandidateFlags")
   emailIntakeLogs         EmailIntakeLog[]
   candidateStageSummaries CandidateStageSummary[]
+  voiceCalls              VoiceCall[]
 
   // Indexes
   @@index([tenantId, jobId], name: "idx_candidates_tenant_job")
@@ -408,4 +415,41 @@ model CandidateStageSummary {
 
   @@unique([candidateId, jobStageId], name: "idx_cand_stage_summary")
   @@map("candidate_stage_summaries")
+}
+
+// ─── voice_calls ──────────────────────────────────────────────────────────────
+model VoiceCall {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  candidateId    String    @map("candidate_id") @db.Uuid
+  jobId          String    @map("job_id") @db.Uuid
+  // scheduled | calling | in_progress | completed | no_answer | blocked | canceled | failed (CHECK in SQL)
+  status         String    @default("scheduled") @db.Text
+  // auto | manual (CHECK in SQL)
+  trigger        String    @default("auto") @db.Text
+  attempt        Int       @default(1)
+  conversationId String?   @unique @map("conversation_id") @db.Text
+  // Dedup key: first auto attempt `auto:{candidateId}:{jobId}:1`; every retry `retry:{previousCallId}`.
+  // First manual attempts: null (repeat manual calls allowed; guarded by the 409 active-call check).
+  idempotencyKey String?   @unique @map("idempotency_key") @db.Text
+  scheduledFor   DateTime? @map("scheduled_for") @db.Timestamptz
+  startedAt      DateTime? @map("started_at") @db.Timestamptz
+  durationSecs   Int?      @map("duration_secs")
+  summary        String?   @db.Text
+  transcript     Json?     @db.JsonB
+  qaResults      Json?     @map("qa_results") @db.JsonB
+  audioKey       String?   @map("audio_key") @db.Text
+  cost           Int? // ElevenLabs credit cost from webhook metadata
+  error          String?   @db.Text
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  // relation field name kept as 'tenant' intentionally — see D-31 in 18-CONTEXT.md
+  tenant    Organization @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  candidate Candidate    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  job       Job          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, candidateId], name: "idx_voice_calls_tenant_candidate")
+  @@index([tenantId, status], name: "idx_voice_calls_tenant_status")
+  @@map("voice_calls")
 }

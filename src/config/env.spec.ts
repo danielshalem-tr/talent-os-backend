@@ -64,6 +64,37 @@ describe('envSchema', () => {
     const { JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, ...noJira } = validEnv;
     expect(() => apiEnvSchema.parse(noJira)).toThrow();
   });
+
+  // Voice screening env — deploys ship BEFORE ElevenLabs setup, so nothing here may be
+  // required at boot; and a typo'd mode must never mean "live".
+  it('boots (worker and api schemas) without any ElevenLabs configuration', () => {
+    expect(() => envSchema.parse(validEnv)).not.toThrow();
+    expect(() => apiEnvSchema.parse(validEnv)).not.toThrow();
+  });
+
+  it('defaults VOICE_CALL_MODE to test', () => {
+    const parsed = envSchema.parse(validEnv);
+    expect(parsed.VOICE_CALL_MODE).toBe('test');
+  });
+
+  it('rejects an invalid VOICE_CALL_MODE (typo can never mean live)', () => {
+    expect(() => envSchema.parse({ ...validEnv, VOICE_CALL_MODE: 'prod' })).toThrow();
+  });
+
+  it('accepts VOICE_CALL_MODE=live and defaults VOICE_CALL_ALLOWLIST to empty', () => {
+    const parsed = envSchema.parse({ ...validEnv, VOICE_CALL_MODE: 'live' });
+    expect(parsed.VOICE_CALL_MODE).toBe('live');
+    expect(parsed.VOICE_CALL_ALLOWLIST).toBe('');
+  });
+
+  it('defaults ELEVENLABS_TELEPHONY to sip (the Scheduler-proven number is a SIP-trunk import) and rejects unknown values', () => {
+    expect(envSchema.parse(validEnv).ELEVENLABS_TELEPHONY).toBe('sip');
+    expect(envSchema.parse({ ...validEnv, ELEVENLABS_TELEPHONY: 'twilio' }).ELEVENLABS_TELEPHONY).toBe(
+      'twilio',
+    );
+    expect(() => envSchema.parse({ ...validEnv, ELEVENLABS_TELEPHONY: 'pstn' })).toThrow();
+  });
+
 });
 
 describe('apiEnvSchema PM-Bridge smart-intake vars', () => {
