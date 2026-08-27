@@ -15,6 +15,7 @@ import { AuthModule } from './auth/auth.module';
 import { PmBridgeModule } from './pm-bridge/pm-bridge.module';
 import { PmbTokenModule } from './pmb-token/pmb-token.module';
 import { IngestControlModule } from './ingest-control/ingest-control.module';
+import { VoiceModule } from './voice/voice.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { IngestControlModule } from './ingest-control/ingest-control.module';
     PmBridgeModule,
     PmbTokenModule,
     IngestControlModule,
+    VoiceModule,
   ],
 })
 export class AppModule {}
