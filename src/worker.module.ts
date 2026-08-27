@@ -5,6 +5,7 @@ import { LoggerModule } from 'nestjs-pino';
 import { envSchema } from './config/env';
 import { PrismaModule } from './prisma/prisma.module';
 import { IngestionModule } from './ingestion/ingestion.module';
+import { VoiceWorkerModule } from './voice/voice-worker.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { IngestionModule } from './ingestion/ingestion.module';
       }),
     }),
     IngestionModule,
+    VoiceWorkerModule,
   ],
 })
 export class WorkerModule {}
