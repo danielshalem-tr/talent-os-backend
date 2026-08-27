@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { IngestionProcessor } from './ingestion.processor';
+import { VoiceCallsService } from '../voice/voice-calls.service';
 import { SpamFilterService } from './services/spam-filter.service';
 import { AttachmentExtractorService } from './services/attachment-extractor.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,6 +22,10 @@ jest.mock('pdf-parse', () => jest.fn().mockResolvedValue({ text: 'pdf text' }));
 jest.mock('mammoth', () => ({
   convertToHtml: jest.fn().mockResolvedValue({ value: 'docx text' }),
 }));
+
+// Voice screening seam. One shared mock: jest.clearAllMocks() (used throughout this file)
+// wipes recorded calls between tests but keeps the resolved-value implementation.
+const voiceCallsService = { scheduleAutoCalls: jest.fn().mockResolvedValue(undefined) };
 
 /** Helper: build a slim job with new IngestJobData shape */
 function makeJob(id: string, payload: ReturnType<typeof mockEmailPayload>) {
@@ -83,6 +88,7 @@ describe('IngestionProcessor', () => {
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
         { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -269,6 +275,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
         { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -428,6 +435,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
         { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -734,6 +742,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: scoringService },
         { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -774,6 +783,29 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           aiSummary: 'Experienced engineer. Strong in distributed systems.',
         }),
       }),
+    );
+  });
+
+  it('schedules voice calls with per-job scores after the denormalized write', async () => {
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('test-p7-voice', payload));
+
+    expect(voiceCallsService.scheduleAutoCalls).toHaveBeenCalledWith({
+      tenantId: 'test-tenant-id',
+      candidateId: 'new-candidate-id',
+      jobScores: [{ jobId: 'job-id-1', score: 72 }],
+    });
+  });
+
+  it('completes the intake even when voice scheduling throws (seam is non-fatal)', async () => {
+    voiceCallsService.scheduleAutoCalls.mockRejectedValueOnce(new Error('redis down'));
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+
+    await expect(processor.process(makeJob('test-p7-voice-fail', payload))).resolves.toBeUndefined();
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { processingStatus: 'completed' } }),
     );
   });
 
@@ -1000,6 +1032,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
           { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, modelUsed: 'test', reasoning: '', strengths: [], gaps: [] }) } },
           { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
         ],
       }).compile();
@@ -1152,6 +1185,7 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
         { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
         { provide: ScoringAgentService, useValue: { score: jest.fn() } },
         { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -1243,6 +1277,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn() } },
         { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -1344,6 +1379,7 @@ describe('IngestionProcessor — CV Classification Gate', () => {
           useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) },
         },
         { provide: CvClassifierService, useValue: cvClassifier },
+        { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -1463,6 +1499,7 @@ describe('ingest gate (ai_ingest_enabled)', () => {
           useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) },
         },
         { provide: CvClassifierService, useValue: cvClassifier },
+        { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();

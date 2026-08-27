@@ -8,6 +8,7 @@ import { CvClassifierService } from './services/cv-classifier.service';
 import { StorageModule } from '../storage/storage.module';
 import { DedupModule } from '../dedup/dedup.module';
 import { ScoringModule } from '../scoring/scoring.module';
+import { VoiceCoreModule } from '../voice/voice-core.module';
 
 @Module({
   imports: [
@@ -15,6 +16,7 @@ import { ScoringModule } from '../scoring/scoring.module';
     StorageModule,
     DedupModule,  // provides DedupService to IngestionProcessor
     ScoringModule, // provides ScoringAgentService to IngestionProcessor (Phase 7)
+    VoiceCoreModule, // provides VoiceCallsService for the post-scoring voice seam
   ],
   providers: [
     IngestionProcessor,
