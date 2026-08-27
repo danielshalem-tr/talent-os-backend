@@ -39,6 +39,10 @@ export const CreateJobSchema = z
     min_experience: z.number().int().min(0).optional(),
     max_experience: z.number().int().min(0).optional(),
     selected_org_types: z.array(z.string()).default([]),
+    // Voice screening: OPTIONAL WITHOUT DEFAULTS — updateJob is full-replace, and a Zod
+    // default here would silently reset the toggle for any client not sending the field.
+    voice_screening_enabled: z.boolean().optional(),
+    voice_min_score: z.number().int().min(0).max(100).optional(),
     // Nested arrays
     screening_questions: z.array(ScreeningQuestionCreateSchema).optional(),
     hiring_flow: z.array(HiringStageCreateSchema).optional(),
