@@ -41,18 +41,36 @@ describe('VoiceCallsService', () => {
     it('creates a scheduled row and enqueues a delayed BullMQ job with dedup jobId', async () => {
       const { svc, prisma, queue } = makeMocks();
       prisma.voiceCall.create.mockResolvedValue({ id: 'vc1', scheduledFor: new Date() });
-      const row = await svc.scheduleCall({ tenantId: TENANT, candidateId: CAND, jobId: JOB, trigger: 'auto', idempotencyKey: `auto:${CAND}:${JOB}:1` });
+      const row = await svc.scheduleCall({
+        tenantId: TENANT,
+        candidateId: CAND,
+        jobId: JOB,
+        trigger: 'auto',
+        idempotencyKey: `auto:${CAND}:${JOB}:1`,
+      });
       expect(row).not.toBeNull();
       expect(prisma.voiceCall.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ status: 'scheduled', trigger: 'auto', attempt: 1 }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ status: 'scheduled', trigger: 'auto', attempt: 1 }),
+        }),
       );
-      expect(queue.add).toHaveBeenCalledWith('call', { voiceCallId: 'vc1' }, expect.objectContaining({ jobId: 'call:vc1', attempts: 3 }));
+      expect(queue.add).toHaveBeenCalledWith(
+        'call',
+        { voiceCallId: 'vc1' },
+        expect.objectContaining({ jobId: 'call:vc1', attempts: 3 }),
+      );
     });
 
     it('swallows P2002 (idempotent under BullMQ re-runs) and returns null', async () => {
       const { svc, prisma, queue } = makeMocks();
       prisma.voiceCall.create.mockRejectedValue({ code: 'P2002' });
-      const row = await svc.scheduleCall({ tenantId: TENANT, candidateId: CAND, jobId: JOB, trigger: 'auto', idempotencyKey: 'dup' });
+      const row = await svc.scheduleCall({
+        tenantId: TENANT,
+        candidateId: CAND,
+        jobId: JOB,
+        trigger: 'auto',
+        idempotencyKey: 'dup',
+      });
       expect(row).toBeNull();
       expect(queue.add).not.toHaveBeenCalled();
     });
@@ -61,8 +79,13 @@ describe('VoiceCallsService', () => {
       const { svc, prisma, queue } = makeMocks();
       prisma.voiceCall.create.mockResolvedValue({ id: 'vc1', scheduledFor: new Date() });
       queue.add.mockRejectedValue(new Error('redis down'));
-      await expect(svc.scheduleCall({ tenantId: TENANT, candidateId: CAND, jobId: JOB, trigger: 'auto' })).rejects.toThrow('redis down');
-      expect(prisma.voiceCall.update).toHaveBeenCalledWith({ where: { id: 'vc1' }, data: { status: 'failed', error: 'enqueue_failed' } });
+      await expect(
+        svc.scheduleCall({ tenantId: TENANT, candidateId: CAND, jobId: JOB, trigger: 'auto' }),
+      ).rejects.toThrow('redis down');
+      expect(prisma.voiceCall.update).toHaveBeenCalledWith({
+        where: { id: 'vc1' },
+        data: { status: 'failed', error: 'enqueue_failed' },
+      });
     });
   });
 
@@ -98,7 +121,9 @@ describe('VoiceCallsService', () => {
       });
       expect(prisma.voiceCall.create).toHaveBeenCalledTimes(1);
       expect(prisma.voiceCall.create).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ jobId: JOB, idempotencyKey: `auto:${CAND}:${JOB}:1` }) }),
+        expect.objectContaining({
+          data: expect.objectContaining({ jobId: JOB, idempotencyKey: `auto:${CAND}:${JOB}:1` }),
+        }),
       );
     });
   });
@@ -130,9 +155,21 @@ describe('VoiceCallsService', () => {
     it('schedules with trigger=manual, no idempotency key, and skips the job toggle/threshold', async () => {
       const { svc, prisma } = makeMocks();
       prisma.voiceCall.create.mockResolvedValue({
-        id: 'vc1', jobId: JOB, status: 'scheduled', trigger: 'manual', attempt: 1,
-        scheduledFor: new Date(), startedAt: null, durationSecs: null, summary: null,
-        transcript: null, qaResults: null, audioKey: null, cost: null, error: null, createdAt: new Date(),
+        id: 'vc1',
+        jobId: JOB,
+        status: 'scheduled',
+        trigger: 'manual',
+        attempt: 1,
+        scheduledFor: new Date(),
+        startedAt: null,
+        durationSecs: null,
+        summary: null,
+        transcript: null,
+        qaResults: null,
+        audioKey: null,
+        cost: null,
+        error: null,
+        createdAt: new Date(),
       });
       const result = await svc.triggerManualCall(CAND, JOB, session('member'));
       expect(result.trigger).toBe('manual');
@@ -172,7 +209,13 @@ describe('VoiceCallsService', () => {
       const { svc, prisma } = makeMocks();
       prisma.voiceCall.count.mockResolvedValue(3);
       const status = await svc.getStatus(session('viewer')); // status is readable by any role
-      expect(status).toEqual({ voice_calls_enabled: true, mode: 'test', allowlist_size: 1, configured: true, scheduled_count: 3 });
+      expect(status).toEqual({
+        voice_calls_enabled: true,
+        mode: 'test',
+        allowlist_size: 1,
+        configured: true,
+        scheduled_count: 3,
+      });
     });
 
     it('setEnabled is owner/admin-only', async () => {

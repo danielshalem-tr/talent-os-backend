@@ -34,10 +34,12 @@ import { VoiceModule } from './voice/voice.module';
       },
     }),
     // D-15: Rate limiting — 100 requests per 60-second window per IP
-    ThrottlerModule.forRoot([{
-      ttl: 60000,
-      limit: 100,
-    }]),
+    ThrottlerModule.forRoot([
+      {
+        ttl: 60000,
+        limit: 100,
+      },
+    ]),
     PrismaModule,
     BullModule.forRootAsync({
       inject: [ConfigService],

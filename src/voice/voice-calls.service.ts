@@ -117,7 +117,10 @@ export class VoiceCallsService {
         ...VOICE_JOB_OPTS,
       });
     } catch (err) {
-      await this.prisma.voiceCall.update({ where: { id: row.id }, data: { status: 'failed', error: 'enqueue_failed' } });
+      await this.prisma.voiceCall.update({
+        where: { id: row.id },
+        data: { status: 'failed', error: 'enqueue_failed' },
+      });
       throw err;
     }
     return row;
@@ -204,9 +207,14 @@ export class VoiceCallsService {
     const job = await this.prisma.job.findFirst({ where: { id: jobId, tenantId }, select: { id: true } });
     if (!job) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Job not found' } });
 
-    const org = await this.prisma.organization.findUnique({ where: { id: tenantId }, select: { voiceCallsEnabled: true } });
+    const org = await this.prisma.organization.findUnique({
+      where: { id: tenantId },
+      select: { voiceCallsEnabled: true },
+    });
     if (!org?.voiceCallsEnabled) {
-      throw new ConflictException({ error: { code: 'VOICE_DISABLED', message: 'Voice calls are disabled for this workspace' } });
+      throw new ConflictException({
+        error: { code: 'VOICE_DISABLED', message: 'Voice calls are disabled for this workspace' },
+      });
     }
 
     const active = await this.prisma.voiceCall.findFirst({
@@ -215,13 +223,23 @@ export class VoiceCallsService {
     });
     if (active) {
       throw new ConflictException({
-        error: { code: 'CALL_ACTIVE', message: 'A call is already scheduled or in progress for this candidate and job' },
+        error: {
+          code: 'CALL_ACTIVE',
+          message: 'A call is already scheduled or in progress for this candidate and job',
+        },
       });
     }
 
     // idempotencyKey null: repeat manual calls are legitimate; the active-call check above
     // is the concurrency guard. create() therefore cannot P2002 → row is non-null.
-    const row = await this.scheduleCall({ tenantId, candidateId, jobId, trigger: 'manual', attempt: 1, idempotencyKey: null });
+    const row = await this.scheduleCall({
+      tenantId,
+      candidateId,
+      jobId,
+      trigger: 'manual',
+      attempt: 1,
+      idempotencyKey: null,
+    });
     return this.serialize(row!);
   }
 
@@ -248,7 +266,10 @@ export class VoiceCallsService {
   }
 
   async listCalls(candidateId: string, tenantId: string): Promise<{ calls: VoiceCallResponse[] }> {
-    const candidate = await this.prisma.candidate.findFirst({ where: { id: candidateId, tenantId }, select: { id: true } });
+    const candidate = await this.prisma.candidate.findFirst({
+      where: { id: candidateId, tenantId },
+      select: { id: true },
+    });
     if (!candidate) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Candidate not found' } });
     const rows = await this.prisma.voiceCall.findMany({
       where: { tenantId, candidateId },
@@ -264,7 +285,8 @@ export class VoiceCallsService {
       select: { audioKey: true },
     });
     if (!row) throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Call not found' } });
-    if (!row.audioKey) throw new NotFoundException({ error: { code: 'NO_AUDIO', message: 'No recording available for this call' } });
+    if (!row.audioKey)
+      throw new NotFoundException({ error: { code: 'NO_AUDIO', message: 'No recording available for this call' } });
     const { body } = await this.storageService.getObject(row.audioKey);
     return body;
   }
@@ -286,7 +308,9 @@ export class VoiceCallsService {
   async setEnabled(session: JwtPayload, enabled: boolean): Promise<VoiceControlStatusResponse> {
     // Inline role enforcement (D-18 pattern) — enabling calls is spend + outreach, admin action
     if (!CONTROL_ROLES.includes(session.role)) {
-      throw new ForbiddenException({ error: { code: 'FORBIDDEN', message: 'Only owners and admins can control voice calls' } });
+      throw new ForbiddenException({
+        error: { code: 'FORBIDDEN', message: 'Only owners and admins can control voice calls' },
+      });
     }
     await this.prisma.organization.update({ where: { id: session.org }, data: { voiceCallsEnabled: enabled } });
     return this.getStatus(session);

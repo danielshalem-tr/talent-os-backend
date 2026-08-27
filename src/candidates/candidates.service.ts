@@ -188,6 +188,9 @@ export class CandidatesService {
         hiring_stage_id: c.hiringStageId,
         hiring_stage_name: c.hiringStage?.name ?? null,
         job_title: c.job?.title ?? null,
+        // The list endpoint does not join voice calls — one extra join per row isn't worth
+        // it; the profile page reads latest_call from GET /candidates/:id.
+        latest_call: null,
       };
     });
 
@@ -241,6 +244,11 @@ export class CandidatesService {
         candidateStageSummaries: {
           select: { jobStageId: true, summary: true },
         },
+        voiceCalls: {
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+          select: { id: true, status: true, attempt: true, scheduledFor: true, summary: true },
+        },
       },
     });
 
@@ -249,6 +257,8 @@ export class CandidatesService {
         error: { code: 'NOT_FOUND', message: 'Candidate not found' },
       });
     }
+
+    const latestCall = c.voiceCalls?.[0] ?? null;
 
     return {
       id: c.id,
@@ -285,6 +295,17 @@ export class CandidatesService {
       hiring_stage_id: c.hiringStageId,
       hiring_stage_name: c.hiringStage?.name ?? null,
       job_title: c.job?.title ?? null,
+      // Optional-chained: the select above always returns the array, but several service
+      // unit tests stub findFirst with fixtures that predate this join.
+      latest_call: latestCall
+        ? {
+            id: latestCall.id,
+            status: latestCall.status,
+            attempt: latestCall.attempt,
+            scheduled_for: latestCall.scheduledFor?.toISOString() ?? null,
+            summary: latestCall.summary,
+          }
+        : null,
     };
   }
 
@@ -685,7 +706,10 @@ export class CandidatesService {
     // 3. Regenerate the AI summary.
     let jobTitle: string | null = null;
     if (candidate.jobId) {
-      const job = await this.prisma.job.findFirst({ where: { id: candidate.jobId, tenantId }, select: { title: true } });
+      const job = await this.prisma.job.findFirst({
+        where: { id: candidate.jobId, tenantId },
+        select: { title: true },
+      });
       jobTitle = job?.title ?? null;
     }
     const aiSummary = await this.candidateAiService.generateSummary({
@@ -721,7 +745,12 @@ export class CandidatesService {
     return this.findOne(candidateId, tenantId);
   }
 
-  async saveStageSummary(candidateId: string, stageId: string, summary: string, tenantId: string): Promise<{ success: boolean }> {
+  async saveStageSummary(
+    candidateId: string,
+    stageId: string,
+    summary: string,
+    tenantId: string,
+  ): Promise<{ success: boolean }> {
     // Verifying candidate ownership essentially
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
@@ -1081,7 +1110,10 @@ export class CandidatesService {
    * Stream the candidate's CV bytes same-origin so the browser can render them
    * (e.g. docx-preview) without relying on R2 CORS. Tenant-scoped.
    */
-  async getCvBytes(candidateId: string, tenantId: string): Promise<{ body: Buffer; contentType: string; filename: string }> {
+  async getCvBytes(
+    candidateId: string,
+    tenantId: string,
+  ): Promise<{ body: Buffer; contentType: string; filename: string }> {
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
       select: { cvFileUrl: true, fullName: true },

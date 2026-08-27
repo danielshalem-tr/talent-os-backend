@@ -40,7 +40,15 @@ function makeJob(id: string, payload: ReturnType<typeof mockEmailPayload>) {
 
 describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; organization: { findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock; updateMany: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
+  let prisma: {
+    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
+    organization: { findUnique: jest.Mock };
+    $transaction: jest.Mock;
+    candidate: { update: jest.Mock; updateMany: jest.Mock };
+    job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
+    application: { upsert: jest.Mock };
+    candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
+  };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
@@ -52,11 +60,18 @@ describe('IngestionProcessor', () => {
       $executeRaw: jest.fn().mockResolvedValue(0),
     };
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      emailIntakeLog: {
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+      },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
+      job: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
@@ -86,8 +101,18 @@ describe('IngestionProcessor', () => {
         { provide: ExtractionAgentService, useValue: extractionAgent },
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
-        { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
-        { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        {
+          provide: ScoringAgentService,
+          useValue: {
+            score: jest
+              .fn()
+              .mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }),
+          },
+        },
+        {
+          provide: CvClassifierService,
+          useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
+        },
         { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -126,9 +151,10 @@ describe('IngestionProcessor', () => {
     // Clean email with long body — no spam keywords, no short body
     const payload = mockEmailPayload({
       Subject: 'Job Application from Jane Doe',
-      TextBody: 'Dear Hiring Manager, I am writing to apply for the position. ' +
-                'I have 5 years of experience in software engineering. ' +
-                'Please find my CV attached.',
+      TextBody:
+        'Dear Hiring Manager, I am writing to apply for the position. ' +
+        'I have 5 years of experience in software engineering. ' +
+        'Please find my CV attached.',
       Attachments: [],
     });
     storageService.downloadPayload.mockResolvedValue(payload);
@@ -194,9 +220,7 @@ describe('IngestionProcessor', () => {
 
   // 4-02-02: AIEX-02 — successful extraction does not update status to failed
   it('successful extraction does not update failed status', async () => {
-    extractionAgent.extract.mockResolvedValueOnce(
-      mockCandidateExtract({ full_name: 'Jane Doe' }),
-    );
+    extractionAgent.extract.mockResolvedValueOnce(mockCandidateExtract({ full_name: 'Jane Doe' }));
 
     const payload = mockEmailPayload({
       Subject: 'Job Application from Jane Doe',
@@ -230,7 +254,15 @@ describe('IngestionProcessor', () => {
 
 describe('IngestionProcessor — Phase 5 StorageService', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; organization: { findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock; updateMany: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
+  let prisma: {
+    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
+    organization: { findUnique: jest.Mock };
+    $transaction: jest.Mock;
+    candidate: { update: jest.Mock; updateMany: jest.Mock };
+    job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
+    application: { upsert: jest.Mock };
+    candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
+  };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
@@ -242,11 +274,18 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
       $executeRaw: jest.fn().mockResolvedValue(0),
     };
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      emailIntakeLog: {
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+      },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
+      job: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
@@ -273,8 +312,18 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
         { provide: ExtractionAgentService, useValue: extractionAgent },
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
-        { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
-        { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        {
+          provide: ScoringAgentService,
+          useValue: {
+            score: jest
+              .fn()
+              .mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }),
+          },
+        },
+        {
+          provide: CvClassifierService,
+          useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
+        },
         { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -306,7 +355,10 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
       ],
     });
     // Simulate webhook having set cvFileKey on the intake log
-    prisma.emailIntakeLog.findUnique.mockResolvedValue({ candidateId: null, cvFileKey: 'cvs/test-tenant-id/test-message-id.pdf' });
+    prisma.emailIntakeLog.findUnique.mockResolvedValue({
+      candidateId: null,
+      cvFileKey: 'cvs/test-tenant-id/test-message-id.pdf',
+    });
     storageService.downloadPayload.mockResolvedValue(payload);
     const job = makeJob('test-job-5', payload);
 
@@ -368,7 +420,15 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
 
 describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   let processor: IngestionProcessor;
-  let prisma: { emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock }; organization: { findUnique: jest.Mock }; $transaction: jest.Mock; candidate: { update: jest.Mock; updateMany: jest.Mock }; job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock }; application: { upsert: jest.Mock }; candidateJobScore: { create: jest.Mock; upsert: jest.Mock } };
+  let prisma: {
+    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
+    organization: { findUnique: jest.Mock };
+    $transaction: jest.Mock;
+    candidate: { update: jest.Mock; updateMany: jest.Mock };
+    job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
+    application: { upsert: jest.Mock };
+    candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
+  };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: {
@@ -386,14 +446,21 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     };
 
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      emailIntakeLog: {
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+      },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       // Simulate prisma.$transaction by invoking the callback with a tx client
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => {
         return cb(txClient);
       }),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
-      job: { findMany: jest.fn().mockResolvedValue([]), findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
+      job: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
@@ -433,8 +500,18 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         { provide: ExtractionAgentService, useValue: extractionAgent },
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
-        { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) } },
-        { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        {
+          provide: ScoringAgentService,
+          useValue: {
+            score: jest
+              .fn()
+              .mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }),
+          },
+        },
+        {
+          provide: CvClassifierService,
+          useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
+        },
         { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -641,12 +718,12 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
 
     // createFlag cross-links new → existing
     expect(dedupService.createFlag).toHaveBeenCalledWith(
-      'new-phone-cand-id',      // new candidate (incoming submission)
-      'existing-phone-cand',    // existing candidate (first submission)
-      1.0,                      // exact match confidence
+      'new-phone-cand-id', // new candidate (incoming submission)
+      'existing-phone-cand', // existing candidate (first submission)
+      1.0, // exact match confidence
       'test-tenant-id',
-      ['phone'],                // matchFields — indicates phone-based deduplication
-      expect.any(Object),       // tx (transaction client)
+      ['phone'], // matchFields — indicates phone-based deduplication
+      expect.any(Object), // tx (transaction client)
     );
 
     // candidateId should be set on the intake log
@@ -670,7 +747,14 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
   let scoringService: { score: jest.Mock };
 
-  const activeJob = { id: 'job-id-1', shortId: '101', title: 'Senior Backend Developer', description: 'Build APIs.', requirements: ['TypeScript'], hiringStages: [{ id: 'stage-1' }] };
+  const activeJob = {
+    id: 'job-id-1',
+    shortId: '101',
+    title: 'Senior Backend Developer',
+    description: 'Build APIs.',
+    requirements: ['TypeScript'],
+    hiringStages: [{ id: 'stage-1' }],
+  };
 
   beforeEach(async () => {
     const txClient = {
@@ -680,7 +764,10 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     };
 
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      emailIntakeLog: {
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+      },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -741,7 +828,10 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: scoringService },
-        { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        {
+          provide: CvClassifierService,
+          useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
+        },
         { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -844,7 +934,9 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     expect(prisma.application.upsert).toHaveBeenCalledTimes(1);
     expect(prisma.application.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { idx_applications_unique: { tenantId: 'test-tenant-id', candidateId: 'new-candidate-id', jobId: 'job-id-1' } },
+        where: {
+          idx_applications_unique: { tenantId: 'test-tenant-id', candidateId: 'new-candidate-id', jobId: 'job-id-1' },
+        },
         create: expect.objectContaining({ stage: 'new' }),
         update: {},
       }),
@@ -997,17 +1089,34 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     let extractionAgent: any;
     let storageService: any;
 
-    const job1 = { id: 'job-1', title: 'Senior Software Engineer', shortId: '100', description: null, requirements: [], hiringStages: [{ id: 'stage-1' }] };
-    const job2 = { id: 'job-2', title: 'Product Manager', shortId: '101', description: null, requirements: [], hiringStages: [{ id: 'stage-2' }] };
+    const job1 = {
+      id: 'job-1',
+      title: 'Senior Software Engineer',
+      shortId: '100',
+      description: null,
+      requirements: [],
+      hiringStages: [{ id: 'stage-1' }],
+    };
+    const job2 = {
+      id: 'job-2',
+      title: 'Product Manager',
+      shortId: '101',
+      description: null,
+      requirements: [],
+      hiringStages: [{ id: 'stage-2' }],
+    };
 
     beforeEach(async () => {
       const txClient = {
         emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
         $queryRaw: jest.fn().mockResolvedValue([]),
-      $executeRaw: jest.fn().mockResolvedValue(0),
+        $executeRaw: jest.fn().mockResolvedValue(0),
       };
       prisma = {
-        emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+        emailIntakeLog: {
+          update: jest.fn().mockResolvedValue({}),
+          findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+        },
         organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
         $transaction: jest.fn().mockImplementation(async (cb) => cb(txClient)),
         candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -1029,11 +1138,27 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           { provide: PrismaService, useValue: prisma },
           { provide: ExtractionAgentService, useValue: extractionAgent },
           { provide: StorageService, useValue: storageService },
-          { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
-          { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 72, modelUsed: 'test', reasoning: '', strengths: [], gaps: [] }) } },
-          { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
-        { provide: VoiceCallsService, useValue: voiceCallsService },
-        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
+          {
+            provide: DedupService,
+            useValue: {
+              check: jest.fn().mockResolvedValue(null),
+              insertCandidate: jest.fn().mockResolvedValue('cand-1'),
+            },
+          },
+          {
+            provide: ScoringAgentService,
+            useValue: {
+              score: jest
+                .fn()
+                .mockResolvedValue({ score: 72, modelUsed: 'test', reasoning: '', strengths: [], gaps: [] }),
+            },
+          },
+          {
+            provide: CvClassifierService,
+            useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
+          },
+          { provide: VoiceCallsService, useValue: voiceCallsService },
+          { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
         ],
       }).compile();
       processor = module.get<IngestionProcessor>(IngestionProcessor);
@@ -1061,7 +1186,10 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     it('15-02: ignores numbers < 100', async () => {
       prisma.job.findMany.mockResolvedValueOnce([]);
-      const payload = mockEmailPayload({ Subject: 'I am 25 years old', TextBody: 'Position 50 is closed. a'.repeat(10) });
+      const payload = mockEmailPayload({
+        Subject: 'I am 25 years old',
+        TextBody: 'Position 50 is closed. a'.repeat(10),
+      });
       storageService.downloadPayload.mockResolvedValue(payload);
       const job = makeJob('test-2', payload);
 
@@ -1078,9 +1206,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     it('15-03: extracts multiple numeric short_ids and creates applications for each', async () => {
       prisma.job.findMany.mockResolvedValueOnce([job1, job2]);
-      prisma.application.upsert
-        .mockResolvedValueOnce({ id: 'app-1' })
-        .mockResolvedValueOnce({ id: 'app-2' });
+      prisma.application.upsert.mockResolvedValueOnce({ id: 'app-1' }).mockResolvedValueOnce({ id: 'app-2' });
       const payload = mockEmailPayload({
         Subject: 'CV Submission',
         TextBody: 'I am interested in both position 100 and 101. a'.repeat(5),
@@ -1119,7 +1245,10 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     it('15-05: includes years as false positives (filtered by DB)', async () => {
       prisma.job.findMany.mockResolvedValueOnce([]);
-      const payload = mockEmailPayload({ Subject: 'In 2024 I applied', TextBody: 'Job 101 is open. ' + 'a'.repeat(101) });
+      const payload = mockEmailPayload({
+        Subject: 'In 2024 I applied',
+        TextBody: 'Job 101 is open. ' + 'a'.repeat(101),
+      });
       storageService.downloadPayload.mockResolvedValue(payload);
       const job = makeJob('test-5', payload);
 
@@ -1166,7 +1295,10 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
       $executeRaw: jest.fn().mockResolvedValue(0),
     };
     const prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      emailIntakeLog: {
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+      },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -1181,10 +1313,22 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
         AttachmentExtractorService,
         { provide: PrismaService, useValue: prisma },
         { provide: ExtractionAgentService, useValue: { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) } },
-        { provide: StorageService, useValue: { upload: jest.fn().mockResolvedValue('key'), downloadPayload: jest.fn() } },
-        { provide: DedupService, useValue: { check: jest.fn().mockResolvedValue(null), insertCandidate: jest.fn().mockResolvedValue('cand-1') } },
+        {
+          provide: StorageService,
+          useValue: { upload: jest.fn().mockResolvedValue('key'), downloadPayload: jest.fn() },
+        },
+        {
+          provide: DedupService,
+          useValue: {
+            check: jest.fn().mockResolvedValue(null),
+            insertCandidate: jest.fn().mockResolvedValue('cand-1'),
+          },
+        },
         { provide: ScoringAgentService, useValue: { score: jest.fn() } },
-        { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        {
+          provide: CvClassifierService,
+          useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
+        },
         { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -1236,13 +1380,15 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
   let dedupService: any;
   let storageService: any;
 
-  const validPayload = () => mockEmailPayload({
-    MessageID: 'msg-idempotency-test',
-    From: 'sender@example.com',
-    Subject: 'Job Application from Jane Doe',
-    TextBody: 'Dear Hiring Manager, I have 5 years of experience in software engineering. Please find my CV attached.',
-    Attachments: [],
-  });
+  const validPayload = () =>
+    mockEmailPayload({
+      MessageID: 'msg-idempotency-test',
+      From: 'sender@example.com',
+      Subject: 'Job Application from Jane Doe',
+      TextBody:
+        'Dear Hiring Manager, I have 5 years of experience in software engineering. Please find my CV attached.',
+      Attachments: [],
+    });
 
   beforeEach(async () => {
     const txClient = {
@@ -1251,7 +1397,10 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
       $executeRaw: jest.fn().mockResolvedValue(0),
     };
     prisma = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}), findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }) },
+      emailIntakeLog: {
+        update: jest.fn().mockResolvedValue({}),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+      },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
       candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
@@ -1276,7 +1425,10 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
         { provide: StorageService, useValue: storageService },
         { provide: DedupService, useValue: dedupService },
         { provide: ScoringAgentService, useValue: { score: jest.fn() } },
-        { provide: CvClassifierService, useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) } },
+        {
+          provide: CvClassifierService,
+          useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
+        },
         { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -1376,7 +1528,11 @@ describe('IngestionProcessor — CV Classification Gate', () => {
         { provide: DedupService, useValue: dedupService },
         {
           provide: ScoringAgentService,
-          useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) },
+          useValue: {
+            score: jest
+              .fn()
+              .mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }),
+          },
         },
         { provide: CvClassifierService, useValue: cvClassifier },
         { provide: VoiceCallsService, useValue: voiceCallsService },
@@ -1496,7 +1652,11 @@ describe('ingest gate (ai_ingest_enabled)', () => {
         },
         {
           provide: ScoringAgentService,
-          useValue: { score: jest.fn().mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }) },
+          useValue: {
+            score: jest
+              .fn()
+              .mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }),
+          },
         },
         { provide: CvClassifierService, useValue: cvClassifier },
         { provide: VoiceCallsService, useValue: voiceCallsService },

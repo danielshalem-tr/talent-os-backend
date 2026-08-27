@@ -37,6 +37,16 @@ export interface CandidateResponse {
   years_experience: number | null;
   salary_expectation_min: number | null;
   salary_expectation_max: number | null;
+
+  // Headline state of the most recent voice screening call (single-candidate reads only;
+  // the list endpoint returns null — full history comes from GET /candidates/:id/calls).
+  latest_call: {
+    id: string;
+    status: string;
+    attempt: number;
+    scheduled_for: string | null;
+    summary: string | null;
+  } | null;
 }
 
 /**

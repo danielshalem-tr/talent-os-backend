@@ -35,7 +35,11 @@ export class VoiceCallsController {
     const result = TriggerCallSchema.safeParse(body);
     if (!result.success) {
       throw new BadRequestException({
-        error: { code: 'VALIDATION_ERROR', message: 'job_id (UUID) is required', details: result.error.flatten().fieldErrors },
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'job_id (UUID) is required',
+          details: result.error.flatten().fieldErrors,
+        },
       });
     }
     return this.voiceCalls.triggerManualCall(candidateId, result.data.job_id, req.session as JwtPayload);

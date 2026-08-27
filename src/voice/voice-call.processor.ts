@@ -98,7 +98,10 @@ export class VoiceCallProcessor extends WorkerHost {
     // 2. Re-check gates — config may have changed during the delay.
     const gateFailure = this.checkGates(row);
     if (gateFailure) {
-      await this.prisma.voiceCall.update({ where: { id: voiceCallId }, data: { status: 'canceled', error: gateFailure } });
+      await this.prisma.voiceCall.update({
+        where: { id: voiceCallId },
+        data: { status: 'canceled', error: gateFailure },
+      });
       this.pinoLogger.log({ voiceCallId, gateFailure }, 'Voice call canceled at execution gate');
       return;
     }
@@ -151,7 +154,10 @@ export class VoiceCallProcessor extends WorkerHost {
       // Transient (network / ElevenLabs 5xx): re-open the claim so the BullMQ retry can
       // claim again, then rethrow. On the final attempt, finalize as failed instead.
       if (job.attemptsMade + 1 < (job.opts.attempts ?? 1)) {
-        await this.prisma.voiceCall.updateMany({ where: { id: voiceCallId, status: 'calling' }, data: { status: 'scheduled' } });
+        await this.prisma.voiceCall.updateMany({
+          where: { id: voiceCallId, status: 'calling' },
+          data: { status: 'scheduled' },
+        });
         throw err;
       }
       await this.prisma.voiceCall.update({
@@ -192,13 +198,19 @@ export class VoiceCallProcessor extends WorkerHost {
       return;
     }
     if (status === 'failed') {
-      await this.prisma.voiceCall.update({ where: { id: voiceCallId }, data: { status: 'failed', error: 'provider_reported_failure' } });
+      await this.prisma.voiceCall.update({
+        where: { id: voiceCallId },
+        data: { status: 'failed', error: 'provider_reported_failure' },
+      });
       return;
     }
     // initiated / in-progress / processing — either still young (re-check) or stuck (timeout).
     const ageMs = Date.now() - (row.startedAt?.getTime() ?? row.createdAt.getTime());
     if (ageMs > MAX_CALL_AGE_MS) {
-      await this.prisma.voiceCall.update({ where: { id: voiceCallId }, data: { status: 'failed', error: 'watchdog_timeout' } });
+      await this.prisma.voiceCall.update({
+        where: { id: voiceCallId },
+        data: { status: 'failed', error: 'watchdog_timeout' },
+      });
       return;
     }
     await this.voiceQueue.add('check', { voiceCallId } satisfies VoiceCallJobData, {

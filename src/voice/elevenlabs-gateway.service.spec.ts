@@ -73,7 +73,9 @@ describe('ElevenLabsGatewayService — safety gate', () => {
 
   it('BLOCKS an unnormalizable phone before anything reaches the SDK', async () => {
     const svc = new ElevenLabsGatewayService(makeConfig({ VOICE_CALL_MODE: 'live' }));
-    await expect(svc.startOutboundCall({ ...CALL, toNumber: 'call me maybe' })).rejects.toMatchObject({ reason: 'invalid_phone' });
+    await expect(svc.startOutboundCall({ ...CALL, toNumber: 'call me maybe' })).rejects.toMatchObject({
+      reason: 'invalid_phone',
+    });
     expect(mockSipTrunkOutboundCall).not.toHaveBeenCalled();
   });
 
@@ -97,7 +99,9 @@ describe('ElevenLabsGatewayService — safety gate', () => {
     expect(mockSipTrunkOutboundCall).toHaveBeenCalledTimes(1);
     expect(mockTwilioOutboundCall).not.toHaveBeenCalled();
 
-    const twilioSvc = new ElevenLabsGatewayService(makeConfig({ VOICE_CALL_MODE: 'live', ELEVENLABS_TELEPHONY: 'twilio' }));
+    const twilioSvc = new ElevenLabsGatewayService(
+      makeConfig({ VOICE_CALL_MODE: 'live', ELEVENLABS_TELEPHONY: 'twilio' }),
+    );
     const result = await twilioSvc.startOutboundCall(CALL);
     expect(result).toEqual({ conversationId: 'conv_1', callSid: 'CA1' });
     const [request, requestOptions] = mockTwilioOutboundCall.mock.calls[0];

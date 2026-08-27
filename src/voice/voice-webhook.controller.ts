@@ -19,7 +19,11 @@ export class VoiceWebhookController {
     const result = ElevenLabsWebhookSchema.safeParse(req.body);
     if (!result.success) {
       throw new BadRequestException({
-        error: { code: 'VALIDATION_ERROR', message: 'Invalid ElevenLabs payload', details: result.error.flatten().fieldErrors },
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'Invalid ElevenLabs payload',
+          details: result.error.flatten().fieldErrors,
+        },
       });
     }
     // handleWebhookEvent never throws — unknown conversations and handler failures are
