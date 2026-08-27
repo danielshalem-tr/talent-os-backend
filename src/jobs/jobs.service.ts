@@ -104,6 +104,8 @@ export class JobsService {
           expYearsMin: dto.min_experience ?? null,
           expYearsMax: dto.max_experience ?? null,
           preferredOrgTypes: dto.selected_org_types ?? [],
+          ...(dto.voice_screening_enabled !== undefined && { voiceScreeningEnabled: dto.voice_screening_enabled }),
+          ...(dto.voice_min_score !== undefined && { voiceMinScore: dto.voice_min_score }),
           hiringStages: { create: stagesToCreate },
           screeningQuestions: { create: questionsToCreate },
         },
@@ -181,6 +183,10 @@ export class JobsService {
           expYearsMin: dto.min_experience ?? null,
           expYearsMax: dto.max_experience ?? null,
           preferredOrgTypes: dto.selected_org_types ?? [],
+          // Presence-guarded (NOT ?? null like the fields above): a client that omits the
+          // voice fields must not reset a live job's screening-call configuration.
+          ...(dto.voice_screening_enabled !== undefined && { voiceScreeningEnabled: dto.voice_screening_enabled }),
+          ...(dto.voice_min_score !== undefined && { voiceMinScore: dto.voice_min_score }),
           hiringStages: {
             deleteMany: {},
             create: stagesToCreate,
@@ -319,6 +325,8 @@ export class JobsService {
       min_experience: job.expYearsMin,
       max_experience: job.expYearsMax,
       selected_org_types: job.preferredOrgTypes ?? [],
+      voice_screening_enabled: job.voiceScreeningEnabled ?? false,
+      voice_min_score: job.voiceMinScore ?? 70,
       screening_questions: (job.screeningQuestions ?? []).map((q: any) => ({
         id: q.id,
         text: q.text,
