@@ -11,6 +11,7 @@ import { CvClassifierService, CvClassification } from './services/cv-classifier.
 import { StorageService } from '../storage/storage.service';
 import { DedupService, DedupResult } from '../dedup/dedup.service';
 import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
+import { VoiceCallsService } from '../voice/voice-calls.service';
 import { sanitizePgText } from '../common/sanitize-pg-text';
 
 export interface ProcessingContext {
@@ -36,6 +37,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly storageService: StorageService,
     private readonly dedupService: DedupService,
     private readonly scoringService: ScoringAgentService,
+    private readonly voiceCallsService: VoiceCallsService,
     private readonly pinoLogger: PinoLogger,
   ) {
     super();
@@ -442,10 +444,11 @@ export class IngestionProcessor extends WorkerHost {
     }
 
     // Phase 7: Score candidate against ALL matched jobs in parallel (SCOR-01, D-11, P3)
-    // Promise.all runs N scoring calls concurrently — one per matched job
-    let scores: number[];
+    // Promise.all runs N scoring calls concurrently — one per matched job.
+    // Tuples (not bare numbers): the voice-screening seam below needs per-job scores.
+    let jobScores: Array<{ jobId: string; score: number }>;
     try {
-      scores = await Promise.all(
+      jobScores = await Promise.all(
         matchedJobs.map(async (activeJob) => {
           // SCOR-02: upsert application row first — idempotent on retry
           const application = await this.prisma.application.upsert({
@@ -490,7 +493,7 @@ export class IngestionProcessor extends WorkerHost {
             'Phase 7 scored',
           );
 
-          return scoreResult.score;
+          return { jobId: activeJob.id, score: scoreResult.score };
         }),
       );
     } catch (err) {
@@ -505,7 +508,7 @@ export class IngestionProcessor extends WorkerHost {
       throw err;
     }
 
-    const maxAiScore = Math.max(-1, ...scores);
+    const maxAiScore = Math.max(-1, ...jobScores.map((r) => r.score));
 
     // Update denormalized aiScore once after all jobs scored
     // Only set if we actually scored any jobs (maxAiScore > -1)
@@ -516,6 +519,22 @@ export class IngestionProcessor extends WorkerHost {
         where: { id: context.candidateId, isScoreOverridden: false },
         data: { aiScore: maxAiScore },
       });
+    }
+
+    // Voice screening trigger (layers 3+4 + threshold live inside scheduleAutoCalls).
+    // Non-fatal by design: a throw here must never strand the intake in 'processing'
+    // or trigger a BullMQ retry that would re-run paid AI phases.
+    try {
+      await this.voiceCallsService.scheduleAutoCalls({
+        tenantId,
+        candidateId: context.candidateId,
+        jobScores,
+      });
+    } catch (err) {
+      this.pinoLogger.error(
+        { messageId: payload.MessageID, candidateId: context.candidateId, error: (err as Error).message },
+        'Voice screening scheduling failed — intake continues',
+      );
     }
 
     // D-16: terminal status — set AFTER all Phase 7 work completes (only reached if no error thrown)
