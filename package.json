@@ -29,7 +29,8 @@
     "db:migrate:deploy": "docker compose -f docker-compose.dev.yml exec api npx prisma migrate deploy",
     "db:seed": "docker compose -f docker-compose.dev.yml exec api npx prisma db seed",
     "db:studio": "npx prisma studio",
-    "ngrok": "bash scripts/ngrok-webhook.sh"
+    "ngrok": "bash scripts/ngrok-webhook.sh",
+    "retro:match": "ts-node -r tsconfig-paths/register scripts/retro-match-300.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.63",
