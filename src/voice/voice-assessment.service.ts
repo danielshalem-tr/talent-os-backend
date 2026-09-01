@@ -9,6 +9,12 @@ import { moveCandidateToStage } from '../candidates/stage-move';
 // Same input-size convention as scoring.service.ts
 const MAX_TRANSCRIPT_LENGTH = 15_000;
 
+// A call ElevenLabs marks `completed` may still be a 4-second hang-up: the agent's opening
+// line alone is already a transcript turn. These gate the AUTO-ADVANCE, which moves a real
+// person down a real pipeline — deliberately conservative, under-advance over over-advance.
+const MIN_ADVANCE_CANDIDATE_TURNS = 2;
+const MIN_ADVANCE_DURATION_SECS = 30;
+
 export const AssessmentSchema = z.object({
   answers: z.array(
     z.object({
@@ -34,8 +40,32 @@ Flags, only when clearly warranted: far_availability (start date months away), u
 Never invent information that is not in the transcript, and never assess skills beyond what was said.
 Finish with a one-line recommendation for the recruiting team.`;
 
+/** As stored by VoiceResultsService.mapTranscript — `message` is genuinely nullable. */
+export interface TranscriptTurn {
+  role: string;
+  message: string | null;
+}
+
+/**
+ * Turns that actually carry speech. Tool-call and system turns are persisted with a null
+ * message; interpolating those would feed the model the literal word "null" as if the
+ * candidate had said it, and would inflate the substance gate's turn count.
+ */
+function substantiveTurns(transcript: TranscriptTurn[]): Array<{ role: string; message: string }> {
+  return transcript.flatMap((t) =>
+    typeof t.message === 'string' && t.message.trim() !== '' ? [{ role: t.role, message: t.message }] : [],
+  );
+}
+
 export function renderAssessment(a: AssessmentResult, meta: { attempt: number; durationSecs: number | null }): string {
-  const duration = meta.durationSecs != null ? `, ${Math.max(1, Math.round(meta.durationSecs / 60))} min` : '';
+  // Sub-minute calls report seconds — rounding a 4-second hang-up up to "1 min" would read
+  // as a real conversation to whoever skims the stage note.
+  const duration =
+    meta.durationSecs == null
+      ? ''
+      : meta.durationSecs < 60
+        ? `, ${meta.durationSecs}s`
+        : `, ${Math.round(meta.durationSecs / 60)} min`;
   const lines = [`[AI screening-call assessment — attempt ${meta.attempt}${duration}]`, ''];
   a.answers.forEach((ans, i) => {
     lines.push(`${i + 1}. ${ans.question}`);
@@ -61,12 +91,12 @@ export class VoiceAssessmentService {
   }
 
   async generateAssessment(input: {
-    transcript: Array<{ role: string; message: string }>;
+    transcript: TranscriptTurn[];
     questions: Array<{ text: string }>;
     attempt: number;
     durationSecs: number | null;
   }): Promise<string> {
-    const turns = input.transcript
+    const turns = substantiveTurns(input.transcript)
       .map((t) => `${t.role === 'agent' ? 'Interviewer' : 'Candidate'}: ${t.message}`)
       .join('\n')
       .substring(0, MAX_TRANSCRIPT_LENGTH);
@@ -105,11 +135,13 @@ export class VoiceAssessmentService {
       this.logger.warn(`assess skipped for call ${row.id} — status is ${row.status}, not completed`);
       return;
     }
-    const transcript = Array.isArray(row.transcript)
-      ? (row.transcript as unknown as Array<{ role: string; message: string }>)
-      : [];
-    if (transcript.length === 0) {
-      this.logger.warn(`assess skipped for call ${row.id} — no transcript stored`);
+    const transcript = Array.isArray(row.transcript) ? (row.transcript as unknown as TranscriptTurn[]) : [];
+    const spoken = substantiveTurns(transcript);
+    const candidateTurns = spoken.filter((t) => t.role !== 'agent').length;
+    if (candidateTurns === 0) {
+      // The candidate never said a word (no-pickup, instant hang-up). Nothing to assess and
+      // certainly nothing to advance on — the VoiceCall row itself already tells that story.
+      this.logger.warn(`assess skipped for call ${row.id} — the candidate never spoke`);
       return;
     }
 
@@ -125,7 +157,14 @@ export class VoiceAssessmentService {
       where: { idx_cand_stage_summary: { candidateId: row.candidateId, jobStageId: stageId } },
       select: { id: true },
     });
-    if (existing) return;
+    if (existing) {
+      // Not silent: this is the one path where a completed call produces no assessment and
+      // no advance, and the cause (a human got there first) is invisible in the UI.
+      this.logger.warn(
+        `assess skipped for call ${row.id} — stage ${stageId} already has a stage summary; not overwriting, not advancing`,
+      );
+      return;
+    }
 
     const summary = await this.generateAssessment({
       transcript,
@@ -137,16 +176,42 @@ export class VoiceAssessmentService {
     const created = await this.createSummary(row, stageId, summary);
     if (!created) return; // P2002 race — someone else wrote the stage note; never advance
 
+    // The assessment is recorded either way; only the auto-advance needs real substance.
+    if (candidateTurns < MIN_ADVANCE_CANDIDATE_TURNS) {
+      this.logger.warn(
+        `advance skipped for call ${row.id} — only ${candidateTurns} candidate turn(s); assessment recorded`,
+      );
+      return;
+    }
+    if (row.durationSecs != null && row.durationSecs < MIN_ADVANCE_DURATION_SECS) {
+      this.logger.warn(
+        `advance skipped for call ${row.id} — ${row.durationSecs}s is too short to screen on; assessment recorded`,
+      );
+      return;
+    }
+
     await this.advanceToNextStage(row, stageId);
   }
 
+  /**
+   * The stage this call's assessment belongs to. EVERY branch is scoped to the CALL's job,
+   * not the candidate's: scheduleAutoCalls can create a call for job B while the candidate
+   * sits in job A's pipeline, and filing the note against job A's stage would put screening
+   * results in the wrong pipeline (and hand advanceToNextStage a stage it cannot find).
+   */
   private async resolveCurrentStage(row: {
     tenantId: string;
     candidateId: string;
     jobId: string;
     candidate: { hiringStageId: string | null };
   }): Promise<string | null> {
-    if (row.candidate.hiringStageId) return row.candidate.hiringStageId;
+    if (row.candidate.hiringStageId) {
+      const onThisJob = await this.prisma.jobStage.findFirst({
+        where: { id: row.candidate.hiringStageId, jobId: row.jobId, tenantId: row.tenantId },
+        select: { id: true },
+      });
+      if (onThisJob) return onThisJob.id;
+    }
     const app = await this.prisma.application.findUnique({
       where: {
         idx_applications_unique: { tenantId: row.tenantId, candidateId: row.candidateId, jobId: row.jobId },

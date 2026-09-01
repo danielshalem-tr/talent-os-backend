@@ -156,19 +156,49 @@ export class VoiceCallsService {
     });
     const byId = new Map(jobs.map((j) => [j.id, j]));
 
-    for (const { jobId, score } of params.jobScores) {
-      const job = byId.get(jobId);
-      if (!job?.voiceScreeningEnabled) continue; // Layer 4
-      if (score < job.voiceMinScore) continue; // threshold
-      await this.scheduleCall({
+    const eligible = params.jobScores
+      .filter(({ jobId, score }) => {
+        const job = byId.get(jobId);
+        if (!job?.voiceScreeningEnabled) return false; // Layer 4
+        return score >= job.voiceMinScore; // threshold
+      })
+      .sort((a, b) => b.score - a.score);
+    if (eligible.length === 0) return;
+
+    // ONE call per candidate, for the best-scoring eligible job. A CV commonly matches
+    // several open roles, and scheduling per job would ring the same person back-to-back
+    // in the same business-hours slot. The recruiter can still "Call now" for another job.
+    const [best] = eligible;
+    if (eligible.length > 1) {
+      this.logger.log(
+        `Candidate ${params.candidateId} cleared ${eligible.length} jobs — calling for ${best.jobId} only`,
+      );
+    }
+
+    // Cross-job guard: the per-(candidate, job) idempotency key cannot see a call that is
+    // already scheduled or in flight for a DIFFERENT job (e.g. an earlier CV of the same
+    // person, or a manual call a recruiter just started).
+    const active = await this.prisma.voiceCall.findFirst({
+      where: {
         tenantId: params.tenantId,
         candidateId: params.candidateId,
-        jobId,
-        trigger: 'auto',
-        attempt: 1,
-        idempotencyKey: `auto:${params.candidateId}:${jobId}:1`,
-      });
+        status: { in: [...ACTIVE_CALL_STATUSES] },
+      },
+      select: { id: true },
+    });
+    if (active) {
+      this.logger.log(`Candidate ${params.candidateId} already has an active call — auto call skipped`);
+      return;
     }
+
+    await this.scheduleCall({
+      tenantId: params.tenantId,
+      candidateId: params.candidateId,
+      jobId: best.jobId,
+      trigger: 'auto',
+      attempt: 1,
+      idempotencyKey: `auto:${params.candidateId}:${best.jobId}:1`,
+    });
   }
 
   /** New row for the next attempt, 4h later snapped into the window. Keyed by predecessor. */

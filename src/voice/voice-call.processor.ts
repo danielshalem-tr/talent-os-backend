@@ -207,21 +207,37 @@ export class VoiceCallProcessor extends WorkerHost {
     const row = await this.prisma.voiceCall.findUnique({ where: { id: voiceCallId } });
     if (!row || row.status !== 'in_progress' || !row.conversationId) return; // webhook won the race
 
-    const conversation = await this.gateway.getConversation(row.conversationId);
-    const status = conversation.status as string;
+    // A throw here must NOT propagate: BullMQ would retry three times over ~15s and then
+    // drop the job, and since the next check is only ever armed from inside this handler,
+    // a brief ElevenLabs outage would silently disable the watchdog for good — leaving the
+    // row stuck in 'in_progress' forever whenever the webhook is also lost.
+    let conversation: Record<string, any> | null = null;
+    try {
+      conversation = await this.gateway.getConversation(row.conversationId);
+    } catch (err) {
+      this.pinoLogger.warn(
+        { voiceCallId, error: (err as Error).message },
+        'Watchdog poll failed — re-arming the next check',
+      );
+    }
 
-    if (status === 'done') {
-      await this.voiceResults.finalizeFromTranscription(row.conversationId, conversation);
-      return;
+    if (conversation) {
+      const status = conversation.status as string;
+      if (status === 'done') {
+        await this.voiceResults.finalizeFromTranscription(row.conversationId, conversation);
+        return;
+      }
+      if (status === 'failed') {
+        await this.prisma.voiceCall.update({
+          where: { id: voiceCallId },
+          data: { status: 'failed', error: 'provider_reported_failure' },
+        });
+        return;
+      }
     }
-    if (status === 'failed') {
-      await this.prisma.voiceCall.update({
-        where: { id: voiceCallId },
-        data: { status: 'failed', error: 'provider_reported_failure' },
-      });
-      return;
-    }
-    // initiated / in-progress / processing — either still young (re-check) or stuck (timeout).
+
+    // Poll failed, or the call is still initiated / in-progress / processing — either still
+    // young (re-check) or stuck (timeout). MAX_CALL_AGE_MS bounds the re-arm loop.
     const ageMs = Date.now() - (row.startedAt?.getTime() ?? row.createdAt.getTime());
     if (ageMs > MAX_CALL_AGE_MS) {
       await this.prisma.voiceCall.update({

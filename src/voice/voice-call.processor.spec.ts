@@ -276,6 +276,38 @@ describe('VoiceCallProcessor', () => {
     });
   });
 
+  describe('watchdog resilience', () => {
+    it('a failed poll re-arms the next check instead of killing the chain', async () => {
+      const { processor, gateway, queue } = makeMocks({
+        status: 'in_progress',
+        conversationId: 'conv_1',
+        startedAt: '2026-08-27T06:50:00Z',
+      });
+      gateway.getConversation.mockRejectedValue(new Error('ElevenLabs 503'));
+      await expect(processor.process(makeJob('check'))).resolves.toBeUndefined();
+      expect(queue.add).toHaveBeenCalledWith(
+        'check',
+        { voiceCallId: 'vc1' },
+        expect.objectContaining({ jobId: expect.stringMatching(/^check-vc1-/) }),
+      );
+    });
+
+    it('a poll that keeps failing past the hard timeout finalizes the row as failed', async () => {
+      const { processor, gateway, prisma, queue } = makeMocks({
+        status: 'in_progress',
+        conversationId: 'conv_1',
+        startedAt: '2026-08-27T03:00:00Z', // 4h before IN_WINDOW — past MAX_CALL_AGE
+      });
+      gateway.getConversation.mockRejectedValue(new Error('ElevenLabs 503'));
+      await processor.process(makeJob('check'));
+      expect(prisma.voiceCall.update).toHaveBeenCalledWith({
+        where: { id: 'vc1' },
+        data: { status: 'failed', error: 'watchdog_timeout' },
+      });
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+  });
+
   describe('assess job', () => {
     it('delegates to VoiceAssessmentService (errors propagate → BullMQ retries)', async () => {
       const { processor, voiceAssessment } = makeMocks();

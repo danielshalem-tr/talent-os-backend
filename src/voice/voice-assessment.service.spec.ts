@@ -88,6 +88,8 @@ describe('VoiceAssessmentService.assessCall', () => {
     transcript: [
       { role: 'agent', message: 'שלום', time_in_call_secs: 0 },
       { role: 'user', message: 'היי', time_in_call_secs: 2 },
+      { role: 'agent', message: 'מותר לך לעבוד בישראל?', time_in_call_secs: 5 },
+      { role: 'user', message: 'כן', time_in_call_secs: 9 },
     ],
     candidate: { hiringStageId: 'stage1' },
     job: { screeningQuestions: [{ text: 'X' }, { text: 'Y' }] },
@@ -103,10 +105,14 @@ describe('VoiceAssessmentService.assessCall', () => {
       voiceCall: { findUniqueOrThrow: jest.fn().mockResolvedValue(row) },
       application: { findUnique: jest.fn().mockResolvedValue(null) },
       jobStage: {
-        // findMany feeds the advance (enabled stages by order); findFirst feeds both the
-        // first-enabled-stage fallback and moveCandidateToStage's target validation.
+        // findMany feeds the advance (enabled stages by order). findFirst serves three
+        // callers: the "does this stage belong to the call's job" scoping check, the
+        // first-enabled-stage fallback, and moveCandidateToStage's target validation —
+        // so it echoes back a queried id and falls back to the first stage otherwise.
         findMany: jest.fn().mockResolvedValue([{ id: 'stage1' }, { id: 'stage2' }, { id: 'stage3' }]),
-        findFirst: jest.fn().mockResolvedValue({ id: 'stage1' }),
+        findFirst: jest.fn(({ where }: { where: { id?: string } }) =>
+          Promise.resolve(where.id ? { id: where.id } : { id: 'stage1' }),
+        ),
       },
       candidateStageSummary: {
         findUnique: jest.fn().mockResolvedValue(null),
@@ -211,5 +217,139 @@ describe('VoiceAssessmentService.assessCall', () => {
     const { svc } = makeMocks({ status: 'failed' });
     await svc.assessCall('vc1');
     expect(mockGenerateObject).not.toHaveBeenCalled();
+  });
+});
+
+describe('VoiceAssessmentService.assessCall — substance gate + job scoping (review fixes)', () => {
+  const TENANT = '11111111-1111-1111-1111-111111111111';
+
+  function makeMocks(rowOverrides: Record<string, unknown> = {}) {
+    const tx = {
+      candidate: { update: jest.fn().mockResolvedValue({}) },
+      application: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const row = {
+      id: 'vc1',
+      tenantId: TENANT,
+      candidateId: 'cand1',
+      jobId: 'job1',
+      status: 'completed',
+      attempt: 1,
+      durationSecs: 241,
+      transcript: [
+        { role: 'agent', message: 'שלום', time_in_call_secs: 0 },
+        { role: 'user', message: 'היי', time_in_call_secs: 2 },
+        { role: 'agent', message: 'מותר לך לעבוד בישראל?', time_in_call_secs: 5 },
+        { role: 'user', message: 'כן', time_in_call_secs: 9 },
+      ],
+      candidate: { hiringStageId: 'stage1' },
+      job: { screeningQuestions: [{ text: 'X' }] },
+      ...rowOverrides,
+    };
+    const prisma = {
+      voiceCall: { findUniqueOrThrow: jest.fn().mockResolvedValue(row) },
+      application: { findUnique: jest.fn().mockResolvedValue(null) },
+      jobStage: {
+        findMany: jest.fn().mockResolvedValue([{ id: 'stage1' }, { id: 'stage2' }]),
+        findFirst: jest.fn(({ where }: { where: { id?: string } }) =>
+          Promise.resolve(where.id ? { id: where.id } : { id: 'stage1' }),
+        ),
+      },
+      candidateStageSummary: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({}),
+      },
+      candidate: { findFirst: jest.fn().mockResolvedValue({ id: 'cand1', jobId: 'job1' }) },
+      $transaction: jest.fn(async (fn: (t: typeof tx) => Promise<void>) => fn(tx)),
+    };
+    const svc = new VoiceAssessmentService(prisma as never, makeConfig());
+    return { prisma, tx, svc };
+  }
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockGenerateObject.mockResolvedValue({ object: ASSESSMENT } as never);
+  });
+
+  it('an instant hang-up (agent greeting only) is never assessed and never advances', async () => {
+    const { svc, prisma } = makeMocks({
+      durationSecs: 4,
+      transcript: [{ role: 'agent', message: 'היי, קוראים לי נועה', time_in_call_secs: 0 }],
+    });
+    await svc.assessCall('vc1');
+    expect(mockGenerateObject).not.toHaveBeenCalled();
+    expect(prisma.candidateStageSummary.create).not.toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('a thin call is assessed and recorded, but the candidate is NOT advanced', async () => {
+    const { svc, prisma } = makeMocks({
+      durationSecs: 11,
+      transcript: [
+        { role: 'agent', message: 'היי, יש כמה רגעים?', time_in_call_secs: 0 },
+        { role: 'user', message: 'לא עכשיו', time_in_call_secs: 3 },
+      ],
+    });
+    await svc.assessCall('vc1');
+    expect(prisma.candidateStageSummary.create).toHaveBeenCalled();
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('a real conversation of unknown duration still advances', async () => {
+    const { svc, prisma } = makeMocks({ durationSecs: null });
+    await svc.assessCall('vc1');
+    expect(prisma.$transaction).toHaveBeenCalled();
+  });
+
+  it('turns with a null message are dropped — the LLM never sees the string "null"', async () => {
+    const { svc } = makeMocks({
+      transcript: [
+        { role: 'agent', message: 'שלום', time_in_call_secs: 0 },
+        { role: 'agent', message: null, time_in_call_secs: 1 },
+        { role: 'user', message: 'היי', time_in_call_secs: 2 },
+        { role: 'user', message: '   ', time_in_call_secs: 3 },
+        { role: 'user', message: 'כן בטח', time_in_call_secs: 4 },
+      ],
+    });
+    await svc.assessCall('vc1');
+    const call = mockGenerateObject.mock.calls[0][0] as Record<string, unknown>;
+    expect(call.prompt).not.toContain('null');
+    expect(call.prompt).toContain('Candidate: היי');
+  });
+
+  it('null-message turns do not count toward the substance gate', async () => {
+    const { svc, prisma } = makeMocks({
+      durationSecs: 240,
+      transcript: [
+        { role: 'agent', message: 'שלום', time_in_call_secs: 0 },
+        { role: 'user', message: 'היי', time_in_call_secs: 2 },
+        { role: 'user', message: null, time_in_call_secs: 3 },
+      ],
+    });
+    await svc.assessCall('vc1');
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it("ignores candidate.hiringStageId when it belongs to a different job than the call's", async () => {
+    const { svc, prisma } = makeMocks();
+    // stage1 is not a stage of job1 → the scoping check finds nothing
+    prisma.jobStage.findFirst.mockResolvedValueOnce(null).mockResolvedValue({ id: 'stage9' });
+    prisma.application.findUnique.mockResolvedValue({ jobStageId: 'stage2' });
+    await svc.assessCall('vc1');
+    expect(prisma.jobStage.findFirst).toHaveBeenCalledWith({
+      where: { id: 'stage1', jobId: 'job1', tenantId: TENANT },
+      select: { id: true },
+    });
+    expect(prisma.candidateStageSummary.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({ jobStageId: 'stage2' }),
+    });
+  });
+
+  it('logs instead of silently dropping when a recruiter note already occupies the stage', async () => {
+    const { svc, prisma } = makeMocks();
+    const warn = jest.spyOn((svc as never as { logger: { warn: (m: string) => void } }).logger, 'warn');
+    prisma.candidateStageSummary.findUnique.mockResolvedValue({ id: 'existing' });
+    await svc.assessCall('vc1');
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining('already has a stage summary'));
   });
 });
