@@ -57,7 +57,7 @@ describe('VoiceCallsService', () => {
       expect(queue.add).toHaveBeenCalledWith(
         'call',
         { voiceCallId: 'vc1' },
-        expect.objectContaining({ jobId: 'call:vc1', attempts: 3 }),
+        expect.objectContaining({ jobId: 'call-vc1', attempts: 3 }),
       );
     });
 

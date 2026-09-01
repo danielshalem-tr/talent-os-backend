@@ -115,7 +115,7 @@ describe('VoiceCallProcessor', () => {
       expect(queue.add).toHaveBeenCalledWith(
         'call',
         { voiceCallId: 'vc1' },
-        expect.objectContaining({ jobId: expect.stringMatching(/^call:vc1:/) }),
+        expect.objectContaining({ jobId: expect.stringMatching(/^call-vc1-/) }),
       );
     });
 
@@ -139,7 +139,7 @@ describe('VoiceCallProcessor', () => {
       expect(queue.add).toHaveBeenCalledWith(
         'check',
         { voiceCallId: 'vc1' },
-        expect.objectContaining({ jobId: 'check:vc1:1' }),
+        expect.objectContaining({ jobId: 'check-vc1-1' }),
       );
     });
 
@@ -201,7 +201,7 @@ describe('VoiceCallProcessor', () => {
       expect(queue.add).toHaveBeenCalledWith(
         'check',
         { voiceCallId: 'vc1' },
-        expect.objectContaining({ jobId: expect.stringMatching(/^check:vc1:/) }),
+        expect.objectContaining({ jobId: expect.stringMatching(/^check-vc1-/) }),
       );
     });
 

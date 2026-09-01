@@ -72,7 +72,7 @@ describe('VoiceResultsService', () => {
       expect(queue.add).toHaveBeenCalledWith(
         'audio',
         { voiceCallId: 'vc1' },
-        expect.objectContaining({ jobId: 'audio:vc1' }),
+        expect.objectContaining({ jobId: 'audio-vc1' }),
       );
     });
 
