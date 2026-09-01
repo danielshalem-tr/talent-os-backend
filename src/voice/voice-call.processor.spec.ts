@@ -155,6 +155,22 @@ describe('VoiceCallProcessor', () => {
       );
     });
 
+    it('loads screening questions fresh from the DB, ordered by `order`, at dial time', async () => {
+      const { processor, prisma } = makeMocks();
+      await processor.process(makeJob('call'));
+      expect(prisma.voiceCall.findUniqueOrThrow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          include: expect.objectContaining({
+            job: expect.objectContaining({
+              select: expect.objectContaining({
+                screeningQuestions: { orderBy: { order: 'asc' }, select: { text: true } },
+              }),
+            }),
+          }),
+        }),
+      );
+    });
+
     it('finalizes blocked (test mode) rows terminally — no rethrow, no retry', async () => {
       const { processor, prisma, gateway } = makeMocks();
       gateway.startOutboundCall.mockRejectedValue(new VoiceCallBlockedError('blocked_test_mode'));
@@ -267,5 +283,17 @@ describe('ttsSafeJobTitle', () => {
 
   it('returns the trimmed original when stripping would leave nothing', () => {
     expect(ttsSafeJobTitle('(UX/UI)')).toBe('(UX/UI)');
+  });
+});
+
+describe('serializeQuestions — the job↔call contract (spec §4)', () => {
+  it('serializes numbered, in the given order', () => {
+    expect(serializeQuestions([{ text: 'X' }, { text: 'Y' }, { text: 'Z' }])).toBe('1. X\n2. Y\n3. Z');
+  });
+
+  it('empty list → the exact fallback instruction; the agent never invents questions', () => {
+    expect(serializeQuestions([])).toBe(
+      'No specific screening questions were configured — hold a short, friendly general screening conversation about availability and experience.',
+    );
   });
 });
