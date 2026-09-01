@@ -15,6 +15,7 @@ import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
 import { VoiceCallsService } from '../voice/voice-calls.service';
 import { sanitizePgText } from '../common/sanitize-pg-text';
 import { parseShortIdAliases, applyShortIdAliases } from '../config/short-id-aliases';
+import { mergeEnrichment, EnrichmentFields } from './merge-enrichment';
 
 export interface ProcessingContext {
   fullText: string;
@@ -428,20 +429,38 @@ export class IngestionProcessor extends WorkerHost {
       const hiringStageId = matchedJobs.length > 0 ? matchedJobs[0].hiringStages[0]?.id : null;
 
       // Phase 7: Candidate enrichment (CAND-01, D-01, D-02, D-03)
-      // ALWAYS enrich candidate fields, even if no job matched
+      // ALWAYS enrich candidate fields, even if no job matched — but never downgrade a
+      // field that already holds data (mergeEnrichment).
+      const existing = await this.prisma.candidate.findUniqueOrThrow({
+        where: { id: context.candidateId },
+        select: {
+          jobId: true,
+          hiringStageId: true,
+          currentRole: true,
+          yearsExperience: true,
+          location: true,
+          skills: true,
+          cvText: true,
+          cvFileUrl: true,
+          aiSummary: true,
+        },
+      });
+
+      const incoming: EnrichmentFields = {
+        jobId,
+        hiringStageId: hiringStageId ?? null,
+        currentRole: extraction!.current_role ?? null,
+        yearsExperience: extraction!.years_experience ?? null,
+        location: extraction!.location ?? null,
+        skills: extraction!.skills ?? [],
+        cvText: context.cvText,
+        cvFileUrl: context.fileKey, // R2 object key used as URL placeholder in Phase 1 (D-02)
+        aiSummary: extraction!.ai_summary ?? null,
+      };
+
       await this.prisma.candidate.update({
         where: { id: context.candidateId },
-        data: {
-          jobId,
-          hiringStageId,
-          currentRole: extraction!.current_role ?? null,
-          yearsExperience: extraction!.years_experience ?? null,
-          location: extraction!.location ?? null,
-          skills: extraction!.skills ?? [],
-          cvText: context.cvText,
-          cvFileUrl: context.fileKey, // R2 object key used as URL placeholder in Phase 1 (D-02)
-          aiSummary: extraction!.ai_summary ?? null,
-        },
+        data: mergeEnrichment({ ...existing, cvText: existing.cvText ?? '' }, incoming),
       });
     } catch (err) {
       this.pinoLogger.error(
