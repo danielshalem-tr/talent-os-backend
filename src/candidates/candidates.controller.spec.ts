@@ -391,7 +391,8 @@ describe('CandidatesController (Integration Tests)', () => {
           'john',
           undefined,
           undefined,
-          true
+          true,
+          undefined // created_within_days
         );
       });
 
@@ -413,7 +414,8 @@ describe('CandidatesController (Integration Tests)', () => {
           undefined,
           'duplicates',
           undefined,
-          true
+          true,
+          undefined // created_within_days
         );
       });
 
@@ -434,7 +436,8 @@ describe('CandidatesController (Integration Tests)', () => {
           undefined,
           undefined,
           'some-job',
-          true // unassigned=true should be passed
+          true, // unassigned=true should be passed
+          undefined // created_within_days
         );
       });
     });

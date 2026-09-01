@@ -58,6 +58,7 @@ export class CandidatesController {
    * @param q      Optional search query (name, email, role)
    * @param filter  Optional filter: all, duplicates
    * @param job_id  Optional job UUID — filters candidates linked to a specific job (used by Kanban board)
+   * @param created_within_days Optional integer 1–3650 — only candidates created in the last N days
    * @returns Candidates with hiring stage info for Kanban board rendering
    */
   @Get()
@@ -67,10 +68,11 @@ export class CandidatesController {
     @Query('filter') filter?: CandidateFilter,
     @Query('job_id') jobId?: string,
     @Query('unassigned') unassigned?: string,
+    @Query('created_within_days') createdWithinDays?: string,
   ): Promise<{ candidates: CandidateResponse[]; total: number }> {
     const tenantId = req.session!.org;
     const unassignedBool = unassigned === 'true';
-    return this.candidatesService.findAll(tenantId, q, filter, jobId, unassignedBool);
+    return this.candidatesService.findAll(tenantId, q, filter, jobId, unassignedBool, createdWithinDays);
   }
 
   @Get(':id')
