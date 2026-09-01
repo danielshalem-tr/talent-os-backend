@@ -1260,6 +1260,11 @@ from the candidate page. Calls run Sun–Thu 09:00–19:00 Asia/Jerusalem; up to
 4 hours apart. In `test` mode only allowlisted numbers are ever dialed; everything else is
 recorded as `blocked` with no outbound call.
 
+After a completed call, a worker job writes an AI screening-call assessment into the
+candidate's current stage summary (create-only — an existing recruiter note is never
+overwritten) and advances the candidate to the next enabled stage. Failed, unanswered
+and blocked calls are never assessed.
+
 Call `status` values: `scheduled | calling | in_progress | completed | no_answer | blocked | canceled | failed`.
 Roles: `GET` endpoints — any authenticated member. `POST` call/cancel — any role except `viewer`.
 `PUT /voice-control/enabled` — `owner` or `admin` only (403 otherwise).
