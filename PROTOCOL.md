@@ -47,6 +47,7 @@ Fetch candidates with optional search and filtering.
   - `duplicates` — candidates with unreviewed duplicate flags
 - `job_id` (optional): Filter candidates by job UUID (used for Kanban view)
 - `unassigned` (optional): `'true'` — filters candidates not yet assigned to any job
+- `created_within_days` (optional): Integer `1`–`3650`. Returns only candidates created within the last N days. Out-of-range or non-integer values return `400 VALIDATION_ERROR`.
 
 **Response:** `200 OK`
 
@@ -220,6 +221,44 @@ Create a new candidate profile, optionally with a CV file upload.
 
 - `400 Bad Request` — validation failed
 - `500 Internal Server Error` — server error
+
+### `POST /candidates/bulk-assign`
+
+Assign many candidates to one job and AI-score each of them against it.
+
+**Request Body:**
+
+```json
+{
+  "candidate_ids": ["uuid", "uuid"],
+  "job_id": "uuid"
+}
+```
+
+- `candidate_ids`: 1–200 candidate UUIDs. Duplicates are collapsed. Ids that do not exist in the tenant, or whose candidate is not `active`, are silently dropped from the count.
+- `job_id`: UUID of an **open** job with at least one enabled hiring stage.
+
+**Behavior:**
+
+- Work runs asynchronously on the `candidate-assign` queue — one queued job per candidate. The response returns as soon as the work is queued; the client refreshes the list afterwards.
+- Per candidate: upserts the Application, sets `candidate.job_id`, and scores the candidate against the job (`CandidateJobScore` + denormalized `candidates.ai_score`).
+- A sticky recruiter override (`is_score_overridden = true`) is respected — the per-job score row is still written, the denormalized `ai_score` is not.
+- **Stage placement is initial-only.** A stage is set only when the candidate has no stage on the target job. An existing stage is never moved or downgraded, so a voice-screening auto-advance always wins.
+- Candidates already assigned to another job are reassigned to `job_id`.
+- Idempotent: re-sending the same body re-runs scoring but changes nothing else.
+
+**Response:** `202 Accepted`
+
+```json
+{ "queued": 12 }
+```
+
+`queued` is the number of candidates actually queued, which may be lower than `candidate_ids.length`.
+
+**Errors:**
+
+- `400 Bad Request` — `VALIDATION_ERROR` (empty list, more than 200 ids, malformed UUID), `JOB_NOT_OPEN`, `NO_STAGES`
+- `404 Not Found` — job not found in this tenant
 
 ### `GET /candidates/:id/cv-url`
 
