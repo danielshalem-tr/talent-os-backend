@@ -51,17 +51,19 @@ function makeMocks(rowOverrides: Record<string, any> = {}) {
   };
   const queue = { add: jest.fn().mockResolvedValue({}) };
   const voiceResults = { finalizeFromTranscription: jest.fn().mockResolvedValue(undefined) };
+  const voiceAssessment = { assessCall: jest.fn().mockResolvedValue(undefined) };
   const storage = { uploadVoiceAudio: jest.fn().mockResolvedValue(`calls/${TENANT}/vc1/audio.mp3`) };
   const pinoLogger = { log: jest.fn(), warn: jest.fn(), error: jest.fn() };
   const processor = new VoiceCallProcessor(
     prisma as any,
     gateway as any,
     voiceResults as any,
+    voiceAssessment as any,
     storage as any,
     queue as any,
     pinoLogger as any,
   );
-  return { prisma, gateway, queue, voiceResults, storage, processor };
+  return { prisma, gateway, queue, voiceResults, voiceAssessment, storage, processor };
 }
 
 describe('VoiceCallProcessor', () => {
@@ -271,6 +273,14 @@ describe('VoiceCallProcessor', () => {
       });
       await processor.process(makeJob('audio'));
       expect(storage.uploadVoiceAudio).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('assess job', () => {
+    it('delegates to VoiceAssessmentService (errors propagate → BullMQ retries)', async () => {
+      const { processor, voiceAssessment } = makeMocks();
+      await processor.process(makeJob('assess'));
+      expect(voiceAssessment.assessCall).toHaveBeenCalledWith('vc1');
     });
   });
 });
