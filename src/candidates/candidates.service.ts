@@ -63,6 +63,7 @@ export class CandidatesService {
     filter?: CandidateFilter,
     jobId?: string,
     unassigned?: boolean,
+    createdWithinDays?: string,
   ): Promise<{ candidates: CandidateResponse[]; total: number }> {
     // Validate filter parameter — only 'all' and 'duplicates' are supported
     // (C-4 fix: prevents silent failures from removed filters like 'high-score', 'available', 'referred')
@@ -87,6 +88,21 @@ export class CandidatesService {
 
     // Always use positive match for better index friendliness
     where.status = 'active';
+
+    // ── filter by entry date ───────────────────────────────────────
+    // Raw query string in, validated here: the talent pool sends 7 / 14 / 30.
+    if (createdWithinDays !== undefined && createdWithinDays !== '') {
+      const days = Number(createdWithinDays);
+      if (!Number.isInteger(days) || days < 1 || days > 3650) {
+        throw new BadRequestException({
+          error: {
+            code: 'VALIDATION_ERROR',
+            message: 'created_within_days must be an integer between 1 and 3650',
+          },
+        });
+      }
+      where.createdAt = { gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) };
+    }
 
     if (q) {
       where.OR = [

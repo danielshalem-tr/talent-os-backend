@@ -447,6 +447,33 @@ describe('CandidatesService', () => {
 
     expect(result.candidates[0].is_duplicate).toBe(false);
   });
+
+  // Test 9: created_within_days → WHERE createdAt.gte is N days ago
+  it('filters by created_within_days', async () => {
+    prismaMock.candidate.findMany.mockResolvedValue([]);
+
+    await service.findAll(TENANT_ID, undefined, undefined, undefined, false, '7');
+
+    const where = prismaMock.candidate.findMany.mock.calls[0][0].where;
+    expect(where.createdAt.gte).toBeInstanceOf(Date);
+    const ageMs = Date.now() - where.createdAt.gte.getTime();
+    expect(ageMs).toBeGreaterThan(6.9 * 24 * 60 * 60 * 1000);
+    expect(ageMs).toBeLessThan(7.1 * 24 * 60 * 60 * 1000);
+  });
+
+  it('ignores an absent or blank created_within_days', async () => {
+    prismaMock.candidate.findMany.mockResolvedValue([]);
+
+    await service.findAll(TENANT_ID, undefined, undefined, undefined, false, '');
+
+    expect(prismaMock.candidate.findMany.mock.calls[0][0].where.createdAt).toBeUndefined();
+  });
+
+  it.each(['0', '-3', 'abc', '2.5', '99999'])('rejects created_within_days=%s', async (value) => {
+    await expect(service.findAll(TENANT_ID, undefined, undefined, undefined, false, value)).rejects.toThrow(
+      BadRequestException,
+    );
+  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
