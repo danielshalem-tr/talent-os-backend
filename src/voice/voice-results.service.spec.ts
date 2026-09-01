@@ -89,7 +89,9 @@ describe('VoiceResultsService', () => {
       expect(queue.add).toHaveBeenCalledWith(
         'assess',
         { voiceCallId: 'vc1' },
-        expect.objectContaining({ jobId: 'assess-vc1' }),
+        // removeOnFail: an exhausted assess job must free its jobId so a later
+        // redelivery or watchdog poll can re-enqueue it.
+        expect.objectContaining({ jobId: 'assess-vc1', removeOnFail: true }),
       );
     });
 

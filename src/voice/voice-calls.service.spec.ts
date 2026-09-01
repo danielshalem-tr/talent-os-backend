@@ -126,6 +126,38 @@ describe('VoiceCallsService', () => {
         }),
       );
     });
+
+    it('places ONE call for the best-scoring eligible job — never rings the same person per job', async () => {
+      const { svc, prisma } = makeMocks();
+      const JOB2 = '44444444-4444-4444-4444-444444444444';
+      const JOB3 = '55555555-5555-5555-5555-555555555555';
+      prisma.job.findMany.mockResolvedValue([
+        { id: JOB, voiceScreeningEnabled: true, voiceMinScore: 70 },
+        { id: JOB2, voiceScreeningEnabled: true, voiceMinScore: 70 },
+        { id: JOB3, voiceScreeningEnabled: true, voiceMinScore: 70 },
+      ]);
+      await svc.scheduleAutoCalls({
+        tenantId: TENANT,
+        candidateId: CAND,
+        jobScores: [
+          { jobId: JOB, score: 75 },
+          { jobId: JOB2, score: 93 },
+          { jobId: JOB3, score: 88 },
+        ],
+      });
+      expect(prisma.voiceCall.create).toHaveBeenCalledTimes(1);
+      expect(prisma.voiceCall.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ jobId: JOB2 }) }),
+      );
+    });
+
+    it('schedules nothing when the candidate already has an active call for ANY job', async () => {
+      const { svc, prisma } = makeMocks();
+      prisma.job.findMany.mockResolvedValue([{ id: JOB, voiceScreeningEnabled: true, voiceMinScore: 70 }]);
+      prisma.voiceCall.findFirst.mockResolvedValue({ id: 'already-calling' });
+      await svc.scheduleAutoCalls({ tenantId: TENANT, candidateId: CAND, jobScores: [{ jobId: JOB, score: 99 }] });
+      expect(prisma.voiceCall.create).not.toHaveBeenCalled();
+    });
   });
 
   describe('triggerManualCall', () => {

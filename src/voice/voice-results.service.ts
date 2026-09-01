@@ -95,19 +95,24 @@ export class VoiceResultsService {
       },
     });
 
-    // Hand off to the worker: AI assessment + stage write + advance (spec §5). Never in the
-    // webhook request path; jobId dedup makes webhook redeliveries and watchdog races no-ops.
-    await this.voiceQueue.add('assess', { voiceCallId: row.id } satisfies VoiceCallJobData, {
-      jobId: `assess-${row.id}`,
-      ...VOICE_JOB_OPTS,
-    });
-
     if (data.has_audio !== false) {
       await this.voiceQueue.add('audio', { voiceCallId: row.id } satisfies VoiceCallJobData, {
         jobId: `audio-${row.id}`, // BullMQ ignores adds whose jobId already exists → redelivery-safe
         ...VOICE_JOB_OPTS,
       });
     }
+
+    // Hand off to the worker: AI assessment + stage write + advance (spec §5). Never in the
+    // webhook request path; jobId dedup makes webhook redeliveries and watchdog races no-ops.
+    // Enqueued LAST so a Redis hiccup here cannot cost us the recording.
+    await this.voiceQueue.add('assess', { voiceCallId: row.id } satisfies VoiceCallJobData, {
+      jobId: `assess-${row.id}`,
+      ...VOICE_JOB_OPTS,
+      // Overrides VOICE_JOB_OPTS' retained failed set: a kept `assess-{id}` would make every
+      // later add a silent no-op (BullMQ rejects duplicate ids), so an OpenRouter outage would
+      // lose the assessment permanently. Dropping it lets the watchdog / a redelivery retry.
+      removeOnFail: true,
+    });
   }
 
   /** busy / no-answer → no_answer (+retry while attempts remain); anything else → failed. */
