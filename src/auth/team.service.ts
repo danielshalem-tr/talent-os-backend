@@ -181,7 +181,7 @@ export class TeamService {
     if (target.role === 'owner') {
       throw new ForbiddenException('Cannot remove another Owner');
     }
-    // Soft delete: immediately revokes access on next request
+    // Soft delete. SessionGuard checks isActive per request, so access is revoked immediately.
     await this.prisma.user.update({ where: { id: targetUserId }, data: { isActive: false } });
   }
 }

@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { JwtService, JwtPayload } from './jwt.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { IS_PUBLIC_KEY } from '../common/decorators/public.decorator';
 
 // Augment Express Request so TypeScript accepts request['session']
@@ -16,6 +17,7 @@ export class SessionGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly reflector: Reflector,
+    private readonly prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -35,7 +37,21 @@ export class SessionGuard implements CanActivate {
     if (!token) throw new UnauthorizedException('No session cookie');
     // JwtService.verify() throws UnauthorizedException on invalid/expired token
     const payload = await this.jwtService.verify(token);
-    request.session = payload;
+
+    // Re-read the user per request: a deactivated user or a changed role must take effect
+    // immediately, not when the 7-day cookie expires. The JWT proves identity (sub);
+    // isActive/role/org are always taken fresh from the DB.
+    const user = await this.prisma.user.findUnique({
+      where: { id: payload.sub },
+      select: { isActive: true, role: true, organizationId: true },
+    });
+    if (!user || !user.isActive) throw new UnauthorizedException('Session revoked');
+
+    request.session = {
+      sub: payload.sub,
+      org: user.organizationId,
+      role: user.role as JwtPayload['role'],
+    };
     return true;
   }
 }
