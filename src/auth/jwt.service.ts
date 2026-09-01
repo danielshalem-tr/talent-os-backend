@@ -29,15 +29,11 @@ export class JwtService {
 
   async verify(token: string): Promise<JwtPayload> {
     try {
-      const { payload } = await jwtVerify(token, this.secret);
+      const { payload } = await jwtVerify(token, this.secret, { algorithms: ['HS256'] });
       return payload as unknown as JwtPayload;
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
-  }
-
-  signAccessToken(payload: JwtPayload): Promise<string> {
-    return this.sign(payload, '15m');
   }
 
   signRefreshToken(payload: JwtPayload): Promise<string> {

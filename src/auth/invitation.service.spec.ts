@@ -219,6 +219,20 @@ describe('InvitationService', () => {
     expect(emailService.sendMagicLinkEmail).toHaveBeenCalledWith('user@example.com', expect.any(String));
   });
 
+  it('resolves before the magic-link email send completes (timing-oracle fix)', async () => {
+    (prisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'u1' });
+    mockRedis.set.mockResolvedValue('OK');
+    let resolveSend!: () => void;
+    (emailService.sendMagicLinkEmail as jest.Mock).mockReturnValue(
+      new Promise<void>((r) => {
+        resolveSend = r;
+      }),
+    );
+    await service.generateAndStoreMagicLink('daniel.s@triolla.io'); // must NOT wait for SMTP
+    expect(emailService.sendMagicLinkEmail).toHaveBeenCalled();
+    resolveSend();
+  });
+
   // ─── verifyMagicLink ───────────────────────────────────────────────────────
 
   it('Test 7: verifyMagicLink returns "not_found" for unknown token (key not found in Redis)', async () => {

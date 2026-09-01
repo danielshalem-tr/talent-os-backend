@@ -1,4 +1,4 @@
-import { ConflictException, GoneException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, GoneException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'crypto';
 import Redis from 'ioredis';
@@ -9,6 +9,7 @@ import { AuthService, MeResponse } from './auth.service';
 
 @Injectable()
 export class InvitationService {
+  private readonly logger = new Logger(InvitationService.name);
   private readonly redis: Redis;
 
   constructor(
@@ -32,7 +33,11 @@ export class InvitationService {
     const token = randomBytes(32).toString('hex'); // D-06: cryptographically random
     const redisKey = `ml:${token}`;
     await this.redis.set(redisKey, user.id, 'EX', 3600); // D-06: TTL 3600s
-    await this.emailService.sendMagicLinkEmail(email, token);
+    // Fire-and-forget: awaiting SMTP here made known-vs-unknown emails distinguishable by
+    // response time, defeating the always-200 anti-enumeration contract (T-19-11).
+    void this.emailService.sendMagicLinkEmail(email, token).catch((err: unknown) => {
+      this.logger.error(`Failed to send magic link email: ${err instanceof Error ? err.message : String(err)}`);
+    });
   }
 
   /**

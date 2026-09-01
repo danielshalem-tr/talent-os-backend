@@ -61,16 +61,6 @@ describe('JwtService', () => {
     await expect(service.verify(tampered)).rejects.toThrow(UnauthorizedException);
   });
 
-  it('signAccessToken() produces a token with ~15m expiry', async () => {
-    const before = Math.floor(Date.now() / 1000);
-    const token = await service.signAccessToken(mockPayload);
-    const decoded = await service.verify(token);
-    const exp = (decoded as any).exp as number;
-    // exp should be approximately 15 minutes from now (900 seconds)
-    expect(exp).toBeGreaterThan(before + 890);
-    expect(exp).toBeLessThan(before + 910);
-  });
-
   it('signRefreshToken() produces a token with ~7d expiry', async () => {
     const before = Math.floor(Date.now() / 1000);
     const token = await service.signRefreshToken(mockPayload);

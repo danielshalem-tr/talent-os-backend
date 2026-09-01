@@ -31,7 +31,9 @@ function setSessionCookie(res: express.Response, token: string): void {
     sameSite: 'lax',
     path: '/',
     maxAge: SESSION_MAX_AGE,
-    secure: process.env.NODE_ENV === 'production',
+    // Not NODE_ENV alone: a deploy that leaks NODE_ENV=development must not ship a
+    // non-Secure cookie over an HTTPS frontend.
+    secure: process.env.NODE_ENV === 'production' || (process.env.FRONTEND_URL ?? '').startsWith('https://'),
   });
 }
 
