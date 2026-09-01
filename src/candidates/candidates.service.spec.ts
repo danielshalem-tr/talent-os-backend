@@ -65,6 +65,8 @@ describe('CandidatesService', () => {
   let service: CandidatesService;
   // Broadened so per-test cases can attach findFirst/update/updateMany, job, $transaction, etc.
   let prismaMock: Record<string, any>;
+  // Exposed so the assignment tests can assert WHEN scoring runs relative to the transaction.
+  let scoringMock: { score: jest.Mock };
 
   beforeEach(async () => {
     prismaMock = {
@@ -72,13 +74,15 @@ describe('CandidatesService', () => {
         findMany: jest.fn(),
       },
     };
+    const scoreResult = { score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' };
+    scoringMock = { score: jest.fn().mockResolvedValue(scoreResult) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CandidatesService,
         { provide: PrismaService, useValue: prismaMock },
         { provide: StorageService, useValue: { uploadFromBuffer: jest.fn().mockResolvedValue('cvs/t/cand-1.pdf') } },
-        { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' }) } },
+        { provide: ScoringAgentService, useValue: scoringMock },
         { provide: CandidateAiService, useValue: { generateSummary: jest.fn().mockResolvedValue('New summary') } },
         { provide: AttachmentExtractorService, useValue: { extract: jest.fn().mockResolvedValue('Extracted CV text') } },
       ],
@@ -111,38 +115,159 @@ describe('CandidatesService', () => {
     });
   });
 
-  describe('reassignment sticky score', () => {
-    it('guards the denormalized aiScore write with isScoreOverridden: false', async () => {
-      const updateMany = jest.fn().mockResolvedValue({ count: 0 });
+  describe('job assignment scoring', () => {
+    // Builds the mocks for one updateCandidate() assignment. `order` records when the
+    // transaction commits, when the scorer runs, and every candidate read, so tests can pin
+    // scoring OUTSIDE the transaction and still BEFORE the response is built.
+    // `existingApplicationJobIds` makes the fake application table behave like Postgres does
+    // under idx_applications_unique(tenantId, candidateId, jobId).
+    function setupAssignment(opts: {
+      fromJobId: string | null;
+      cvText: string | null;
+      overridden?: boolean;
+      existingApplicationJobIds?: string[];
+    }) {
+      const order: string[] = [];
+      const existing = new Set(opts.existingApplicationJobIds ?? []);
+
+      const create = jest.fn((args: { data: { jobId: string } }) => {
+        if (existing.has(args.data.jobId)) {
+          // Shape of the Prisma unique-violation the real client throws.
+          const err = Object.assign(new Error('Unique constraint failed'), { code: 'P2002' });
+          return Promise.reject(err);
+        }
+        existing.add(args.data.jobId);
+        return Promise.resolve({ id: 'app-1' });
+      });
+      const upsert = jest.fn((args: { create: { jobId: string } }) => {
+        existing.add(args.create.jobId);
+        return Promise.resolve({ id: 'app-1' });
+      });
       const tx = {
-        application: {
-          create: jest.fn().mockResolvedValue({ id: 'app-1' }),
-          findFirst: jest.fn().mockResolvedValue({ id: 'app-1' }),
-        },
-        candidate: {
-          update: jest.fn().mockResolvedValue({}),
-          updateMany,
-        },
-        candidateJobScore: { create: jest.fn().mockResolvedValue({}) },
+        application: { create, upsert },
+        candidate: { update: jest.fn().mockResolvedValue({}) },
       };
-      // Drive the reassignment branch: existing job differs from dto.job_id.
-      prismaMock.candidate.findFirst = jest
-        .fn()
-        .mockResolvedValue(mockCandidate({ jobId: 'old-job', isScoreOverridden: true, cvText: 'cv' }));
+
+      prismaMock.candidate.findFirst = jest.fn(() => {
+        order.push('candidate-read');
+        return Promise.resolve(
+          mockCandidate({
+            jobId: opts.fromJobId,
+            hiringStageId: opts.fromJobId ? 'stage-old' : null,
+            cvText: opts.cvText,
+            isScoreOverridden: opts.overridden ?? false,
+          }),
+        );
+      });
+      prismaMock.candidate.updateMany = jest.fn().mockResolvedValue({ count: 1 });
       prismaMock.jobStage = { findFirst: jest.fn().mockResolvedValue({ id: 'stage-1' }) };
       prismaMock.job = {
         findFirst: jest.fn().mockResolvedValue({ id: 'new-job', title: 'Dev', description: 'd', mustHaveSkills: [] }),
       };
-      prismaMock.$transaction = jest.fn(async (cb: (t: typeof tx) => unknown) => cb(tx));
+      prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app-1' }) };
+      prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };
+      prismaMock.$transaction = jest.fn(async (cb: (t: typeof tx) => unknown) => {
+        const result = await cb(tx);
+        order.push('tx-commit');
+        return result;
+      });
+      scoringMock.score.mockImplementation(() => {
+        order.push('score');
+        return Promise.resolve({ score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' });
+      });
 
-      await service.updateCandidate('cand-1', { job_id: 'new-job' } as never, TENANT_ID).catch(() => undefined);
+      return { tx, order };
+    }
 
-      // The denormalized write must be an updateMany scoped to isScoreOverridden: false.
-      expect(updateMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({ isScoreOverridden: false }),
-          data: expect.objectContaining({ aiScore: expect.any(Number) }),
-        }),
+    it('scores the candidate when a job is assigned for the first time', async () => {
+      setupAssignment({ fromJobId: null, cvText: 'real cv text' });
+
+      await service.updateCandidate('cand-1', { job_id: 'new-job' } as never, TENANT_ID);
+
+      expect(prismaMock.candidateJobScore.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({ create: expect.objectContaining({ applicationId: 'app-1', score: 75 }) }),
+      );
+      expect(prismaMock.candidate.updateMany).toHaveBeenCalledWith({
+        where: { id: 'cand-1', isScoreOverridden: false },
+        data: { aiScore: 75 },
+      });
+    });
+
+    it('runs the scorer only after the assignment transaction has committed', async () => {
+      // The scorer is a network call to an LLM. Prisma interactive transactions time out at 5s
+      // by default, so scoring inside one rolls the assignment back and holds a row lock plus a
+      // pool connection for the whole call.
+      const { order } = setupAssignment({ fromJobId: null, cvText: 'real cv text' });
+
+      await service.updateCandidate('cand-1', { job_id: 'new-job' } as never, TENANT_ID);
+
+      expect(order.filter((step) => step !== 'candidate-read')).toEqual(['tx-commit', 'score']);
+    });
+
+    it('runs the scorer outside the transaction on reassignment too', async () => {
+      const { order } = setupAssignment({ fromJobId: 'old-job', cvText: 'real cv text' });
+
+      await service.updateCandidate('cand-1', { job_id: 'new-job' } as never, TENANT_ID);
+
+      expect(order.filter((step) => step !== 'candidate-read')).toEqual(['tx-commit', 'score']);
+    });
+
+    it('reassigns to a job the candidate already has an application for', async () => {
+      // Ingestion upserts an Application for EVERY matched job while candidate.jobId points at
+      // only the primary one, so this row already exists. `create` here trips
+      // idx_applications_unique -> P2002 -> 500 and the assignment is lost.
+      setupAssignment({
+        fromJobId: 'old-job',
+        cvText: 'real cv text',
+        existingApplicationJobIds: ['old-job', 'new-job'],
+      });
+
+      await expect(service.updateCandidate('cand-1', { job_id: 'new-job' } as never, TENANT_ID)).resolves.toBeDefined();
+    });
+
+    it('attaches the score to the application for THIS job, not any application', async () => {
+      setupAssignment({ fromJobId: null, cvText: 'real cv text' });
+
+      await service.updateCandidate('cand-1', { job_id: 'new-job' } as never, TENANT_ID);
+
+      // A candidate can hold applications on several jobs; the lookup must be pinned to the
+      // job just assigned or the score lands on an arbitrary one.
+      expect(prismaMock.application.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { candidateId: 'cand-1', jobId: 'new-job', tenantId: TENANT_ID } }),
+      );
+    });
+
+    it('finishes scoring before building the response', async () => {
+      // Guards against fire-and-forget: `void scoreNewAssignment(...)` would still satisfy the
+      // ordering test above while returning ai_score: null to the UI.
+      const { order } = setupAssignment({ fromJobId: null, cvText: 'real cv text' });
+
+      await service.updateCandidate('cand-1', { job_id: 'new-job' } as never, TENANT_ID);
+
+      expect(order).toEqual(['candidate-read', 'tx-commit', 'score', 'candidate-read']);
+    });
+
+    it('assigns without scoring when the candidate has no CV text', async () => {
+      // Matches assignCandidateToJob: no CV means nothing to score against, and a fabricated
+      // score is worse than none. The assignment itself must still stand.
+      const { tx } = setupAssignment({ fromJobId: null, cvText: '   ' });
+
+      await service.updateCandidate('cand-1', { job_id: 'new-job' } as never, TENANT_ID);
+
+      expect(scoringMock.score).not.toHaveBeenCalled();
+      expect(prismaMock.candidateJobScore.upsert).not.toHaveBeenCalled();
+      expect(tx.candidate.update).toHaveBeenCalled();
+    });
+
+    it('guards the denormalized aiScore write with isScoreOverridden: false', async () => {
+      setupAssignment({ fromJobId: 'old-job', cvText: 'real cv text', overridden: true });
+
+      await service.updateCandidate('cand-1', { job_id: 'new-job' } as never, TENANT_ID);
+
+      // The where-clause is the guard: it makes the skip atomic, so assert the clause itself
+      // rather than the (mocked) row count.
+      expect(prismaMock.candidate.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ isScoreOverridden: false }) }),
       );
     });
   });

@@ -15,7 +15,7 @@ import { UpdateCandidateDto } from './dto/update-candidate.dto';
 import { StageSummaryDto } from './dto/stage-summary.dto';
 import { RejectCandidateDto } from './dto/reject-candidate.dto';
 import { CandidateResponse, computeCvReadable } from './dto/candidate-response.dto';
-import { Prisma } from '@prisma/client';
+import { Candidate, Prisma } from '@prisma/client';
 import { CandidateAiService } from './candidate-ai.service';
 import { ScoringAgentService } from '../scoring/scoring.service';
 import { AttachmentExtractorService } from '../ingestion/services/attachment-extractor.service';
@@ -326,6 +326,86 @@ export class CandidatesService {
     };
   }
 
+  /**
+   * Score a candidate against the job they were just attached to.
+   *
+   * Shared by both assignment branches of {@link updateCandidate} — a first assignment and a
+   * reassignment must leave the candidate in the same state, and keeping one copy is what stops
+   * them drifting apart again (they did: the initial branch shipped without scoring at all).
+   *
+   * MUST be called AFTER the assignment transaction has committed, never inside it. `score()` is
+   * an LLM round-trip; Prisma's interactive transactions time out at 5s by default, so scoring
+   * inside one rolls the whole assignment back and holds a candidate row lock plus a pool
+   * connection for the duration. Every other scoring path here (ingestion, bulk assign, manual
+   * rescore) writes outside a transaction for the same reason.
+   *
+   * Non-blocking per D-21: a scoring failure is logged and swallowed — the assignment stands.
+   */
+  private async scoreNewAssignment(args: {
+    candidateId: string;
+    tenantId: string;
+    jobId: string;
+    candidate: Pick<Candidate, 'cvText' | 'currentRole' | 'yearsExperience' | 'skills'>;
+    dto: UpdateCandidateDto;
+    job: { title: string; description: string | null; mustHaveSkills: string[] };
+  }): Promise<void> {
+    const { candidateId, tenantId, jobId, candidate, dto, job } = args;
+
+    // No CV means nothing to score against. The scorer would still answer — it is told to score
+    // "conservatively" on thin input — and that invented number is worse than an empty score.
+    // assignCandidateToJob makes the same call (outcome: 'assigned_not_scored').
+    const cvText = candidate.cvText?.trim() ?? '';
+    if (cvText === '') return;
+
+    try {
+      const scoreResult = await this.scoringAgent.score({
+        cvText,
+        candidateFields: {
+          currentRole: dto.current_role ?? candidate.currentRole,
+          yearsExperience: dto.years_experience ?? candidate.yearsExperience,
+          skills: candidate.skills,
+        },
+        job: {
+          title: job.title,
+          description: job.description || '',
+          requirements: job.mustHaveSkills || [],
+        },
+      });
+
+      // The application the transaction just created/moved is what the score hangs off.
+      const application = await this.prisma.application.findFirst({
+        where: { candidateId, jobId, tenantId },
+        select: { id: true },
+      });
+      if (!application) return;
+
+      // upsert, not create: re-assigning to the same job must overwrite rather than trip the
+      // unique index — a swallowed P2002 here would look exactly like the unscored bug.
+      const scoreFields = {
+        score: scoreResult.score,
+        reasoning: scoreResult.reasoning,
+        strengths: scoreResult.strengths,
+        gaps: scoreResult.gaps,
+        modelUsed: scoreResult.modelUsed,
+      };
+      await this.prisma.candidateJobScore.upsert({
+        where: { idx_scores_unique_per_app: { tenantId, applicationId: application.id } },
+        create: { tenantId, applicationId: application.id, ...scoreFields },
+        update: scoreFields,
+      });
+
+      // Denormalized aiScore — skipped while a recruiter override is sticky (TO-58).
+      // updateMany makes the guard atomic (no separate read).
+      await this.prisma.candidate.updateMany({
+        where: { id: candidateId, isScoreOverridden: false },
+        data: { aiScore: scoreResult.score },
+      });
+    } catch (err) {
+      this.logger.warn(`Scoring failed during job assignment for candidate ${candidateId}: ${err.message}`);
+      // Continue — do not block the assignment
+    }
+  }
+
   async updateCandidate(candidateId: string, dto: UpdateCandidateDto, tenantId: string): Promise<CandidateResponse> {
     const candidate = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
@@ -375,15 +455,24 @@ export class CandidatesService {
         }
 
         await this.prisma.$transaction(async (tx) => {
-          // 1. Create new Application
-          await tx.application.create({
-            data: {
+          // 1. Application row. upsert, not create: ingestion writes an Application for EVERY
+          //    matched job while candidate.jobId names only the primary one, so the row for the
+          //    target job often already exists. create() would trip idx_applications_unique and
+          //    fail the whole assignment with a 500.
+          //    Unlike assignCandidateToJob (which preserves an existing stage so voice
+          //    auto-advance wins), this path rewrites jobStageId: step 2 below resets
+          //    candidate.hiringStageId unconditionally, and the kanban (which reads the
+          //    candidate) must not disagree with voice assess (which reads the application).
+          await tx.application.upsert({
+            where: { idx_applications_unique: { tenantId, candidateId, jobId: dto.job_id! } },
+            create: {
               tenantId,
               candidateId,
               jobId: dto.job_id!,
               stage: 'new',
               jobStageId: firstStage.id,
             },
+            update: { jobStageId: firstStage.id },
           });
 
           // 2. Update Candidate
@@ -395,53 +484,10 @@ export class CandidatesService {
               hiringStageId: firstStage.id,
             },
           });
-
-          // 3. Score (non-blocking per D-21)
-          try {
-            const scoreResult = await this.scoringAgent.score({
-              cvText: candidate.cvText || '',
-              candidateFields: {
-                currentRole: dto.current_role ?? candidate.currentRole,
-                yearsExperience: dto.years_experience ?? candidate.yearsExperience,
-                skills: candidate.skills,
-              },
-              job: {
-                title: job.title,
-                description: job.description || '',
-                requirements: job.mustHaveSkills || [],
-              },
-            });
-
-            // Get the application we just created to attach scores
-            const newApp = await tx.application.findFirst({
-              where: { candidateId, jobId: dto.job_id, tenantId },
-            });
-
-            if (newApp) {
-              await tx.candidateJobScore.create({
-                data: {
-                  tenantId,
-                  applicationId: newApp.id,
-                  score: scoreResult.score,
-                  reasoning: scoreResult.reasoning,
-                  strengths: scoreResult.strengths,
-                  gaps: scoreResult.gaps,
-                  modelUsed: scoreResult.modelUsed,
-                },
-              });
-
-              // Update denormalized aiScore on candidate — skip when a human override is sticky (TO-58).
-              // updateMany makes the guard atomic (no separate read).
-              await tx.candidate.updateMany({
-                where: { id: candidateId, isScoreOverridden: false },
-                data: { aiScore: scoreResult.score },
-              });
-            }
-          } catch (err) {
-            this.logger.warn(`Scoring failed during reassignment: ${err.message}`);
-            // Continue — do not block reassignment
-          }
         });
+
+        // 3. Score — outside the transaction, see scoreNewAssignment.
+        await this.scoreNewAssignment({ candidateId, tenantId, jobId: dto.job_id, candidate, dto, job });
 
         return this.findOne(candidateId, tenantId);
       } else {
@@ -458,7 +504,7 @@ export class CandidatesService {
 
         const job = await this.prisma.job.findFirst({
           where: { id: dto.job_id, tenantId },
-          select: { title: true },
+          select: { id: true, title: true, description: true, mustHaveSkills: true },
         });
 
         let newAiSummary = candidate.aiSummary;
@@ -478,15 +524,17 @@ export class CandidatesService {
         }
 
         await this.prisma.$transaction(async (tx) => {
-          // 1. Create mapping application
-          await tx.application.create({
-            data: {
+          // 1. Mapping application — upsert for the same reason as the reassignment branch above.
+          await tx.application.upsert({
+            where: { idx_applications_unique: { tenantId, candidateId, jobId: dto.job_id! } },
+            create: {
               tenantId,
               candidateId,
               jobId: dto.job_id!,
               stage: 'new',
               jobStageId: firstStage.id,
             },
+            update: { jobStageId: firstStage.id },
           });
           // 2. Update candidate tracking fields explicitly setting stage to satisfy integrity constraint
           await tx.candidate.update({
@@ -498,6 +546,13 @@ export class CandidatesService {
             },
           });
         });
+
+        // 3. Score — outside the transaction, see scoreNewAssignment. A first assignment must
+        // land in the pipeline scored exactly like a reassignment does; without this the
+        // candidate sits at ai_score: null until someone triggers a manual rescore.
+        if (job) {
+          await this.scoreNewAssignment({ candidateId, tenantId, jobId: dto.job_id, candidate, dto, job });
+        }
 
         return this.findOne(candidateId, tenantId); // Early return post transaction
       }
