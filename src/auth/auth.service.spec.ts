@@ -247,7 +247,7 @@ describe('AuthService', () => {
 
     it('attaches a new allowed-domain user to the TENANT_ID org as member', async () => {
       (mockPrisma.user.findFirst as jest.Mock).mockResolvedValue(null);
-      (mockPrisma.organization.findUniqueOrThrow as jest.Mock).mockResolvedValue({ ...mockOrg, id: 'tenant-1' });
+      (mockPrisma.organization.findUnique as jest.Mock).mockResolvedValue({ ...mockOrg, id: 'tenant-1' });
       (mockPrisma.user.create as jest.Mock).mockResolvedValue({
         ...mockUser,
         id: 'u9',

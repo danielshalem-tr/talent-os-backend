@@ -94,6 +94,24 @@ describe('envSchema', () => {
   });
 });
 
+describe('AUTH_ALLOWED_DOMAINS / TENANT_ID pairing', () => {
+  it('api schema throws at boot when AUTH_ALLOWED_DOMAINS is set without TENANT_ID', () => {
+    const { TENANT_ID, ...noTenant } = validEnv;
+    expect(() => apiEnvSchema.parse({ ...noTenant, AUTH_ALLOWED_DOMAINS: 'triolla.io' })).toThrow();
+  });
+
+  it('api schema accepts AUTH_ALLOWED_DOMAINS with TENANT_ID, and unset with or without TENANT_ID', () => {
+    expect(() => apiEnvSchema.parse({ ...validEnv, AUTH_ALLOWED_DOMAINS: 'triolla.io' })).not.toThrow();
+    const { TENANT_ID, ...noTenant } = validEnv;
+    expect(() => apiEnvSchema.parse(noTenant)).not.toThrow();
+  });
+
+  it('worker base schema does not enforce the pairing (it never runs googleVerify)', () => {
+    const { TENANT_ID, ...noTenant } = validEnv;
+    expect(() => envSchema.parse({ ...noTenant, AUTH_ALLOWED_DOMAINS: 'triolla.io' })).not.toThrow();
+  });
+});
+
 describe('apiEnvSchema PM-Bridge smart-intake vars', () => {
   it('requires JIRA_DEFAULT_ASSIGNEE_ACCOUNT_ID and a ≥32-char PM_HOLD_TOKEN_SECRET, defaults the notify email', () => {
     const { JIRA_DEFAULT_ASSIGNEE_ACCOUNT_ID, PM_HOLD_TOKEN_SECRET, ...missing } = validEnv;

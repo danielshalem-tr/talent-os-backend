@@ -145,9 +145,13 @@ export class AuthService {
       // Single-tenant mode: never create orgs — attach the new user to the TENANT_ID org.
       const tenantId = this.configService.get<string>('TENANT_ID');
       if (!tenantId) {
+        // Also enforced at boot (env.ts superRefine); kept as a request-time backstop.
         throw new Error('AUTH_ALLOWED_DOMAINS is set but TENANT_ID is not — cannot attach new users');
       }
-      const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: tenantId } });
+      const org = await this.prisma.organization.findUnique({ where: { id: tenantId } });
+      if (!org) {
+        throw new Error(`TENANT_ID ${tenantId} has no matching organizations row — cannot attach new users`);
+      }
       const user = await this.prisma.user.create({
         data: {
           email,

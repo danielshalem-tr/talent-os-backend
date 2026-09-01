@@ -87,26 +87,46 @@ export const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
+// Domain-restricted Google login attaches new users to the TENANT_ID org, so the pair must be
+// configured together. Enforced at boot on the processes that run googleVerify (API + MCP) —
+// a request-time failure here would mean every new-user login 500s while the app looks healthy.
+const requireTenantWithAllowedDomains = (
+  env: { AUTH_ALLOWED_DOMAINS?: string; TENANT_ID?: string },
+  ctx: z.RefinementCtx,
+) => {
+  if ((env.AUTH_ALLOWED_DOMAINS ?? '').trim().length > 0 && !env.TENANT_ID) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['TENANT_ID'],
+      message: 'AUTH_ALLOWED_DOMAINS is set but TENANT_ID is not — new allowed users have no org to join',
+    });
+  }
+};
+
 // API-process schema. PM Bridge runs only in the API, so Jira credentials are required there:
 // the API fails fast at startup if they're missing. The worker validates against the base
 // envSchema above and therefore boots without any Jira configuration.
-export const apiEnvSchema = envSchema.extend({
-  JIRA_BASE_URL: z.url(),
-  JIRA_EMAIL: z.string().min(1),
-  JIRA_API_TOKEN: z.string().min(1),
-  JIRA_DEFAULT_ASSIGNEE_ACCOUNT_ID: z.string().min(1),
-  PM_HOLD_TOKEN_SECRET: z.string().min(32, 'PM_HOLD_TOKEN_SECRET must be at least 32 characters'),
-});
+export const apiEnvSchema = envSchema
+  .extend({
+    JIRA_BASE_URL: z.url(),
+    JIRA_EMAIL: z.string().min(1),
+    JIRA_API_TOKEN: z.string().min(1),
+    JIRA_DEFAULT_ASSIGNEE_ACCOUNT_ID: z.string().min(1),
+    PM_HOLD_TOKEN_SECRET: z.string().min(32, 'PM_HOLD_TOKEN_SECRET must be at least 32 characters'),
+  })
+  .superRefine(requireTenantWithAllowedDomains);
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;
 
 // MCP-process schema — MCP public URL and its dedicated signing secret are required
 // (the MCP token secret is intentionally distinct from JWT_SECRET so MCP tokens can
 // never be replayed against the SPA's SessionGuard).
-export const mcpEnvSchema = envSchema.extend({
-  MCP_PUBLIC_URL: z.url(),
-  MCP_JWT_SECRET: z.string().min(32, 'MCP_JWT_SECRET must be at least 32 characters'),
-  GOOGLE_CLIENT_ID: z.string().min(1),
-});
+export const mcpEnvSchema = envSchema
+  .extend({
+    MCP_PUBLIC_URL: z.url(),
+    MCP_JWT_SECRET: z.string().min(32, 'MCP_JWT_SECRET must be at least 32 characters'),
+    GOOGLE_CLIENT_ID: z.string().min(1),
+  })
+  .superRefine(requireTenantWithAllowedDomains);
 
 export type McpEnv = z.infer<typeof mcpEnvSchema>;
