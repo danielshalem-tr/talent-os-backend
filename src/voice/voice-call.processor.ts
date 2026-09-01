@@ -36,6 +36,17 @@ export function serializeQuestions(questions: Array<{ text: string }>): string {
   return questions.map((q, i) => `${i + 1}. ${q.text}`).join('\n');
 }
 
+// The agent's first message is spoken verbatim by TTS (no LLM pass) — "(UX/UI)" in a job
+// title would be read aloud. The raw title is unchanged everywhere else; the prompt's own
+// drop-parentheses rule stays as defense-in-depth for LLM-generated turns.
+export function ttsSafeJobTitle(title: string): string {
+  const stripped = title
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return stripped.length > 0 ? stripped : title.trim();
+}
+
 @Injectable()
 @Processor('voice-call', {
   lockDuration: 60000, // outbound dial SDK call has a 15s timeout; 60s lock leaves ample room
@@ -130,7 +141,7 @@ export class VoiceCallProcessor extends WorkerHost {
         toNumber: row.candidate.phone!,
         dynamicVariables: {
           candidate_name: row.candidate.fullName,
-          job_title: row.job.title,
+          job_title: ttsSafeJobTitle(row.job.title),
           company_name: row.tenant.name,
           questions: serializeQuestions(row.job.screeningQuestions),
           voice_call_id: row.id, // correlation — echoed back in conversation_initiation_client_data
