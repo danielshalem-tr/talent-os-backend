@@ -36,11 +36,6 @@ function makeMocks(rowOverrides: Partial<typeof ROW> | null = {}) {
       findUnique: jest.fn().mockResolvedValue(row),
       update: jest.fn().mockResolvedValue({}),
     },
-    jobStage: { findFirst: jest.fn().mockResolvedValue({ id: 'stage-screening' }) },
-    candidateStageSummary: {
-      findUnique: jest.fn().mockResolvedValue(null),
-      create: jest.fn().mockResolvedValue({}),
-    },
   };
   const queue = { add: jest.fn().mockResolvedValue({}) };
   const voiceCalls = { scheduleRetry: jest.fn().mockResolvedValue(undefined) };
@@ -85,36 +80,34 @@ describe('VoiceResultsService', () => {
     it('skips the audio pull when has_audio is false', async () => {
       const { svc, queue } = makeMocks();
       await svc.finalizeFromTranscription('conv_1', { ...TRANSCRIPTION_DATA, has_audio: false });
-      expect(queue.add).not.toHaveBeenCalled();
+      expect(queue.add).not.toHaveBeenCalledWith('audio', expect.anything(), expect.anything());
     });
 
-    it('writes a Screening stage summary only when none exists (never overwrite a recruiter note)', async () => {
-      const { svc, prisma } = makeMocks();
+    it('enqueues the assess job with a deduping jobId (redelivery-safe, exactly-once)', async () => {
+      const { svc, queue } = makeMocks();
       await svc.finalizeFromTranscription('conv_1', TRANSCRIPTION_DATA);
-      expect(prisma.candidateStageSummary.create).toHaveBeenCalledWith({
-        data: expect.objectContaining({
-          tenantId: TENANT,
-          candidateId: 'cand1',
-          jobStageId: 'stage-screening',
-          summary: expect.stringContaining('Dana confirmed'),
-        }),
-      });
-
-      prisma.candidateStageSummary.findUnique.mockResolvedValue({ id: 'existing' });
-      prisma.candidateStageSummary.create.mockClear();
-      await svc.finalizeFromTranscription('conv_1', TRANSCRIPTION_DATA);
-      expect(prisma.candidateStageSummary.create).not.toHaveBeenCalled();
+      expect(queue.add).toHaveBeenCalledWith(
+        'assess',
+        { voiceCallId: 'vc1' },
+        expect.objectContaining({ jobId: 'assess-vc1' }),
+      );
     });
 
-    it('skips write-through gracefully when the job has no "Screening" stage', async () => {
-      const { svc, prisma } = makeMocks();
-      prisma.jobStage.findFirst.mockResolvedValue(null);
-      await expect(svc.finalizeFromTranscription('conv_1', TRANSCRIPTION_DATA)).resolves.toBeUndefined();
-      expect(prisma.candidateStageSummary.create).not.toHaveBeenCalled();
+    it('assess is enqueued even when the call has no audio', async () => {
+      const { svc, queue } = makeMocks();
+      await svc.finalizeFromTranscription('conv_1', { ...TRANSCRIPTION_DATA, has_audio: false });
+      expect(queue.add).toHaveBeenCalledWith('assess', { voiceCallId: 'vc1' }, expect.anything());
     });
   });
 
   describe('handleInitiationFailure', () => {
+    it('failed / no_answer calls never enqueue an assess job', async () => {
+      const { svc, queue } = makeMocks();
+      await svc.handleInitiationFailure('conv_1', 'busy'); // → no_answer
+      await svc.handleInitiationFailure('conv_1', 'unknown'); // → failed
+      expect(queue.add).not.toHaveBeenCalled();
+    });
+
     it('busy → no_answer + schedules a retry when attempts remain', async () => {
       const { svc, prisma, voiceCalls } = makeMocks();
       await svc.handleInitiationFailure('conv_1', 'busy');

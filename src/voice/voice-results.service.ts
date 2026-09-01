@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { Prisma, VoiceCall } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { VoiceCallsService, VoiceCallJobData, VOICE_JOB_OPTS, MAX_ATTEMPTS } from './voice-calls.service';
 import { ElevenLabsWebhookEvent } from './dto/elevenlabs-webhook.dto';
@@ -95,7 +95,12 @@ export class VoiceResultsService {
       },
     });
 
-    await this.writeStageSummary(row, summary);
+    // Hand off to the worker: AI assessment + stage write + advance (spec §5). Never in the
+    // webhook request path; jobId dedup makes webhook redeliveries and watchdog races no-ops.
+    await this.voiceQueue.add('assess', { voiceCallId: row.id } satisfies VoiceCallJobData, {
+      jobId: `assess-${row.id}`,
+      ...VOICE_JOB_OPTS,
+    });
 
     if (data.has_audio !== false) {
       await this.voiceQueue.add('audio', { voiceCallId: row.id } satisfies VoiceCallJobData, {
@@ -122,40 +127,6 @@ export class VoiceResultsService {
     });
     if (retryable && row.attempt < MAX_ATTEMPTS) {
       await this.voiceCalls.scheduleRetry(row);
-    }
-  }
-
-  /**
-   * Write-through to the hiring timeline. CREATE-ONLY (plan D7): CandidateStageSummary is
-   * unique per (candidate, stage) with no author column — an upsert would silently
-   * overwrite a recruiter's note. Missing "Screening" stage (renamed/custom flow) → skip.
-   * Stage ids churn on every job edit (PUT recreates stages), so the stage is resolved
-   * fresh by name at write time and the id is never stored.
-   */
-  private async writeStageSummary(row: VoiceCall, summary: string | null): Promise<void> {
-    if (!summary) return;
-    try {
-      const stage = await this.prisma.jobStage.findFirst({
-        where: { jobId: row.jobId, tenantId: row.tenantId, name: 'Screening' },
-        select: { id: true },
-      });
-      if (!stage) return;
-      const existing = await this.prisma.candidateStageSummary.findUnique({
-        where: { idx_cand_stage_summary: { candidateId: row.candidateId, jobStageId: stage.id } },
-        select: { id: true },
-      });
-      if (existing) return;
-      await this.prisma.candidateStageSummary.create({
-        data: {
-          tenantId: row.tenantId,
-          candidateId: row.candidateId,
-          jobStageId: stage.id,
-          summary: `[AI screening call — attempt ${row.attempt}]\n${summary}`,
-        },
-      });
-    } catch (err) {
-      if ((err as { code?: string })?.code === 'P2002') return; // concurrent write — keep the existing note
-      this.logger.warn(`Stage summary write-through failed for call ${row.id}: ${(err as Error).message}`);
     }
   }
 }

@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { StorageService } from '../storage/storage.service';
 import { ElevenLabsGatewayService, VoiceCallBlockedError } from './elevenlabs-gateway.service';
 import { VoiceResultsService } from './voice-results.service';
+import { VoiceAssessmentService } from './voice-assessment.service';
 import { VoiceCallJobData, VOICE_JOB_OPTS } from './voice-calls.service';
 import { isInBusinessWindow, nextBusinessWindowSlot } from './call-window';
 
@@ -58,6 +59,7 @@ export class VoiceCallProcessor extends WorkerHost {
     private readonly prisma: PrismaService,
     private readonly gateway: ElevenLabsGatewayService,
     private readonly voiceResults: VoiceResultsService,
+    private readonly voiceAssessment: VoiceAssessmentService,
     private readonly storageService: StorageService,
     @InjectQueue('voice-call') private readonly voiceQueue: Queue,
     private readonly pinoLogger: PinoLogger,
@@ -73,6 +75,10 @@ export class VoiceCallProcessor extends WorkerHost {
         return this.checkCall(job);
       case 'audio':
         return this.fetchAudio(job);
+      case 'assess':
+        // Errors propagate so BullMQ retries per the enqueue's VOICE_JOB_OPTS; a terminal
+        // failure leaves transcript/summary/audio intact — the assessment is additive.
+        return this.voiceAssessment.assessCall(job.data.voiceCallId);
       default:
         this.pinoLogger.warn({ jobName: job.name }, 'Unknown voice-call job name — skipping');
     }
