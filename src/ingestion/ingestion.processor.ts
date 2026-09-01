@@ -9,6 +9,7 @@ import { SpamFilterService } from './services/spam-filter.service';
 import { AttachmentExtractorService } from './services/attachment-extractor.service';
 import { ExtractionAgentService, CandidateExtract, resolveAgencyFromEmail } from './services/extraction-agent.service';
 import { CvClassifierService, CvClassification } from './services/cv-classifier.service';
+import { JobMatcherService } from './services/job-matcher.service';
 import { StorageService } from '../storage/storage.service';
 import { DedupService, DedupResult } from '../dedup/dedup.service';
 import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
@@ -43,6 +44,7 @@ export class IngestionProcessor extends WorkerHost {
     private readonly dedupService: DedupService,
     private readonly scoringService: ScoringAgentService,
     private readonly voiceCallsService: VoiceCallsService,
+    private readonly jobMatcher: JobMatcherService,
     private readonly config: ConfigService,
     private readonly pinoLogger: PinoLogger,
   ) {
@@ -421,6 +423,51 @@ export class IngestionProcessor extends WorkerHost {
         }
       } else {
         this.pinoLogger.debug({ messageId: payload.MessageID }, 'Phase 15: no matching job short_ids');
+      }
+
+      // D3/D4: no job number resolved to an open job. Ask a small model which open job
+      // this application targets, then let CODE enforce "exactly one" — the model only
+      // suggests. Zero or 2+ suggestions leave the candidate in the talent pool for a
+      // human, which is strictly better than a wrong pipeline placement.
+      if (matchedJobs.length === 0) {
+        const openJobs = await this.prisma.job.findMany({
+          where: { tenantId, status: 'open' },
+          select: {
+            id: true,
+            title: true,
+            description: true,
+            requirements: true,
+            shortId: true,
+            department: true,
+            hiringStages: {
+              where: { isEnabled: true },
+              orderBy: { order: 'asc' },
+              take: 1,
+            },
+          },
+        });
+
+        const suggested = await this.jobMatcher.match({
+          openJobs: openJobs.map((j) => ({ shortId: j.shortId, title: j.title, department: j.department })),
+          emailSubject: payload.Subject ?? null,
+          emailBody: payload.TextBody ?? null,
+          currentRole: extraction!.current_role ?? null,
+        });
+
+        if (suggested.length === 1) {
+          const picked = openJobs.find((j) => j.shortId === suggested[0]);
+          if (picked) matchedJobs = [picked];
+        }
+
+        this.pinoLogger.log(
+          {
+            messageId: payload.MessageID,
+            candidateId: context.candidateId,
+            matcher_result: suggested,
+            matcher_assigned: matchedJobs.length === 1,
+          },
+          'Phase 15: role matcher',
+        );
       }
 
       // For backward compatibility: set jobId/hiringStageId from first match (if any)

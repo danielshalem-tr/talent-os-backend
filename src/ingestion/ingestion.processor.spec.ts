@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { mockEmailPayload } from './services/spam-filter.service.spec';
 import { ExtractionAgentService } from './services/extraction-agent.service';
 import { CvClassifierService } from './services/cv-classifier.service';
+import { JobMatcherService } from './services/job-matcher.service';
 import { mockCandidateExtract } from './services/extraction-agent.service.test-helpers';
 import { StorageService } from '../storage/storage.service';
 import { DedupService } from '../dedup/dedup.service';
@@ -34,6 +35,9 @@ const voiceCallsService = { scheduleAutoCalls: jest.fn().mockResolvedValue(undef
 const configService = {
   get: jest.fn((key: string) => (key === 'SHORT_ID_ALIASES' ? '300:106' : undefined)),
 };
+
+// Fallback role matcher. Default: no suggestion, so existing tests keep their behaviour.
+const jobMatcherService = { match: jest.fn().mockResolvedValue([]) };
 
 /** Helper: build a slim job with new IngestJobData shape */
 function makeJob(id: string, payload: ReturnType<typeof mockEmailPayload>) {
@@ -137,6 +141,7 @@ describe('IngestionProcessor', () => {
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: JobMatcherService, useValue: jobMatcherService },
         { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -196,6 +201,78 @@ describe('IngestionProcessor', () => {
         data: expect.objectContaining({ location: 'Tel Aviv, Israel', jobId: 'job-1', skills: ['node.js'] }),
       }),
     );
+  });
+
+  describe('fallback role matcher', () => {
+    const LONG_BODY =
+      'Please find my CV attached to this email. I would be glad to discuss the role further at your convenience.';
+
+    // The default resolved value is shared across the file; restore it so a suggestion
+    // set here cannot leak into a later describe.
+    afterEach(() => {
+      jobMatcherService.match.mockResolvedValue([]);
+    });
+
+    const openJob = (id: string, shortId: string) => ({
+      id,
+      title: `Job ${shortId}`,
+      description: 'desc',
+      requirements: [],
+      shortId,
+      department: 'Engineering',
+      hiringStages: [{ id: `stage-${shortId}` }],
+    });
+
+    it('is not called when a job number already matched', async () => {
+      const payload = mockEmailPayload({ Subject: 'Application for #106', TextBody: LONG_BODY });
+      storageService.downloadPayload.mockResolvedValue(payload);
+      prisma.job.findMany.mockResolvedValue([openJob('job-106', '106')]);
+
+      await processor.process(makeJob('job-hit', payload));
+
+      expect(jobMatcherService.match).not.toHaveBeenCalled();
+    });
+
+    it('assigns when exactly one open job is returned', async () => {
+      const payload = mockEmailPayload({ Subject: 'Full Stack Developer application', TextBody: LONG_BODY });
+      storageService.downloadPayload.mockResolvedValue(payload);
+      prisma.job.findMany.mockResolvedValue([openJob('job-106', '106'), openJob('job-107', '107')]);
+      jobMatcherService.match.mockResolvedValue(['106']);
+
+      await processor.process(makeJob('job-one', payload));
+
+      expect(prisma.candidate.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ jobId: 'job-106', hiringStageId: 'stage-106' }) }),
+      );
+    });
+
+    it('leaves the candidate unassigned when two jobs are returned', async () => {
+      const payload = mockEmailPayload({ Subject: 'Developer application', TextBody: LONG_BODY });
+      storageService.downloadPayload.mockResolvedValue(payload);
+      prisma.job.findMany.mockResolvedValue([openJob('job-106', '106'), openJob('job-107', '107')]);
+      jobMatcherService.match.mockResolvedValue(['106', '107']);
+
+      await processor.process(makeJob('job-two', payload));
+
+      expect(prisma.candidate.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ jobId: null }) }),
+      );
+      expect(prisma.candidateJobScore.upsert).not.toHaveBeenCalled();
+    });
+
+    it('leaves the candidate unassigned when nothing is returned', async () => {
+      const payload = mockEmailPayload({ Subject: 'Hello there', TextBody: LONG_BODY });
+      storageService.downloadPayload.mockResolvedValue(payload);
+      prisma.job.findMany.mockResolvedValue([openJob('job-106', '106')]);
+      jobMatcherService.match.mockResolvedValue([]);
+
+      await processor.process(makeJob('job-zero', payload));
+
+      expect(prisma.candidate.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ jobId: null }) }),
+      );
+      expect(prisma.candidateJobScore.upsert).not.toHaveBeenCalled();
+    });
   });
 
   // 3-03-01: PROC-06 — spam rejection updates status to 'spam'
@@ -413,6 +490,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: JobMatcherService, useValue: jobMatcherService },
         { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -617,6 +695,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: JobMatcherService, useValue: jobMatcherService },
         { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -953,6 +1032,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: JobMatcherService, useValue: jobMatcherService },
         { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -1098,6 +1178,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     // Reset the findMany mock and configure for no matches
     prisma.job.findMany.mockReset();
     prisma.job.findMany.mockResolvedValueOnce([]); // shortId lookup returns no jobs
+    prisma.job.findMany.mockResolvedValue([]); // fallback matcher's open-jobs lookup
 
     const payload = validJobPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
@@ -1294,6 +1375,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
             useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
           },
           { provide: VoiceCallsService, useValue: voiceCallsService },
+          { provide: JobMatcherService, useValue: jobMatcherService },
           { provide: ConfigService, useValue: configService },
           { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
         ],
@@ -1482,6 +1564,7 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: JobMatcherService, useValue: jobMatcherService },
         { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -1598,6 +1681,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: JobMatcherService, useValue: jobMatcherService },
         { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -1720,6 +1804,7 @@ describe('IngestionProcessor — CV Classification Gate', () => {
         },
         { provide: CvClassifierService, useValue: cvClassifier },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: JobMatcherService, useValue: jobMatcherService },
         { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
@@ -1860,6 +1945,7 @@ describe('ingest gate (ai_ingest_enabled)', () => {
         },
         { provide: CvClassifierService, useValue: cvClassifier },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: JobMatcherService, useValue: jobMatcherService },
         { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
