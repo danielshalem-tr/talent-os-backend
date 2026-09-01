@@ -30,6 +30,8 @@ export const envSchema = z.object({
   // Comma-separated "wrongNumber:realShortId" pairs applied to job numbers parsed out of
   // intake emails — e.g. "300:106" when a live ad quotes a number no job has.
   SHORT_ID_ALIASES: z.string().default(''),
+  // Fallback role matcher — runs only for intakes with no job number in the email.
+  MATCHER_MODEL: z.string().default('openai/gpt-4o-mini'),
   // PM Bridge — Jira integration.
   // Optional in this shared/base schema so the BullMQ worker (which never calls Jira) can boot
   // without these. The API process re-requires JIRA_BASE_URL/EMAIL/API_TOKEN via apiEnvSchema.
