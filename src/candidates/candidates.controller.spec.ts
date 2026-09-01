@@ -3,6 +3,7 @@ import { INestApplication, BadRequestException, NotFoundException, CanActivate, 
 import request from 'supertest';
 import { CandidatesController } from './candidates.controller';
 import { CandidatesService } from './candidates.service';
+import { BulkAssignService } from '../bulk-assign/bulk-assign.service';
 import { SessionGuard } from '../auth/session.guard';
 
 const TENANT_ID = '11111111-1111-1111-1111-111111111111';
@@ -58,6 +59,7 @@ describe('CandidatesController (Integration Tests)', () => {
       controllers: [CandidatesController],
       providers: [
         { provide: CandidatesService, useValue: mockCandidatesService },
+        { provide: BulkAssignService, useValue: { enqueue: jest.fn().mockResolvedValue({ queued: 0 }) } },
         { provide: SessionGuard, useClass: MockSessionGuard },
       ],
     })

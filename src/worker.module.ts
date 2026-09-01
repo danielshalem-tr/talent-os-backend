@@ -6,6 +6,7 @@ import { envSchema } from './config/env';
 import { PrismaModule } from './prisma/prisma.module';
 import { IngestionModule } from './ingestion/ingestion.module';
 import { VoiceWorkerModule } from './voice/voice-worker.module';
+import { BulkAssignWorkerModule } from './bulk-assign/bulk-assign-worker.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { VoiceWorkerModule } from './voice/voice-worker.module';
     }),
     IngestionModule,
     VoiceWorkerModule,
+    BulkAssignWorkerModule,
   ],
 })
 export class WorkerModule {}

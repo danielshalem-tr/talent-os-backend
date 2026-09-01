@@ -28,6 +28,8 @@ import { UpdateCandidateSchema } from './dto/update-candidate.dto';
 import { StageSummarySchema } from './dto/stage-summary.dto';
 import { RejectCandidateSchema } from './dto/reject-candidate.dto';
 import { CandidateResponse } from './dto/candidate-response.dto';
+import { BulkAssignService } from '../bulk-assign/bulk-assign.service';
+import { BulkAssignSchema } from './dto/bulk-assign.dto';
 
 // Content types we will echo back verbatim on the same-origin CV serve. Anything
 // else is forced to a non-executable octet-stream so a maliciously-stored
@@ -41,7 +43,10 @@ const SERVABLE_CV_CONTENT_TYPES = new Set<string>([
 @UseGuards(SessionGuard)
 @Controller('candidates')
 export class CandidatesController {
-  constructor(private readonly candidatesService: CandidatesService) {}
+  constructor(
+    private readonly candidatesService: CandidatesService,
+    private readonly bulkAssignService: BulkAssignService,
+  ) {}
 
   /**
    * Retrieve lightweight counts for dashboard alerts
@@ -133,6 +138,29 @@ export class CandidatesController {
       });
     }
     return this.candidatesService.createCandidate(result.data, file, tenantId);
+  }
+
+  /**
+   * Assign many candidates to one job and score each of them.
+   * Runs on the `candidate-assign` BullMQ queue — up to 200 scoring calls will not fit
+   * in an HTTP request, so this returns as soon as the work is queued and the UI
+   * refreshes over SWR.
+   *
+   * Idempotent per (candidate, job): re-running skips nothing but rewrites the same rows.
+   * Candidates already assigned elsewhere are reassigned. A candidate who already has a
+   * stage on the target job keeps it — voice auto-advance always wins.
+   */
+  @Post('bulk-assign')
+  @HttpCode(202)
+  async bulkAssign(@Body() body: unknown, @Req() req: Request): Promise<{ queued: number }> {
+    const tenantId = req.session!.org;
+    const result = BulkAssignSchema.safeParse(body);
+    if (!result.success) {
+      throw new BadRequestException({
+        error: { code: 'VALIDATION_ERROR', message: 'Validation failed', details: this.formatZodErrors(result.error) },
+      });
+    }
+    return this.bulkAssignService.enqueue(tenantId, result.data);
   }
 
   /**
