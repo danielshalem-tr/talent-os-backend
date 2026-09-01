@@ -10,6 +10,7 @@ import { mockEmailPayload } from './services/spam-filter.service.spec';
 import { ExtractionAgentService } from './services/extraction-agent.service';
 import { CvClassifierService } from './services/cv-classifier.service';
 import { JobMatcherService } from './services/job-matcher.service';
+import { extractShortIds } from './extract-short-ids';
 import { mockCandidateExtract } from './services/extraction-agent.service.test-helpers';
 import { StorageService } from '../storage/storage.service';
 import { DedupService } from '../dedup/dedup.service';
@@ -1504,107 +1505,37 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
   });
 });
 
-describe('IngestionProcessor — extractCandidateShortIds()', () => {
-  let processor: IngestionProcessor;
-
-  beforeEach(async () => {
-    const txClient = {
-      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
-      $queryRaw: jest.fn().mockResolvedValue([]),
-      $executeRaw: jest.fn().mockResolvedValue(0),
-    };
-    const prisma = {
-      emailIntakeLog: {
-        update: jest.fn().mockResolvedValue({}),
-        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
-      },
-      organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
-      $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
-      candidate: {
-        update: jest.fn().mockResolvedValue({}),
-        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-        // Phase 7 reads the row before merging; all-null means the incoming values win.
-        findUniqueOrThrow: jest.fn().mockResolvedValue({
-          jobId: null,
-          hiringStageId: null,
-          currentRole: null,
-          yearsExperience: null,
-          location: null,
-          skills: [],
-          cvText: null,
-          cvFileUrl: null,
-          aiSummary: null,
-        }),
-      },
-      job: { findMany: jest.fn().mockResolvedValue([]) },
-      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
-    };
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        IngestionProcessor,
-        SpamFilterService,
-        AttachmentExtractorService,
-        { provide: PrismaService, useValue: prisma },
-        { provide: ExtractionAgentService, useValue: { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) } },
-        {
-          provide: StorageService,
-          useValue: { upload: jest.fn().mockResolvedValue('key'), downloadPayload: jest.fn() },
-        },
-        {
-          provide: DedupService,
-          useValue: {
-            check: jest.fn().mockResolvedValue(null),
-            insertCandidate: jest.fn().mockResolvedValue('cand-1'),
-          },
-        },
-        { provide: ScoringAgentService, useValue: { score: jest.fn() } },
-        {
-          provide: CvClassifierService,
-          useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
-        },
-        { provide: VoiceCallsService, useValue: voiceCallsService },
-        { provide: JobMatcherService, useValue: jobMatcherService },
-        { provide: ConfigService, useValue: configService },
-        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
-      ],
-    }).compile();
-    processor = module.get<IngestionProcessor>(IngestionProcessor);
-  });
-
+// The parser moved out of the processor into the pure `extractShortIds` (so the retro
+// script applies the identical rule); these cases follow it unchanged.
+describe('extractShortIds()', () => {
   it('should extract 3+ digit numbers from email text', () => {
-    const result = processor['extractCandidateShortIds']('Apply for job 245', 'Also position 1053 is open');
+    const result = extractShortIds('Apply for job 245', 'Also position 1053 is open');
     expect(result).toEqual(expect.arrayContaining(['245', '1053']));
     expect(result).toHaveLength(2);
   });
 
   it('should return empty for no numbers', () => {
-    const result = processor['extractCandidateShortIds']('Hello', 'I want to apply');
-    expect(result).toEqual([]);
+    expect(extractShortIds('Hello', 'I want to apply')).toEqual([]);
   });
 
   it('should filter out numbers < 100', () => {
-    const result = processor['extractCandidateShortIds']('I am 25 years old', 'Position 50 is closed');
-    expect(result).toEqual([]);
+    expect(extractShortIds('I am 25 years old', 'Position 50 is closed')).toEqual([]);
   });
 
   it('should include years (false positives filtered by DB)', () => {
-    const result = processor['extractCandidateShortIds']('In 2024 I applied', 'Job 101 is open');
-    expect(result).toEqual(expect.arrayContaining(['2024', '101']));
+    expect(extractShortIds('In 2024 I applied', 'Job 101 is open')).toEqual(expect.arrayContaining(['2024', '101']));
   });
 
   it('should deduplicate repeated numbers', () => {
-    const result = processor['extractCandidateShortIds']('Job 245 and job 245', 'Position 245');
-    expect(result).toEqual(['245']);
+    expect(extractShortIds('Job 245 and job 245', 'Position 245')).toEqual(['245']);
   });
 
   it('should handle null subject and body', () => {
-    const result = processor['extractCandidateShortIds'](null, null);
-    expect(result).toEqual([]);
+    expect(extractShortIds(null, null)).toEqual([]);
   });
 
   it('should return strings (matching shortId DB type)', () => {
-    const result = processor['extractCandidateShortIds']('Job 100', null);
+    const result = extractShortIds('Job 100', null);
     expect(result[0]).toBe('100');
     expect(typeof result[0]).toBe('string');
   });

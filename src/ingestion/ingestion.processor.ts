@@ -16,6 +16,7 @@ import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
 import { VoiceCallsService } from '../voice/voice-calls.service';
 import { sanitizePgText } from '../common/sanitize-pg-text';
 import { parseShortIdAliases, applyShortIdAliases } from '../config/short-id-aliases';
+import { extractShortIds } from './extract-short-ids';
 import { mergeEnrichment, EnrichmentFields } from './merge-enrichment';
 
 export interface ProcessingContext {
@@ -50,27 +51,6 @@ export class IngestionProcessor extends WorkerHost {
   ) {
     super();
     this.shortIdAliases = parseShortIdAliases(this.config.get<string>('SHORT_ID_ALIASES'));
-  }
-
-  /**
-   * Extract candidate short_ids from combined subject + body text.
-   * Short_ids are plain numbers >= 100 (e.g., 100, 245, 1053).
-   * Returns array of candidate short_id strings (may include false positives
-   * like years or zip codes — the downstream DB query filters those out).
-   */
-  private extractCandidateShortIds(subject: string | null | undefined, body: string | null | undefined): string[] {
-    const combinedText = [subject, body].filter(Boolean).join(' ');
-
-    if (!combinedText) return [];
-
-    // Match all 3+ digit numbers as word boundaries
-    const numberPattern = /\b(\d{3,})\b/g;
-    const matches = [...combinedText.matchAll(numberPattern)];
-
-    if (matches.length === 0) return [];
-
-    // Filter >= 100, deduplicate, keep as strings (shortId is string type in DB)
-    return [...new Set(matches.map((m) => m[1]).filter((s) => parseInt(s, 10) >= 100))];
   }
 
   async process(job: Job<IngestJobData>): Promise<void> {
@@ -375,7 +355,7 @@ export class IngestionProcessor extends WorkerHost {
     // Phase 15: Deterministic Job ID extraction + multi-job lookup
     // Extract candidate short_ids (pure text parse — no DB query), then rewrite any
     // known-wrong ad number onto its real short_id before the lookup.
-    const parsedShortIds = this.extractCandidateShortIds(payload.Subject, payload.TextBody);
+    const parsedShortIds = extractShortIds(payload.Subject, payload.TextBody);
     const matchedShortIds = applyShortIdAliases(parsedShortIds, this.shortIdAliases);
 
     let matchedJobs: Array<{
