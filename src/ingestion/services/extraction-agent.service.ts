@@ -4,6 +4,7 @@ import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { StorageService } from '../../storage/storage.service';
+import { normalizeNullishString } from '../../common/normalize-nullish';
 
 export const CandidateExtractSchema = z.object({
   full_name: z.string(),
@@ -19,6 +20,24 @@ export const CandidateExtractSchema = z.object({
 });
 
 export type CandidateExtract = z.infer<typeof CandidateExtractSchema>;
+
+/**
+ * Boundary sanitizer for AI output. `full_name` is deliberately left alone: the schema
+ * requires a string, and blanking a garbage name would break the candidate insert —
+ * a visibly wrong name is a better failure than a missing one.
+ */
+export function sanitizeExtract(raw: CandidateExtract): CandidateExtract {
+  return {
+    ...raw,
+    email: normalizeNullishString(raw.email),
+    phone: normalizeNullishString(raw.phone),
+    current_role: normalizeNullishString(raw.current_role),
+    location: normalizeNullishString(raw.location),
+    ai_summary: normalizeNullishString(raw.ai_summary),
+    source_agency: normalizeNullishString(raw.source_agency),
+    skills: raw.skills.map(normalizeNullishString).filter((s): s is string => s !== null),
+  };
+}
 
 /**
  * Known agency domain → canonical name map.
@@ -180,7 +199,7 @@ export class ExtractionAgentService {
     const cached = await this.storageService.loadExtractionCache(metadata.tenantId, metadata.messageId);
     if (cached !== null) {
       this.logger.log(`Extraction cache hit for ${metadata.messageId}`);
-      return CandidateExtractSchema.parse(cached);
+      return sanitizeExtract(CandidateExtractSchema.parse(cached));
     }
 
     const extracted = await this.callAI(fullText, metadata);
@@ -191,7 +210,7 @@ export class ExtractionAgentService {
       this.logger.warn(`Failed to cache extraction for ${metadata.messageId} — retry will re-call AI: ${(cacheErr as Error).message}`);
     }
 
-    return extracted;
+    return sanitizeExtract(extracted);
   }
 
   private async callAI(fullText: string, metadata: ExtractionMetadata): Promise<CandidateExtract> {
