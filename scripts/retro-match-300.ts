@@ -14,7 +14,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { Queue } from 'bullmq';
 import { extractShortIds } from '../src/ingestion/extract-short-ids';
 import { parseShortIdAliases, applyShortIdAliases } from '../src/config/short-id-aliases';
-import { ASSIGN_JOB_OPTS, AssignJobData, BULK_ASSIGN_QUEUE } from '../src/bulk-assign/bulk-assign.types';
+import { assignJobOpts, AssignJobData, BULK_ASSIGN_QUEUE } from '../src/bulk-assign/bulk-assign.types';
 
 function arg(name: string, fallback?: string): string {
   const hit = process.argv.find((a) => a.startsWith(`--${name}=`));
@@ -49,20 +49,27 @@ async function main(): Promise<void> {
 
   const intakes = await prisma.emailIntakeLog.findMany({
     where: { tenantId, receivedAt: { gte: since }, candidateId: { not: null } },
-    select: { id: true, messageId: true, subject: true, rawPayload: true, rawPayloadKey: true, candidateId: true },
+    select: { id: true, messageId: true, subject: true, rawPayload: true, candidateId: true },
   });
 
   const hits = new Map<string, string>(); // candidateId -> target job uuid
-  let noPayload = 0;
+  let unreadableBody = 0;
 
   for (const intake of intakes) {
     const payload = intake.rawPayload as { TextBody?: string } | null;
-    if (payload === null && intake.subject === null) {
-      // rawPayload was offloaded to R2 (rawPayloadKey) — we cannot read the body here.
-      noPayload += 1;
-      continue;
+    const body = payload?.TextBody ?? null;
+
+    // rawPayload was offloaded to R2 (rawPayloadKey) — the body is unreadable from here.
+    // Count that whenever the BODY is missing, even if the subject survived: a job number
+    // quoted only in the body is exactly what this script exists to find, and reporting
+    // only the subject-less rows made the "we read everything" number look far better than
+    // it was. The subject is still scanned below — a partial read beats skipping the row.
+    if (body === null) {
+      unreadableBody += 1;
+      if (intake.subject === null) continue;
     }
-    const parsed = extractShortIds(intake.subject, payload?.TextBody ?? null);
+
+    const parsed = extractShortIds(intake.subject, body);
     if (parsed.length === 0) continue;
     const rewritten = applyShortIdAliases(parsed, aliases);
     // Only count intakes that matched an ALIASED number — an email that already carried
@@ -79,7 +86,7 @@ async function main(): Promise<void> {
   });
 
   console.log(`Intakes scanned since ${since.toISOString()}: ${intakes.length}`);
-  console.log(`Intakes whose body could not be read (payload offloaded to R2): ${noPayload}`);
+  console.log(`Intakes whose body could not be read, subject only (payload offloaded to R2): ${unreadableBody}`);
   console.log(`Intakes quoting an aliased job number: ${hits.size}`);
   console.log(`Of those, candidates still unassigned + active: ${candidates.length}`);
 
@@ -98,7 +105,7 @@ async function main(): Promise<void> {
     await queue.add(
       'assign',
       { tenantId, candidateId: candidate.id, jobId } satisfies AssignJobData,
-      { jobId: `assign-${candidate.id}-${jobId}`, ...ASSIGN_JOB_OPTS },
+      assignJobOpts(candidate.id, jobId),
     );
   }
 

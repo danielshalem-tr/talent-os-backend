@@ -51,6 +51,24 @@ describe('mergeEnrichment', () => {
     expect(merged.hiringStageId).toBe('stage-2');
   });
 
+  it('never resets the stage when the SAME job matches again', () => {
+    // A follow-up email quoting the same ad re-resolves to job-1, and Phase 15 always
+    // offers that job's FIRST stage. An advanced candidate must keep the stage they are on.
+    const advanced = { ...rich, hiringStageId: 'stage-interview' };
+    const incoming = { ...empty, jobId: 'job-1', hiringStageId: 'stage-1' };
+
+    const merged = mergeEnrichment(advanced, incoming);
+
+    expect(merged.jobId).toBe('job-1');
+    expect(merged.hiringStageId).toBe('stage-interview');
+  });
+
+  it('places the first stage when an unassigned candidate gets their first job', () => {
+    const incoming = { ...empty, jobId: 'job-1', hiringStageId: 'stage-1' };
+    const merged = mergeEnrichment({ ...empty, cvText: 'cv' }, incoming);
+    expect(merged.hiringStageId).toBe('stage-1');
+  });
+
   it('keeps existing skills and cv text when the new email has none', () => {
     const merged = mergeEnrichment(rich, { ...empty, cvText: '   ' });
     expect(merged.skills).toEqual(['node.js']);

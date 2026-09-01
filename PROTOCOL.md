@@ -245,7 +245,9 @@ Assign many candidates to one job and AI-score each of them against it.
 - A sticky recruiter override (`is_score_overridden = true`) is respected — the per-job score row is still written, the denormalized `ai_score` is not.
 - **Stage placement is initial-only.** A stage is set only when the candidate has no stage on the target job. An existing stage is never moved or downgraded, so a voice-screening auto-advance always wins.
 - Candidates already assigned to another job are reassigned to `job_id`.
-- Idempotent: re-sending the same body re-runs scoring but changes nothing else.
+- Idempotent: re-sending the same body re-runs scoring but changes nothing else. A repeat for the same `(candidate, job)` within 60 seconds is collapsed into the first, so a double-click costs one scoring call rather than two.
+- `queued` counts the candidates that existed and were active in the tenant — it can be lower than the number of ids sent.
+- At most 200 ids per request; more is rejected with `400`.
 
 **Response:** `202 Accepted`
 

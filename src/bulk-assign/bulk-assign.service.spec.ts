@@ -1,5 +1,6 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { BulkAssignService } from './bulk-assign.service';
+import { ASSIGN_DEDUP_TTL_MS } from './bulk-assign.types';
 
 function makeService(overrides: { prisma?: any; queue?: any } = {}) {
   const prisma = overrides.prisma ?? {
@@ -22,8 +23,22 @@ describe('BulkAssignService.enqueue', () => {
     expect(queue.add).toHaveBeenCalledWith(
       'assign',
       { tenantId: 'tenant-1', candidateId: 'cand-1', jobId: 'job-1' },
-      expect.objectContaining({ jobId: 'assign-cand-1-job-1' }),
+      expect.objectContaining({
+        deduplication: { id: 'assign-cand-1-job-1', ttl: ASSIGN_DEDUP_TTL_MS },
+      }),
     );
+  });
+
+  it('collapses a double-click with an expiring key, not a permanent job id', async () => {
+    // A stable BullMQ `jobId` would make every later re-assign of the same pair a silent
+    // no-op for as long as the completed/failed job is retained (hundreds of jobs).
+    const { service, queue } = makeService();
+
+    await service.enqueue('tenant-1', { candidate_ids: ['cand-1'], job_id: 'job-1' });
+
+    const opts = queue.add.mock.calls[0][2];
+    expect(opts.jobId).toBeUndefined();
+    expect(opts.deduplication.ttl).toBeGreaterThan(0);
   });
 
   it('de-duplicates repeated candidate ids before querying', async () => {
