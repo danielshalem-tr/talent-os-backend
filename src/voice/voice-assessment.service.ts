@@ -4,6 +4,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
+import { moveCandidateToStage } from '../candidates/stage-move';
 
 // Same input-size convention as scoring.service.ts
 const MAX_TRANSCRIPT_LENGTH = 15_000;
@@ -84,5 +85,111 @@ export class VoiceAssessmentService {
     });
 
     return renderAssessment(object, { attempt: input.attempt, durationSecs: input.durationSecs });
+  }
+
+  /**
+   * The `assess` worker job (spec §5): AI assessment of a completed call written into the
+   * candidate's current hiring stage, then a single idempotent advance. Enqueued only by
+   * finalizeFromTranscription, jobId `assess-{voiceCallId}`. Ordering is deliberate:
+   * stage + existing-summary checks run BEFORE the LLM so a redelivery never spends tokens.
+   */
+  async assessCall(voiceCallId: string): Promise<void> {
+    const row = await this.prisma.voiceCall.findUniqueOrThrow({
+      where: { id: voiceCallId },
+      include: {
+        candidate: { select: { hiringStageId: true } },
+        job: { select: { screeningQuestions: { orderBy: { order: 'asc' }, select: { text: true } } } },
+      },
+    });
+    if (row.status !== 'completed') {
+      this.logger.warn(`assess skipped for call ${row.id} — status is ${row.status}, not completed`);
+      return;
+    }
+    const transcript = Array.isArray(row.transcript)
+      ? (row.transcript as unknown as Array<{ role: string; message: string }>)
+      : [];
+    if (transcript.length === 0) {
+      this.logger.warn(`assess skipped for call ${row.id} — no transcript stored`);
+      return;
+    }
+
+    const stageId = await this.resolveCurrentStage(row);
+    if (!stageId) {
+      this.logger.warn(`assess skipped for call ${row.id} — no hiring stage resolvable`);
+      return;
+    }
+
+    // Create-only (a recruiter's note is never overwritten) — checked before the LLM call
+    // so webhook redeliveries and watchdog races cost nothing and can never advance twice.
+    const existing = await this.prisma.candidateStageSummary.findUnique({
+      where: { idx_cand_stage_summary: { candidateId: row.candidateId, jobStageId: stageId } },
+      select: { id: true },
+    });
+    if (existing) return;
+
+    const summary = await this.generateAssessment({
+      transcript,
+      questions: row.job.screeningQuestions,
+      attempt: row.attempt,
+      durationSecs: row.durationSecs,
+    });
+
+    const created = await this.createSummary(row, stageId, summary);
+    if (!created) return; // P2002 race — someone else wrote the stage note; never advance
+
+    await this.advanceToNextStage(row, stageId);
+  }
+
+  private async resolveCurrentStage(row: {
+    tenantId: string;
+    candidateId: string;
+    jobId: string;
+    candidate: { hiringStageId: string | null };
+  }): Promise<string | null> {
+    if (row.candidate.hiringStageId) return row.candidate.hiringStageId;
+    const app = await this.prisma.application.findUnique({
+      where: {
+        idx_applications_unique: { tenantId: row.tenantId, candidateId: row.candidateId, jobId: row.jobId },
+      },
+      select: { jobStageId: true },
+    });
+    if (app?.jobStageId) return app.jobStageId;
+    const first = await this.prisma.jobStage.findFirst({
+      where: { jobId: row.jobId, tenantId: row.tenantId, isEnabled: true },
+      orderBy: { order: 'asc' },
+      select: { id: true },
+    });
+    return first?.id ?? null;
+  }
+
+  private async createSummary(
+    row: { tenantId: string; candidateId: string },
+    jobStageId: string,
+    summary: string,
+  ): Promise<boolean> {
+    try {
+      await this.prisma.candidateStageSummary.create({
+        data: { tenantId: row.tenantId, candidateId: row.candidateId, jobStageId, summary },
+      });
+      return true;
+    } catch (err) {
+      if ((err as { code?: string })?.code === 'P2002') return false;
+      throw err;
+    }
+  }
+
+  private async advanceToNextStage(
+    row: { tenantId: string; candidateId: string; jobId: string },
+    currentStageId: string,
+  ): Promise<void> {
+    const stages = await this.prisma.jobStage.findMany({
+      where: { jobId: row.jobId, tenantId: row.tenantId, isEnabled: true },
+      orderBy: { order: 'asc' },
+      select: { id: true },
+    });
+    const idx = stages.findIndex((s) => s.id === currentStageId);
+    // Unknown/disabled current stage, or already last → summary only, no move.
+    if (idx === -1 || idx === stages.length - 1) return;
+    await moveCandidateToStage(this.prisma, row.candidateId, stages[idx + 1].id, row.tenantId);
   }
 }
