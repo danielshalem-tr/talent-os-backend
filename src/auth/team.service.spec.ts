@@ -216,6 +216,23 @@ describe('TeamService', () => {
     expect(expiresAt.getTime()).toBeLessThan(Date.now() + sevenDaysMs + 5000);
   });
 
+  it('createInvitation rejects a member caller', async () => {
+    await expect(service.createInvitation(memberSession, 'x@triolla.io', 'viewer')).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('createInvitation rejects a viewer caller', async () => {
+    const viewerSession: JwtPayload = { ...memberSession, role: 'viewer' };
+    await expect(service.createInvitation(viewerSession, 'x@triolla.io', 'admin')).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('cancelInvitation rejects a member caller', async () => {
+    await expect(service.cancelInvitation(memberSession, 'inv1')).rejects.toThrow(ForbiddenException);
+  });
+
   // ─── changeRole ────────────────────────────────────────────────────────────
 
   it('Test 6: changeRole throws ForbiddenException when caller role !== owner', async () => {

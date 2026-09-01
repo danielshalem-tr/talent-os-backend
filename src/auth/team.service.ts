@@ -58,6 +58,11 @@ export class TeamService {
     email: string,
     role: string,
   ): Promise<{ id: string; email: string; role: string; expires_at: string }> {
+    // Server-side caller check — the UI gate (canInvite) is cosmetic only.
+    if (session.role !== 'owner' && session.role !== 'admin') {
+      throw new ForbiddenException('Only owners and admins can manage invitations');
+    }
+
     // CR-03: validate role — 'owner' is not grantable via invitation (privilege escalation vector)
     const ALLOWED_INVITATION_ROLES = ['admin', 'member', 'viewer'];
     if (!ALLOWED_INVITATION_ROLES.includes(role)) {
@@ -128,6 +133,11 @@ export class TeamService {
   }
 
   async cancelInvitation(session: JwtPayload, invitationId: string): Promise<void> {
+    // Server-side caller check — the UI gate (canInvite) is cosmetic only.
+    if (session.role !== 'owner' && session.role !== 'admin') {
+      throw new ForbiddenException('Only owners and admins can manage invitations');
+    }
+
     const invitation = await this.prisma.invitation.findFirst({
       where: { id: invitationId, organizationId: session.org },
     });
