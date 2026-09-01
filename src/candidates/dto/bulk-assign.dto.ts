@@ -5,7 +5,9 @@ const uuid = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-
 
 /**
  * Cap at 200: each id costs one scoring call, so an unbounded list is an unbounded
- * AI bill. The talent-pool UI selects at most one page at a time, well under this.
+ * AI bill. The talent-pool selection accumulates across pages, so this IS reachable
+ * from the UI — the dialog mirrors the limit (MAX_BULK_ASSIGN) and blocks before
+ * sending, since a 400 here surfaces only as a generic "try again".
  */
 export const BulkAssignSchema = z.object({
   candidate_ids: z

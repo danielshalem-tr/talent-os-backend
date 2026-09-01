@@ -18,12 +18,17 @@ export interface EnrichmentFields {
  *
  * COALESCE semantics: an incoming value wins only when it actually carries something.
  * The stage rides with the job, since a stage from the previous job is meaningless
- * against a new one.
+ * against a new one — but ONLY when the job actually changes. Matching the SAME job
+ * again (the common case: "attaching my CV again", re: the same ad) must never drag a
+ * candidate the recruiter already advanced back to the first stage. This mirrors the
+ * guard the bulk-assign path makes explicit in assign-candidate.ts.
  */
 export function mergeEnrichment(existing: EnrichmentFields, incoming: EnrichmentFields): EnrichmentFields {
+  const jobChanged = incoming.jobId !== null && incoming.jobId !== existing.jobId;
+
   return {
     jobId: incoming.jobId ?? existing.jobId,
-    hiringStageId: incoming.jobId ? incoming.hiringStageId : existing.hiringStageId,
+    hiringStageId: jobChanged ? incoming.hiringStageId : existing.hiringStageId,
     currentRole: incoming.currentRole ?? existing.currentRole,
     yearsExperience: incoming.yearsExperience ?? existing.yearsExperience,
     location: incoming.location ?? existing.location,

@@ -3,7 +3,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { BulkAssignDto } from '../candidates/dto/bulk-assign.dto';
-import { ASSIGN_JOB_OPTS, AssignJobData, BULK_ASSIGN_QUEUE } from './bulk-assign.types';
+import { assignJobOpts, AssignJobData, BULK_ASSIGN_QUEUE } from './bulk-assign.types';
 
 /**
  * API side of bulk assign. Validates once, then hands every candidate to the worker:
@@ -50,9 +50,10 @@ export class BulkAssignService {
         this.queue.add(
           'assign',
           { tenantId, candidateId: candidate.id, jobId: job.id } satisfies AssignJobData,
-          // Stable job id: clicking the button twice for the same selection collapses
-          // into one queued job rather than paying for the scoring twice.
-          { jobId: `assign-${candidate.id}-${job.id}`, ...ASSIGN_JOB_OPTS },
+          // Clicking the button twice for the same selection collapses into one queued job
+          // rather than paying for the scoring twice — but only for a short window, so a
+          // deliberate re-assign later still re-runs. See assignJobOpts.
+          assignJobOpts(candidate.id, job.id),
         ),
       ),
     );

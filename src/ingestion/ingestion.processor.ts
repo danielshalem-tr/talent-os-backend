@@ -366,11 +366,34 @@ export class IngestionProcessor extends WorkerHost {
       hiringStages: { id: string }[];
     }> = [];
 
+    // Stage the candidate ends up on for the primary matched job. Hoisted out of the try so
+    // the scoring loop below can keep application.job_stage_id in lockstep with
+    // candidate.hiring_stage_id (everything else goes through moveCandidateToStage, which
+    // writes both; Phase 7 writes the candidate row directly).
+    let primaryStageId: string | null = null;
+
     // Phase 15 job lookup + Phase 7 enrichment are wrapped so any failure here is RECORDED on
     // the intake log (status=failed + errorMessage) instead of being swallowed. Previously an
     // uncaught throw (e.g. a bad char rejected by the cv_text column) left the candidate as a
     // bare Phase-6 shell with the intake stuck at 'processing' and no error — invisible in logs.
     try {
+      // Read the candidate BEFORE matching: whether they already have a job decides if the
+      // AI fallback matcher is allowed to run at all (see below).
+      const existing = await this.prisma.candidate.findUniqueOrThrow({
+        where: { id: context.candidateId },
+        select: {
+          jobId: true,
+          hiringStageId: true,
+          currentRole: true,
+          yearsExperience: true,
+          location: true,
+          skills: true,
+          cvText: true,
+          cvFileUrl: true,
+          aiSummary: true,
+        },
+      });
+
       if (matchedShortIds.length > 0) {
         // Look up each matched job
         const jobsData = await this.prisma.job.findMany({
@@ -409,7 +432,13 @@ export class IngestionProcessor extends WorkerHost {
       // this application targets, then let CODE enforce "exactly one" — the model only
       // suggests. Zero or 2+ suggestions leave the candidate in the talent pool for a
       // human, which is strictly better than a wrong pipeline placement.
-      if (matchedJobs.length === 0) {
+      //
+      // Never runs for a candidate who ALREADY has a job. Follow-up mail from someone deep
+      // in a pipeline ("thanks for the interview, attaching my references") carries no job
+      // number, so it would reach the matcher, and a single confident guess would silently
+      // move them off the job a human put them on. An explicit job number in the email is
+      // still honoured above — that is stated intent, not a guess.
+      if (matchedJobs.length === 0 && !existing.jobId) {
         const openJobs = await this.prisma.job.findMany({
           where: { tenantId, status: 'open' },
           select: {
@@ -448,34 +477,35 @@ export class IngestionProcessor extends WorkerHost {
           },
           'Phase 15: role matcher',
         );
+      } else if (matchedJobs.length === 0) {
+        this.pinoLogger.log(
+          { messageId: payload.MessageID, candidateId: context.candidateId, jobId: existing.jobId },
+          'Phase 15: role matcher skipped — candidate already assigned to a job',
+        );
       }
 
       // For backward compatibility: set jobId/hiringStageId from first match (if any)
       // Later: Phase 7 will iterate over ALL matched jobs for multi-job scoring
-      const jobId = matchedJobs.length > 0 ? matchedJobs[0].id : null;
-      const hiringStageId = matchedJobs.length > 0 ? matchedJobs[0].hiringStages[0]?.id : null;
+      const primaryJob = matchedJobs.length > 0 ? matchedJobs[0] : null;
+      const jobId = primaryJob?.id ?? null;
+
+      if (primaryJob) {
+        // A stage already recorded on this job's application always wins over the job's
+        // first stage, so re-applying to a job a recruiter already advanced you on cannot
+        // demote you. Same rule assign-candidate.ts enforces for the bulk-assign path.
+        const priorApplication = await this.prisma.application.findUnique({
+          where: { idx_applications_unique: { tenantId, candidateId: context.candidateId, jobId: primaryJob.id } },
+          select: { jobStageId: true },
+        });
+        primaryStageId = priorApplication?.jobStageId ?? primaryJob.hiringStages[0]?.id ?? null;
+      }
 
       // Phase 7: Candidate enrichment (CAND-01, D-01, D-02, D-03)
       // ALWAYS enrich candidate fields, even if no job matched — but never downgrade a
       // field that already holds data (mergeEnrichment).
-      const existing = await this.prisma.candidate.findUniqueOrThrow({
-        where: { id: context.candidateId },
-        select: {
-          jobId: true,
-          hiringStageId: true,
-          currentRole: true,
-          yearsExperience: true,
-          location: true,
-          skills: true,
-          cvText: true,
-          cvFileUrl: true,
-          aiSummary: true,
-        },
-      });
-
       const incoming: EnrichmentFields = {
         jobId,
-        hiringStageId: hiringStageId ?? null,
+        hiringStageId: primaryStageId,
         currentRole: extraction!.current_role ?? null,
         yearsExperience: extraction!.years_experience ?? null,
         location: extraction!.location ?? null,
@@ -485,10 +515,12 @@ export class IngestionProcessor extends WorkerHost {
         aiSummary: extraction!.ai_summary ?? null,
       };
 
-      await this.prisma.candidate.update({
-        where: { id: context.candidateId },
-        data: mergeEnrichment({ ...existing, cvText: existing.cvText ?? '' }, incoming),
-      });
+      const merged = mergeEnrichment({ ...existing, cvText: existing.cvText ?? '' }, incoming);
+      await this.prisma.candidate.update({ where: { id: context.candidateId }, data: merged });
+
+      // What the candidate row actually ended up on — mergeEnrichment may have kept the
+      // existing stage. The scoring loop mirrors this onto the application row.
+      primaryStageId = merged.hiringStageId;
     } catch (err) {
       this.pinoLogger.error(
         { messageId: payload.MessageID, candidateId: context.candidateId, error: (err as Error).message },
@@ -517,11 +549,20 @@ export class IngestionProcessor extends WorkerHost {
     let jobScores: Array<{ jobId: string; score: number }>;
     try {
       jobScores = await Promise.all(
-        matchedJobs.map(async (activeJob) => {
+        matchedJobs.map(async (activeJob, index) => {
           // SCOR-02: upsert application row first — idempotent on retry
           const application = await this.prisma.application.upsert({
             where: { idx_applications_unique: { tenantId, candidateId: context.candidateId, jobId: activeJob.id } },
-            create: { tenantId, candidateId: context.candidateId, jobId: activeJob.id, stage: 'new' },
+            create: {
+              tenantId,
+              candidateId: context.candidateId,
+              jobId: activeJob.id,
+              stage: 'new',
+              // Mirror candidate.hiring_stage_id onto the primary job's application so the
+              // kanban (which reads the candidate) and stage summaries / voice assess (which
+              // read the application) cannot disagree about where this person is.
+              ...(index === 0 && primaryStageId ? { jobStageId: primaryStageId } : {}),
+            },
             update: {}, // No-op on retry
             select: { id: true },
           });
