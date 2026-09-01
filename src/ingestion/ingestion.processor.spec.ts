@@ -52,7 +52,7 @@ describe('IngestionProcessor', () => {
     emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
     organization: { findUnique: jest.Mock };
     $transaction: jest.Mock;
-    candidate: { update: jest.Mock; updateMany: jest.Mock };
+    candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
     job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
     application: { upsert: jest.Mock };
     candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
@@ -74,7 +74,22 @@ describe('IngestionProcessor', () => {
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
-      candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      candidate: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        // Phase 7 reads the row before merging; all-null means the incoming values win.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          jobId: null,
+          hiringStageId: null,
+          currentRole: null,
+          yearsExperience: null,
+          location: null,
+          skills: [],
+          cvText: null,
+          cvFileUrl: null,
+          aiSummary: null,
+        }),
+      },
       job: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -150,6 +165,35 @@ describe('IngestionProcessor', () => {
     expect(prisma.job.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: expect.objectContaining({ shortId: { in: ['106'] } }),
+      }),
+    );
+  });
+
+  it('does not blank an existing location when the new email extracts none', async () => {
+    const payload = mockEmailPayload({
+      TextBody:
+        'Attaching my CV once more as requested. Happy to answer any questions about my background at your convenience.',
+    });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    prisma.job.findMany.mockResolvedValue([]);
+    prisma.candidate.findUniqueOrThrow.mockResolvedValue({
+      jobId: 'job-1',
+      hiringStageId: 'stage-1',
+      currentRole: 'Backend Developer',
+      yearsExperience: 6,
+      location: 'Tel Aviv, Israel',
+      skills: ['node.js'],
+      cvText: 'existing cv',
+      cvFileUrl: 'r2/existing.pdf',
+      aiSummary: 'existing summary',
+    });
+    extractionAgent.extract.mockResolvedValue({ ...mockCandidateExtract(), location: null, skills: [] });
+
+    await processor.process(makeJob('job-merge', payload));
+
+    expect(prisma.candidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ location: 'Tel Aviv, Israel', jobId: 'job-1', skills: ['node.js'] }),
       }),
     );
   });
@@ -287,7 +331,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
     emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
     organization: { findUnique: jest.Mock };
     $transaction: jest.Mock;
-    candidate: { update: jest.Mock; updateMany: jest.Mock };
+    candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
     job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
     application: { upsert: jest.Mock };
     candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
@@ -309,7 +353,22 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
-      candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      candidate: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        // Phase 7 reads the row before merging; all-null means the incoming values win.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          jobId: null,
+          hiringStageId: null,
+          currentRole: null,
+          yearsExperience: null,
+          location: null,
+          skills: [],
+          cvText: null,
+          cvFileUrl: null,
+          aiSummary: null,
+        }),
+      },
       job: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -454,7 +513,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
     organization: { findUnique: jest.Mock };
     $transaction: jest.Mock;
-    candidate: { update: jest.Mock; updateMany: jest.Mock };
+    candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
     job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
     application: { upsert: jest.Mock };
     candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
@@ -485,7 +544,22 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => {
         return cb(txClient);
       }),
-      candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      candidate: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        // Phase 7 reads the row before merging; all-null means the incoming values win.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          jobId: null,
+          hiringStageId: null,
+          currentRole: null,
+          yearsExperience: null,
+          location: null,
+          skills: [],
+          cvText: null,
+          cvFileUrl: null,
+          aiSummary: null,
+        }),
+      },
       job: {
         findMany: jest.fn().mockResolvedValue([]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -768,7 +842,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
     organization: { findUnique: jest.Mock };
     $transaction: jest.Mock;
-    candidate: { update: jest.Mock; updateMany: jest.Mock };
+    candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
     job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
     application: { upsert: jest.Mock };
     candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
@@ -801,7 +875,22 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
-      candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      candidate: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        // Phase 7 reads the row before merging; all-null means the incoming values win.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          jobId: null,
+          hiringStageId: null,
+          currentRole: null,
+          yearsExperience: null,
+          location: null,
+          skills: [],
+          cvText: null,
+          cvFileUrl: null,
+          aiSummary: null,
+        }),
+      },
       job: {
         findMany: jest.fn().mockResolvedValue([activeJob]),
         findFirst: jest.fn().mockResolvedValue(null),
@@ -1151,7 +1240,22 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         },
         organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
         $transaction: jest.fn().mockImplementation(async (cb) => cb(txClient)),
-        candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+        candidate: {
+          update: jest.fn().mockResolvedValue({}),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          // Phase 7 reads the row before merging; all-null means the incoming values win.
+          findUniqueOrThrow: jest.fn().mockResolvedValue({
+            jobId: null,
+            hiringStageId: null,
+            currentRole: null,
+            yearsExperience: null,
+            location: null,
+            skills: [],
+            cvText: null,
+            cvFileUrl: null,
+            aiSummary: null,
+          }),
+        },
         job: {
           findMany: jest.fn().mockResolvedValue([job1, job2]),
           findUnique: jest.fn(),
@@ -1334,7 +1438,22 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
-      candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      candidate: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        // Phase 7 reads the row before merging; all-null means the incoming values win.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          jobId: null,
+          hiringStageId: null,
+          currentRole: null,
+          yearsExperience: null,
+          location: null,
+          skills: [],
+          cvText: null,
+          cvFileUrl: null,
+          aiSummary: null,
+        }),
+      },
       job: { findMany: jest.fn().mockResolvedValue([]) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
@@ -1437,7 +1556,22 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
-      candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      candidate: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        // Phase 7 reads the row before merging; all-null means the incoming values win.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          jobId: null,
+          hiringStageId: null,
+          currentRole: null,
+          yearsExperience: null,
+          location: null,
+          skills: [],
+          cvText: null,
+          cvFileUrl: null,
+          aiSummary: null,
+        }),
+      },
       job: { findMany: jest.fn().mockResolvedValue([]) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
@@ -1537,7 +1671,22 @@ describe('IngestionProcessor — CV Classification Gate', () => {
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
-      candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      candidate: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        // Phase 7 reads the row before merging; all-null means the incoming values win.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          jobId: null,
+          hiringStageId: null,
+          currentRole: null,
+          yearsExperience: null,
+          location: null,
+          skills: [],
+          cvText: null,
+          cvFileUrl: null,
+          aiSummary: null,
+        }),
+      },
       job: { findMany: jest.fn().mockResolvedValue([]) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
@@ -1660,7 +1809,22 @@ describe('ingest gate (ai_ingest_enabled)', () => {
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
-      candidate: { update: jest.fn().mockResolvedValue({}), updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      candidate: {
+        update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        // Phase 7 reads the row before merging; all-null means the incoming values win.
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          jobId: null,
+          hiringStageId: null,
+          currentRole: null,
+          yearsExperience: null,
+          location: null,
+          skills: [],
+          cvText: null,
+          cvFileUrl: null,
+          aiSummary: null,
+        }),
+      },
       job: { findMany: jest.fn().mockResolvedValue([]) },
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }) },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
