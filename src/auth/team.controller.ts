@@ -1,4 +1,5 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { ThrottlerGuard } from '@nestjs/throttler';
 import type { Request } from 'express';
 import { SessionGuard } from './session.guard';
 import { TeamService } from './team.service';
@@ -6,7 +7,7 @@ import type { JwtPayload } from './jwt.service';
 
 // D-17: All team endpoints require authentication — apply guard at controller level
 @Controller('auth/team')
-@UseGuards(SessionGuard)
+@UseGuards(SessionGuard, ThrottlerGuard)
 export class TeamController {
   constructor(private readonly teamService: TeamService) {}
 

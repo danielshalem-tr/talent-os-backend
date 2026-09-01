@@ -14,6 +14,7 @@ import {
 import type { Request } from 'express';
 import * as express from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { SessionGuard } from './session.guard';
 import { AuthService } from './auth.service';
 import { InvitationService } from './invitation.service';
@@ -34,6 +35,9 @@ function setSessionCookie(res: express.Response, token: string): void {
   });
 }
 
+// Rate-limited controller-wide (app default 100/min/IP) — pre-auth endpoints are the
+// brute-force / outbound-email abuse surface; stricter per-route overrides below.
+@UseGuards(ThrottlerGuard)
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -53,6 +57,7 @@ export class AuthController {
   @Public()
   @Post('google/verify')
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async googleVerify(@Body('access_token') accessToken: string, @Res({ passthrough: true }) res: express.Response) {
     if (!accessToken) {
       return { error: { code: 'VALIDATION_ERROR', message: 'access_token is required', details: {} } };
@@ -91,6 +96,7 @@ export class AuthController {
   @Public()
   @Post('magic-link')
   @HttpCode(200)
+  @Throttle({ default: { limit: 5, ttl: 60000 } }) // 5 emails/min/IP — unbounded outbound email otherwise
   async requestMagicLink(@Body('email') email: string) {
     if (email) await this.invitationService.generateAndStoreMagicLink(email);
     return { success: true }; // always 200 — no email enumeration (T-19-11)
@@ -101,6 +107,7 @@ export class AuthController {
   @Public()
   @Post('magic-link/verify')
   @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60000 } }) // brute-force brake on token guessing
   async verifyMagicLink(@Body('token') token: string, @Res({ passthrough: true }) res: express.Response) {
     const result = await this.invitationService.verifyMagicLinkSession(token);
     if (!result.ok) {

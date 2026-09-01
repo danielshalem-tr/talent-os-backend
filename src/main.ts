@@ -23,6 +23,11 @@ async function bootstrap() {
 
   app.useLogger(app.get(Logger));
 
+  // Exactly one proxy (Coolify's Traefik) sits in front of the API, so trust that single
+  // hop: req.ip becomes the real client IP from X-Forwarded-For instead of the proxy's,
+  // which is what ThrottlerGuard keys rate limits on. More hops would need a higher count.
+  app.set('trust proxy', 1);
+
   // D-14: HTTP security headers (XSS protection, clickjacking prevention, MIME sniffing)
   app.use(helmet());
 
