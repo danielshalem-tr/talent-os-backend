@@ -20,6 +20,7 @@ import { CandidateAiService } from './candidate-ai.service';
 import { ScoringAgentService } from '../scoring/scoring.service';
 import { AttachmentExtractorService } from '../ingestion/services/attachment-extractor.service';
 import { sanitizePgText } from '../common/sanitize-pg-text';
+import { moveCandidateToStage } from './stage-move';
 import type { EmailAttachmentDto } from '../webhooks';
 
 export type CandidateFilter = 'all' | 'duplicates';
@@ -842,60 +843,7 @@ export class CandidatesService {
   }
 
   async updateStage(candidateId: string, dto: UpdateCandidateStageDto, tenantId: string): Promise<void> {
-    // 1. Find the candidate and verify ownership
-    const candidate = await this.prisma.candidate.findFirst({
-      where: { id: candidateId, tenantId },
-      select: { id: true, jobId: true },
-    });
-
-    if (!candidate) {
-      throw new NotFoundException({
-        error: { code: 'NOT_FOUND', message: 'Candidate not found' },
-      });
-    }
-
-    if (!candidate.jobId) {
-      throw new BadRequestException({
-        error: { code: 'NO_JOB', message: 'Candidate is not linked to a job' },
-      });
-    }
-
-    // 2. Validate the target stage belongs to the candidate's job
-    const stage = await this.prisma.jobStage.findFirst({
-      where: {
-        id: dto.hiring_stage_id,
-        jobId: candidate.jobId,
-        tenantId,
-      },
-    });
-
-    if (!stage) {
-      throw new NotFoundException({
-        error: {
-          code: 'STAGE_NOT_FOUND',
-          message: 'Hiring stage not found for this job',
-        },
-      });
-    }
-
-    // 3. Atomic update: candidate.hiringStageId + application.jobStageId
-    await this.prisma.$transaction(async (tx) => {
-      // Update the candidate's current stage
-      await tx.candidate.update({
-        where: { id: candidateId },
-        data: { hiringStageId: dto.hiring_stage_id },
-      });
-
-      // Sync the matching application record
-      await tx.application.updateMany({
-        where: {
-          candidateId,
-          jobId: candidate.jobId!,
-          tenantId,
-        },
-        data: { jobStageId: dto.hiring_stage_id },
-      });
-    });
+    await moveCandidateToStage(this.prisma, candidateId, dto.hiring_stage_id, tenantId);
   }
 
   async deleteCandidate(candidateId: string, tenantId: string): Promise<void> {
