@@ -1,5 +1,5 @@
 import { Job } from 'bullmq';
-import { VoiceCallProcessor } from './voice-call.processor';
+import { serializeQuestions, ttsSafeJobTitle, VoiceCallProcessor } from './voice-call.processor';
 import { VoiceCallBlockedError } from './elevenlabs-gateway.service';
 
 const TENANT = '11111111-1111-1111-1111-111111111111';
@@ -143,6 +143,18 @@ describe('VoiceCallProcessor', () => {
       );
     });
 
+    it('sends a TTS-safe job_title — parentheses never reach the spoken first message', async () => {
+      const { processor, gateway } = makeMocks({
+        job: { ...ROW.job, title: 'Frontend Engineer (React/Node)' },
+      });
+      await processor.process(makeJob('call'));
+      expect(gateway.startOutboundCall).toHaveBeenCalledWith(
+        expect.objectContaining({
+          dynamicVariables: expect.objectContaining({ job_title: 'Frontend Engineer' }),
+        }),
+      );
+    });
+
     it('finalizes blocked (test mode) rows terminally — no rethrow, no retry', async () => {
       const { processor, prisma, gateway } = makeMocks();
       gateway.startOutboundCall.mockRejectedValue(new VoiceCallBlockedError('blocked_test_mode'));
@@ -244,5 +256,16 @@ describe('VoiceCallProcessor', () => {
       await processor.process(makeJob('audio'));
       expect(storage.uploadVoiceAudio).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('ttsSafeJobTitle', () => {
+  it('strips parenthesized segments and collapses whitespace', () => {
+    expect(ttsSafeJobTitle('Senior Product Designer (UX/UI)')).toBe('Senior Product Designer');
+    expect(ttsSafeJobTitle('QA (automation) engineer  (senior)')).toBe('QA engineer');
+  });
+
+  it('returns the trimmed original when stripping would leave nothing', () => {
+    expect(ttsSafeJobTitle('(UX/UI)')).toBe('(UX/UI)');
   });
 });
