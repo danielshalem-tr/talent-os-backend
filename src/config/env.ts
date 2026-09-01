@@ -59,7 +59,7 @@ export const envSchema = z.object({
   PMB_SIGNING_SECRET: z.string().min(32, 'PMB_SIGNING_SECRET must be at least 32 characters').optional(),
 
   // Voice screening (ElevenLabs). All optional in every schema: deploys ship before the
-  // one-time ElevenLabs setup (docs/voice-screening-setup.md), and the gateway fails
+  // one-time ElevenLabs setup (internal runbook, kept outside this repo), and the gateway fails
   // closed ('not_configured') until the three ELEVENLABS_* core vars are set.
   ELEVENLABS_API_KEY: z.string().min(1).optional(),
   ELEVENLABS_AGENT_ID: z.string().min(1).optional(),
