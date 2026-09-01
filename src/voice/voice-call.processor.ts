@@ -116,7 +116,7 @@ export class VoiceCallProcessor extends WorkerHost {
       });
       // Fresh jobId — the original job is completing right now and its id may be retained.
       await this.voiceQueue.add('call', { voiceCallId } satisfies VoiceCallJobData, {
-        jobId: `call:${voiceCallId}:${nextSlot.getTime()}`,
+        jobId: `call-${voiceCallId}-${nextSlot.getTime()}`,
         delay: nextSlot.getTime() - now.getTime(),
         ...VOICE_JOB_OPTS,
       });
@@ -169,7 +169,7 @@ export class VoiceCallProcessor extends WorkerHost {
 
     // 5. Watchdog: finalize from polling if the webhook never arrives.
     await this.voiceQueue.add('check', { voiceCallId } satisfies VoiceCallJobData, {
-      jobId: `check:${voiceCallId}:1`,
+      jobId: `check-${voiceCallId}-1`,
       delay: WATCHDOG_DELAY_MS,
       ...VOICE_JOB_OPTS,
     });
@@ -214,7 +214,7 @@ export class VoiceCallProcessor extends WorkerHost {
       return;
     }
     await this.voiceQueue.add('check', { voiceCallId } satisfies VoiceCallJobData, {
-      jobId: `check:${voiceCallId}:${Date.now()}`,
+      jobId: `check-${voiceCallId}-${Date.now()}`,
       delay: WATCHDOG_RECHECK_MS,
       ...VOICE_JOB_OPTS,
     });

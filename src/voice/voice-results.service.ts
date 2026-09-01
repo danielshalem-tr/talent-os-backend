@@ -99,7 +99,7 @@ export class VoiceResultsService {
 
     if (data.has_audio !== false) {
       await this.voiceQueue.add('audio', { voiceCallId: row.id } satisfies VoiceCallJobData, {
-        jobId: `audio:${row.id}`, // BullMQ ignores adds whose jobId already exists → redelivery-safe
+        jobId: `audio-${row.id}`, // BullMQ ignores adds whose jobId already exists → redelivery-safe
         ...VOICE_JOB_OPTS,
       });
     }

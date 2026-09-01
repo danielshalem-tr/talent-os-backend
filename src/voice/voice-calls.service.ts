@@ -112,7 +112,7 @@ export class VoiceCallsService {
 
     try {
       await this.voiceQueue.add('call', { voiceCallId: row.id } satisfies VoiceCallJobData, {
-        jobId: `call:${row.id}`,
+        jobId: `call-${row.id}`,
         delay: Math.max(0, scheduledFor.getTime() - Date.now()),
         ...VOICE_JOB_OPTS,
       });
@@ -256,7 +256,7 @@ export class VoiceCallsService {
       throw new ConflictException({ error: { code: 'NOT_CANCELABLE', message: 'Call is not in a cancelable state' } });
     }
     try {
-      const job = await this.voiceQueue.getJob(`call:${callId}`);
+      const job = await this.voiceQueue.getJob(`call-${callId}`);
       if (job) await job.remove();
     } catch (err) {
       // The processor's claim check (status must be 'scheduled') is the real guard.
