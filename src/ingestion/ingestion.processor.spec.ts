@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { IngestionProcessor } from './ingestion.processor';
 import { VoiceCallsService } from '../voice/voice-calls.service';
@@ -26,6 +27,13 @@ jest.mock('mammoth', () => ({
 // Voice screening seam. One shared mock: jest.clearAllMocks() (used throughout this file)
 // wipes recorded calls between tests but keeps the resolved-value implementation.
 const voiceCallsService = { scheduleAutoCalls: jest.fn().mockResolvedValue(undefined) };
+
+// ConfigService for the processor constructor. SHORT_ID_ALIASES drives the job-number
+// alias rewrite; '300:106' mirrors the production alias so the mapping is exercised.
+// jest.clearAllMocks() keeps the implementation passed to jest.fn(), so this survives.
+const configService = {
+  get: jest.fn((key: string) => (key === 'SHORT_ID_ALIASES' ? '300:106' : undefined)),
+};
 
 /** Helper: build a slim job with new IngestJobData shape */
 function makeJob(id: string, payload: ReturnType<typeof mockEmailPayload>) {
@@ -114,6 +122,7 @@ describe('IngestionProcessor', () => {
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -123,6 +132,26 @@ describe('IngestionProcessor', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+  });
+
+  // Body kept over the spam filter's 100-char floor: an attachment-less short body is
+  // hard-rejected at Step 0 and would never reach the Phase 15 lookup.
+  it('rewrites an aliased job number before the job lookup', async () => {
+    const payload = mockEmailPayload({
+      Subject: 'Application for job #300',
+      TextBody:
+        'Please find my CV attached to this email. I would very much like to be considered for this role and can start soon.',
+    });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    prisma.job.findMany.mockResolvedValue([]);
+
+    await processor.process(makeJob('job-alias', payload));
+
+    expect(prisma.job.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ shortId: { in: ['106'] } }),
+      }),
+    );
   });
 
   // 3-03-01: PROC-06 — spam rejection updates status to 'spam'
@@ -325,6 +354,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -513,6 +543,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -833,6 +864,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -1158,6 +1190,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
             useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
           },
           { provide: VoiceCallsService, useValue: voiceCallsService },
+          { provide: ConfigService, useValue: configService },
           { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
         ],
       }).compile();
@@ -1330,6 +1363,7 @@ describe('IngestionProcessor — extractCandidateShortIds()', () => {
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -1430,6 +1464,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
           useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
         },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -1536,6 +1571,7 @@ describe('IngestionProcessor — CV Classification Gate', () => {
         },
         { provide: CvClassifierService, useValue: cvClassifier },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();
@@ -1660,6 +1696,7 @@ describe('ingest gate (ai_ingest_enabled)', () => {
         },
         { provide: CvClassifierService, useValue: cvClassifier },
         { provide: VoiceCallsService, useValue: voiceCallsService },
+        { provide: ConfigService, useValue: configService },
         { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
       ],
     }).compile();

@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger as PinoLogger } from 'nestjs-pino';
@@ -13,6 +14,7 @@ import { DedupService, DedupResult } from '../dedup/dedup.service';
 import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
 import { VoiceCallsService } from '../voice/voice-calls.service';
 import { sanitizePgText } from '../common/sanitize-pg-text';
+import { parseShortIdAliases, applyShortIdAliases } from '../config/short-id-aliases';
 
 export interface ProcessingContext {
   fullText: string;
@@ -28,6 +30,8 @@ export interface ProcessingContext {
   maxStalledCount: 2, // retry if stalled 2x
 })
 export class IngestionProcessor extends WorkerHost {
+  private readonly shortIdAliases: Map<string, string>;
+
   constructor(
     private readonly spamFilter: SpamFilterService,
     private readonly cvClassifier: CvClassifierService,
@@ -38,9 +42,11 @@ export class IngestionProcessor extends WorkerHost {
     private readonly dedupService: DedupService,
     private readonly scoringService: ScoringAgentService,
     private readonly voiceCallsService: VoiceCallsService,
+    private readonly config: ConfigService,
     private readonly pinoLogger: PinoLogger,
   ) {
     super();
+    this.shortIdAliases = parseShortIdAliases(this.config.get<string>('SHORT_ID_ALIASES'));
   }
 
   /**
@@ -364,8 +370,10 @@ export class IngestionProcessor extends WorkerHost {
     this.pinoLogger.log({ messageId: payload.MessageID, candidateId }, 'Phase 6 complete');
 
     // Phase 15: Deterministic Job ID extraction + multi-job lookup
-    // Extract candidate short_ids (pure text parse — no DB query)
-    const matchedShortIds = this.extractCandidateShortIds(payload.Subject, payload.TextBody);
+    // Extract candidate short_ids (pure text parse — no DB query), then rewrite any
+    // known-wrong ad number onto its real short_id before the lookup.
+    const parsedShortIds = this.extractCandidateShortIds(payload.Subject, payload.TextBody);
+    const matchedShortIds = applyShortIdAliases(parsedShortIds, this.shortIdAliases);
 
     let matchedJobs: Array<{
       id: string;
