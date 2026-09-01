@@ -1,4 +1,9 @@
-import { ExtractionAgentService, CandidateExtract, CandidateExtractSchema } from './extraction-agent.service';
+import {
+  ExtractionAgentService,
+  CandidateExtract,
+  CandidateExtractSchema,
+  sanitizeExtract,
+} from './extraction-agent.service';
 import { mockCandidateExtract } from './extraction-agent.service.test-helpers';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from '../../storage/storage.service';
@@ -467,5 +472,22 @@ describe('ExtractionAgentService - location prompt instruction (Issue 1)', () =>
     expect(callArg.system).toContain('HOME location');
     expect(callArg.system).toContain('Phone country prefix');
     expect(callArg.system).toContain('employer');
+  });
+});
+
+describe('sanitizeExtract', () => {
+  it('turns a literal "null" location into a real null', () => {
+    const result = sanitizeExtract({ ...mockCandidateExtract(), location: 'null' });
+    expect(result.location).toBeNull();
+  });
+
+  it('drops nullish skill tags and trims the rest', () => {
+    const result = sanitizeExtract({ ...mockCandidateExtract(), skills: [' node.js ', 'N/A', 'sql'] });
+    expect(result.skills).toEqual(['node.js', 'sql']);
+  });
+
+  it('leaves a real location untouched', () => {
+    const result = sanitizeExtract({ ...mockCandidateExtract(), location: 'Tel Aviv, Israel' });
+    expect(result.location).toBe('Tel Aviv, Israel');
   });
 });
