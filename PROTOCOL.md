@@ -956,7 +956,8 @@ Return the currently authenticated user's session.
   "org_name": "Triolla",
   "org_logo_url": "https://cdn.example.com/logos/uuid.png",
   "auth_provider": "google",
-  "has_completed_onboarding": true
+  "has_completed_onboarding": true,
+  "avatar_url": "https://lh3.googleusercontent.com/a/photo.jpg | null"
 }
 ```
 
@@ -979,9 +980,9 @@ Verify a Google OAuth `access_token` obtained from the SPA (via `useGoogleLogin`
 **Behavior:**
 
 - Backend fetches user info (email, name, picture) using the provided token.
-- On new user (sign-up path): creates Tenant + User with `role = 'owner'`
+- On new user (sign-up path): creates Tenant + User with `role = 'owner'`. When `AUTH_ALLOWED_DOMAINS` is configured, no tenant is created — the new user joins the `TENANT_ID` org with `role = 'member'`.
 - On returning user: updates session
-- If email already exists with a different provider: returns `409 Conflict` with `code: "EMAIL_EXISTS"`
+- An existing account with this email is linked to Google and logged in.
 
 **Response:** `200 OK` — same shape as `GET /auth/me`
 
@@ -989,7 +990,7 @@ Verify a Google OAuth `access_token` obtained from the SPA (via `useGoogleLogin`
 
 - `400 Bad Request` — missing or malformed `credential`
 - `401 Unauthorized` — Google token verification failed
-- `409 Conflict` — email exists with a different auth provider (`code: "EMAIL_EXISTS"`)
+- `403 Forbidden` — the email's domain is outside `AUTH_ALLOWED_DOMAINS` (when configured)
 
 **Notes:**
 
@@ -1102,20 +1103,27 @@ Send a magic link login email to a returning user who joined via invitation.
 
 ---
 
-### `GET /auth/magic-link/verify`
+### `POST /auth/magic-link/verify`
 
 Verify a magic-link login token (the link emailed to the user for returning logins).
 
-**Query Parameters:**
+**Request Body:**
 
-- `token`: magic link token
+```json
+{ "token": "<hex>" }
+```
 
-**Behavior:** Sets session cookie, redirects to `/`
+**Behavior:** Sets session cookie.
+
+**Response:** `200 OK`
+
+```json
+{ "success": true }
+```
 
 **Errors:**
 
-- `404 Not Found` — invalid token
-- `410 Gone` — expired token (redirect to `/login?error=link_expired`)
+- `404 Not Found` — `{ "error": { "code": "NOT_FOUND", "message": "Invalid or expired magic link" } }`
 
 ---
 
@@ -1167,6 +1175,8 @@ Fetch all pending (not yet accepted, not expired) invitations for the current te
 
 Send an invitation email and create an `invitations` record.
 
+Roles: `owner` or `admin` (403 otherwise).
+
 **Request Body:**
 
 ```json
@@ -1198,10 +1208,13 @@ Send an invitation email and create an `invitations` record.
 
 Cancel a pending invitation.
 
+Roles: `owner` or `admin` (403 otherwise).
+
 **Response:** `204 No Content`
 
 **Errors:**
 
+- `403 Forbidden` — caller is not Owner or Admin
 - `404 Not Found` — invitation not found
 
 ---
@@ -1231,7 +1244,7 @@ Change the role of an active member. Owner role cannot be set via this endpoint.
 
 ### `DELETE /auth/team/members/:id`
 
-Remove an active member from the tenant. Immediately revokes access.
+Remove an active member from the tenant (soft delete). Access is revoked on the member's next request.
 
 **Response:** `204 No Content`
 
