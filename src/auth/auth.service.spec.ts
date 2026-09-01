@@ -1,4 +1,4 @@
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, UnauthorizedException } from '@nestjs/common';
 import { AuthService, MeResponse } from './auth.service';
 import { JwtService, JwtPayload } from './jwt.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -226,6 +226,52 @@ describe('AuthService', () => {
   });
 
   // ─── Google access-token audience validation (account-takeover guard) ────────
+  describe('googleVerify with AUTH_ALLOWED_DOMAINS=triolla.io', () => {
+    beforeEach(() => {
+      (mockConfigService.get as jest.Mock).mockImplementation((key: string) => {
+        if (key === 'GOOGLE_CLIENT_ID') return undefined; // dev stub token path
+        if (key === 'NODE_ENV') return 'development';
+        if (key === 'AUTH_ALLOWED_DOMAINS') return 'triolla.io';
+        if (key === 'TENANT_ID') return 'tenant-1';
+        return undefined;
+      });
+    });
+
+    const tok = (email: string) => JSON.stringify({ email, name: 'Someone' });
+
+    it('rejects a google login from another domain', async () => {
+      await expect(service.googleVerify(tok('evil@gmail.com'))).rejects.toThrow(ForbiddenException);
+      expect(mockPrisma.user.findFirst).not.toHaveBeenCalled();
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+
+    it('attaches a new allowed-domain user to the TENANT_ID org as member', async () => {
+      (mockPrisma.user.findFirst as jest.Mock).mockResolvedValue(null);
+      (mockPrisma.organization.findUniqueOrThrow as jest.Mock).mockResolvedValue({ ...mockOrg, id: 'tenant-1' });
+      (mockPrisma.user.create as jest.Mock).mockResolvedValue({
+        ...mockUser,
+        id: 'u9',
+        email: 'new@triolla.io',
+        role: 'member',
+        organizationId: 'tenant-1',
+      });
+      const res = await service.googleVerify(tok('new@triolla.io'));
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled(); // no org creation
+      expect(mockPrisma.user.create).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ organizationId: 'tenant-1', role: 'member' }) }),
+      );
+      expect(res.meResponse.role).toBe('member');
+    });
+
+    it('still auto-links an existing user from an allowed domain', async () => {
+      (mockPrisma.user.findFirst as jest.Mock).mockResolvedValue({ ...mockUser, email: 'daniel.s@triolla.io' });
+      (mockPrisma.user.update as jest.Mock).mockResolvedValue({ ...mockUser, email: 'daniel.s@triolla.io' });
+      (mockPrisma.organization.findUniqueOrThrow as jest.Mock).mockResolvedValue(mockOrg);
+      await service.googleVerify(tok('daniel.s@triolla.io'));
+      expect(mockPrisma.$transaction).not.toHaveBeenCalled();
+    });
+  });
+
   describe('googleVerify audience validation (GOOGLE_CLIENT_ID set)', () => {
     const realFetch = global.fetch;
     beforeEach(() => {

@@ -24,6 +24,10 @@ export const envSchema = z.object({
   SMTP_FROM: z.string().optional(),
   FRONTEND_URL: z.url().default('http://localhost:5173'),
   GOOGLE_CLIENT_ID: z.string().optional(),
+  // Comma-separated email domains allowed to sign in via Google (e.g. "triolla.io").
+  // Unset = open self-signup with per-signup org creation (original multi-tenant behavior).
+  // Set  = other domains are rejected, and new users join the TENANT_ID org as 'member'.
+  AUTH_ALLOWED_DOMAINS: z.string().optional(),
   EXTRACTION_MODEL: z.string().default('openai/gpt-4o-mini'),
   SCORING_MODEL: z.string().default('openai/gpt-4o-mini'),
   CLASSIFIER_MODEL: z.string().default('openai/gpt-4o-mini'),

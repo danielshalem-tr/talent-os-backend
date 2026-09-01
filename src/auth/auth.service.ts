@@ -1,4 +1,4 @@
-import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtService, JwtPayload } from './jwt.service';
@@ -102,6 +102,15 @@ export class AuthService {
 
     const email = googleUser.email;
 
+    const allowedDomains = (this.configService.get<string>('AUTH_ALLOWED_DOMAINS') ?? '')
+      .split(',')
+      .map((d) => d.trim().toLowerCase())
+      .filter((d) => d.length > 0);
+    const domainRestricted = allowedDomains.length > 0;
+    if (domainRestricted && !allowedDomains.includes(email.split('@')[1]?.toLowerCase() ?? '')) {
+      throw new ForbiddenException('This Google account is not allowed to sign in');
+    }
+
     // D-22: Check if user already exists globally by email
     const existingUser = await this.prisma.user.findFirst({ where: { email } });
 
@@ -130,6 +139,32 @@ export class AuthService {
         role: updatedUser.role as JwtPayload['role'],
       });
       return { meResponse: this.buildMeResponse(updatedUser, org), sessionToken };
+    }
+
+    if (domainRestricted) {
+      // Single-tenant mode: never create orgs — attach the new user to the TENANT_ID org.
+      const tenantId = this.configService.get<string>('TENANT_ID');
+      if (!tenantId) {
+        throw new Error('AUTH_ALLOWED_DOMAINS is set but TENANT_ID is not — cannot attach new users');
+      }
+      const org = await this.prisma.organization.findUniqueOrThrow({ where: { id: tenantId } });
+      const user = await this.prisma.user.create({
+        data: {
+          email,
+          fullName: googleUser.name ?? null,
+          authProvider: 'google',
+          organizationId: org.id,
+          role: 'member',
+          providerId: googleUser.sub ?? null,
+          avatarUrl: googleUser.picture ?? null,
+        },
+      });
+      const sessionToken = await this.jwtService.signRefreshToken({
+        sub: user.id,
+        org: org.id,
+        role: 'member',
+      });
+      return { meResponse: this.buildMeResponse(user, org), sessionToken };
     }
 
     // D-21: new user — create org + user in single DB transaction (D-24 from Phase 18)
