@@ -47,6 +47,16 @@ export interface CandidateResponse {
     scheduled_for: string | null;
     summary: string | null;
   } | null;
+  // Full scoring record for the assigned job (single-candidate reads only; list returns null).
+  score_details: {
+    score: number;
+    reasoning: string | null;
+    strengths: string[];
+    gaps: string[];
+    model_used: string;
+    scored_at: string;
+    breakdown: unknown | null;
+  } | null;
 }
 
 /**

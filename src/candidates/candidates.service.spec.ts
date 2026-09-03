@@ -27,7 +27,7 @@ function mockCandidate(
     hiringStageId: string | null;
     hiringStage: { name: string } | null;
     aiScore: number | null;
-    applications: { scores: { score: number }[] }[];
+    applications: { jobId?: string; scores: Record<string, unknown>[] }[];
     duplicateFlags: { id: string }[];
     candidateStageSummaries: { jobStageId: string; summary: string }[];
     status: string;
@@ -138,6 +138,66 @@ describe('CandidatesService', () => {
       expect(result.candidates[2].cv_readable).toBe(false);
       // cv_text must never leak into the response
       expect((result.candidates[0] as Record<string, unknown>).cv_text).toBeUndefined();
+    });
+  });
+
+  describe('findOne score_details', () => {
+    it('returns score_details for the assigned job application', async () => {
+      prismaMock.candidate.findFirst = jest.fn().mockResolvedValue(
+        mockCandidate({
+          jobId: 'job-1',
+          applications: [
+            {
+              jobId: 'job-other',
+              scores: [
+                {
+                  score: 10,
+                  reasoning: 'old',
+                  strengths: [],
+                  gaps: [],
+                  modelUsed: 'm',
+                  scoredAt: new Date('2026-09-01'),
+                  breakdown: null,
+                },
+              ],
+            },
+            {
+              jobId: 'job-1',
+              scores: [
+                {
+                  score: 81,
+                  reasoning: 'fit',
+                  strengths: ['React'],
+                  gaps: [],
+                  modelUsed: 'anthropic/claude-sonnet-5',
+                  scoredAt: new Date('2026-09-03T10:00:00Z'),
+                  breakdown: { version: 1, flags: [] },
+                },
+              ],
+            },
+          ],
+        }),
+      );
+
+      const res = await service.findOne('cand-1', TENANT_ID);
+
+      expect(res.score_details).toEqual({
+        score: 81,
+        reasoning: 'fit',
+        strengths: ['React'],
+        gaps: [],
+        model_used: 'anthropic/claude-sonnet-5',
+        scored_at: '2026-09-03T10:00:00.000Z',
+        breakdown: { version: 1, flags: [] },
+      });
+    });
+
+    it('returns score_details null when the candidate has no job', async () => {
+      prismaMock.candidate.findFirst = jest.fn().mockResolvedValue(mockCandidate({ jobId: null, applications: [] }));
+
+      const res = await service.findOne('cand-1', TENANT_ID);
+
+      expect(res.score_details).toBeNull();
     });
   });
 

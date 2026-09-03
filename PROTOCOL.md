@@ -80,7 +80,9 @@ Fetch candidates with optional search and filtering.
       "ai_summary": "Experienced engineer with strong React skills. Recommended for senior roles.",
       "years_experience": 5,
       "salary_expectation_min": 10000,
-      "salary_expectation_max": 15000
+      "salary_expectation_max": 15000,
+      "latest_call": null,
+      "score_details": null
     }
   ],
   "total": 1
@@ -158,7 +160,8 @@ Fetch a single candidate by ID.
   "years_experience": 5,
   "salary_expectation_min": 10000,
   "salary_expectation_max": 15000,
-  "latest_call": null
+  "latest_call": null,
+  "score_details": null
 }
 ```
 
@@ -167,6 +170,36 @@ Fetch a single candidate by ID.
 - `latest_call` (object | null) — most recent voice screening call, or null:
   `{ "id": "uuid", "status": "scheduled", "attempt": 1, "scheduled_for": "2026-08-30T06:00:00.000Z", "summary": null }`
   Full history: `GET /candidates/:id/calls` (§9).
+
+**`score_details`** (single-candidate reads only; the list endpoint returns `null`): the stored scoring record for the candidate's current `job_id`, or `null` when unassigned/unscored.
+
+```json
+"score_details": {
+  "score": 81,
+  "reasoning": "Strong React/Node/TS match; no formal degree listed.",
+  "strengths": ["React + TypeScript in production"],
+  "gaps": ["Bachelor's degree not listed"],
+  "model_used": "anthropic/claude-sonnet-5",
+  "scored_at": "2026-09-03T10:00:00.000Z",
+  "breakdown": {
+    "version": 1,
+    "must_have_coverage": 0.94,
+    "nice_to_have_coverage": null,
+    "role_relevance": 90,
+    "relevant_years": 4,
+    "experience_fit": "in_range",
+    "experience_factor": 0.95,
+    "raw_score": 90.7,
+    "adjustments": [{ "label": "credential_missing", "delta": -5 }, { "label": "exact_tool_match", "delta": 3 }],
+    "caps_applied": [],
+    "flags": [],
+    "must_haves": [{ "requirement": "React+Node.js", "kind": "skill", "status": "met", "evidence": "...", "evidence_strength": "demonstrated", "exact_match": false }],
+    "nice_to_haves": []
+  }
+}
+```
+
+`experience_fit` ∈ `below_min | in_range | above_max | unknown | no_range`. `flags` ∈ `below_min_experience | over_qualified | experience_unknown`. `caps_applied[].label` ∈ `low_role_relevance | multiple_core_must_haves_missing | core_must_have_missing | core_must_have_partial | cv_uninformative | below_min_experience`. `breakdown` is `null` for scores written before Scoring v2.
 
 **Errors:**
 

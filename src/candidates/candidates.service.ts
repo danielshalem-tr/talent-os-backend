@@ -209,6 +209,7 @@ export class CandidatesService {
         // The list endpoint does not join voice calls — one extra join per row isn't worth
         // it; the profile page reads latest_call from GET /candidates/:id.
         latest_call: null,
+        score_details: null,
       };
     });
 
@@ -247,8 +248,17 @@ export class CandidatesService {
         },
         applications: {
           select: {
+            jobId: true,
             scores: {
-              select: { score: true },
+              select: {
+                score: true,
+                reasoning: true,
+                strengths: true,
+                gaps: true,
+                modelUsed: true,
+                scoredAt: true,
+                breakdown: true,
+              },
             },
           },
         },
@@ -277,6 +287,9 @@ export class CandidatesService {
     }
 
     const latestCall = c.voiceCalls?.[0] ?? null;
+    // The score shown on the profile is the one for the job the candidate is currently on —
+    // a candidate can carry applications (and scores) for jobs they were moved off.
+    const assignedScore = c.jobId ? (c.applications?.find((a) => a.jobId === c.jobId)?.scores?.[0] ?? null) : null;
 
     return {
       id: c.id,
@@ -322,6 +335,17 @@ export class CandidatesService {
             attempt: latestCall.attempt,
             scheduled_for: latestCall.scheduledFor?.toISOString() ?? null,
             summary: latestCall.summary,
+          }
+        : null,
+      score_details: assignedScore
+        ? {
+            score: assignedScore.score,
+            reasoning: assignedScore.reasoning,
+            strengths: assignedScore.strengths,
+            gaps: assignedScore.gaps,
+            model_used: assignedScore.modelUsed,
+            scored_at: assignedScore.scoredAt.toISOString(),
+            breakdown: assignedScore.breakdown ?? null,
           }
         : null,
     };
