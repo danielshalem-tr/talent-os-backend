@@ -70,7 +70,7 @@ export class ScoringAgentService {
     const prompt = buildScoringUserPrompt(input);
     const range = { expYearsMin: input.job.expYearsMin, expYearsMax: input.job.expYearsMax };
 
-    const results = await Promise.all(
+    const settled = await Promise.allSettled(
       Array.from({ length: samples }, async () => {
         const { object: evaluation } = await generateObject({
           model: this.openrouter.chat(model),
@@ -83,6 +83,16 @@ export class ScoringAgentService {
         return { evaluation, ...computeScore(evaluation, range) };
       }),
     );
+    // One transient 429/5xx or schema miss must not fail the intake three times as often as
+    // before: keep whatever succeeded, throw only when every sample failed.
+    const results = settled.flatMap((s) => (s.status === 'fulfilled' ? [s.value] : []));
+    const failures = settled.filter((s) => s.status === 'rejected');
+    if (results.length === 0) throw failures[0].reason;
+    if (failures.length > 0) {
+      this.logger.warn(
+        `${failures.length}/${samples} scoring samples failed: ${failures.map((f) => String(f.reason)).join(' | ')}`,
+      );
+    }
     // Median by score; on an even count take the lower-middle so the persisted breakdown is a
     // real evaluation rather than an average of two.
     results.sort((a, b) => a.score - b.score);

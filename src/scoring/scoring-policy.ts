@@ -64,10 +64,11 @@ export interface ScoringPolicy {
     withoutNice: { core: number; relevance: number };
   };
   experience: {
-    /** Factor at zero relevant years; rises linearly to inRangeFloor at the job's minimum. */
+    /** Factor at zero relevant years; rises linearly to the in-range factor at the job's minimum. */
     belowMinFloor: number;
     /** The hard cap applies only when the candidate has less than this share of the minimum. */
     belowMinCapShortfall: number;
+    /** Factor once the candidate has double the job's maximum; ramps down linearly from 1.0 at max. */
     aboveMax: number;
     unknown: number;
     inRangeFloor: number;
@@ -112,6 +113,8 @@ export const SCORING_POLICY: ScoringPolicy = {
   },
 };
 
+const round3 = (n: number): number => Math.round(n * 1000) / 1000;
+
 function requirementValue(r: RequirementEvaluation, p: ScoringPolicy): number {
   const base = p.statusValue[r.status];
   // "partial" is already a discount; stacking the claimed factor on top punished a listed
@@ -132,18 +135,27 @@ function experienceFactor(
   const { expYearsMin: min, expYearsMax: max } = job;
   if (min == null && max == null) return { fit: 'no_range', factor: 1, shortfall: 0 };
   if (years == null) return { fit: 'unknown', factor: p.experience.unknown, shortfall: 0 };
+
+  // The in-range ramp (inRangeFloor at min → 1.0 at max) only exists when the job gives a real
+  // interval. With one bound missing, or min == max, being in range is simply full credit; the
+  // other branches start from that same value so the curve is continuous at both boundaries.
+  const hasInterval = min != null && max != null && max > min;
+  const factorAtMin = hasInterval ? p.experience.inRangeFloor : 1;
+
   if (min != null && years < min) {
     // Continuous, not a cliff: 0.9 years against a 1-year minimum is nearly in range, and the
     // model's own year estimate wobbles by a few months between runs.
     const shortfall = Math.min(1, (min - years) / min);
-    const factor = p.experience.inRangeFloor - (p.experience.inRangeFloor - p.experience.belowMinFloor) * shortfall;
+    const factor = factorAtMin - (factorAtMin - p.experience.belowMinFloor) * shortfall;
     return { fit: 'below_min', factor, shortfall };
   }
-  if (max != null && years > max) return { fit: 'above_max', factor: p.experience.aboveMax, shortfall: 0 };
-  const lo = min ?? years;
-  const hi = max ?? years;
-  if (hi <= lo) return { fit: 'in_range', factor: 1, shortfall: 0 };
-  const frac = (years - lo) / (hi - lo);
+  if (max != null && years > max) {
+    // Light, continuous penalty: reaches aboveMax once the candidate has double the maximum.
+    const excess = Math.min(1, (years - max) / Math.max(max, 1));
+    return { fit: 'above_max', factor: 1 - (1 - p.experience.aboveMax) * excess, shortfall: 0 };
+  }
+  if (!hasInterval) return { fit: 'in_range', factor: 1, shortfall: 0 };
+  const frac = (years - min) / (max - min);
   return { fit: 'in_range', factor: p.experience.inRangeFloor + (1 - p.experience.inRangeFloor) * frac, shortfall: 0 };
 }
 
@@ -236,12 +248,12 @@ export function computeScore(
     score: final,
     breakdown: {
       version: 1,
-      must_have_coverage: coreCoverage,
-      nice_to_have_coverage: niceCoverage,
+      must_have_coverage: round3(coreCoverage),
+      nice_to_have_coverage: niceCoverage == null ? null : round3(niceCoverage),
       role_relevance: Math.round(relevance * 100),
       relevant_years: ev.relevant_years,
       experience_fit: exp.fit,
-      experience_factor: exp.factor,
+      experience_factor: round3(exp.factor),
       raw_score: Math.round(raw * 10) / 10,
       adjustments,
       caps_applied: caps,

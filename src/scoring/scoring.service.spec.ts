@@ -136,6 +136,17 @@ describe('ScoringAgentService sampling', () => {
     expect(result.breakdown.caps_applied).toContainEqual({ label: 'core_must_have_missing', cap: 60 });
   });
 
+  it('keeps the successful samples when one of three fails, throws only when all fail', async () => {
+    mockGenerateObject
+      .mockRejectedValueOnce(new Error('429'))
+      .mockResolvedValueOnce({ object: evaluation } as never)
+      .mockResolvedValueOnce({ object: evaluation } as never);
+    const ok = await makeService().score(input());
+    expect(ok.reasoning).toBe('Strong TS, no Postgres.');
+    mockGenerateObject.mockRejectedValue(new Error('all down'));
+    await expect(makeService().score(input())).rejects.toThrow('all down');
+  });
+
   it('honours opts.samples for the eval harness', async () => {
     mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
     await makeService().score(input(), { samples: 1 });

@@ -490,14 +490,18 @@ describe('CandidatesService', () => {
       };
       prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app-1' }) };
       prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };
+      prismaMock.candidate.updateMany = jest.fn().mockResolvedValue({ count: 1 });
       prismaMock.candidate.findMany = jest.fn().mockResolvedValue([mockCandidate({ aiScore: 75 })]);
 
       await service.revertScore('cand-1', TENANT_ID);
 
       // scoringAgent.score() mock returns { score: 75, ... } from module setup
       expect(prismaMock.candidateJobScore.upsert).toHaveBeenCalled();
-      expect(prismaMock.candidate.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: expect.objectContaining({ aiScore: 75 }) }),
+      expect(prismaMock.candidate.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isScoreOverridden: false }),
+          data: expect.objectContaining({ aiScore: 75 }),
+        }),
       );
     });
   });
@@ -532,6 +536,7 @@ describe('CandidatesService', () => {
       prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app1' }) };
       prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };
       prismaMock.candidate.update = jest.fn().mockResolvedValue({});
+      prismaMock.candidate.updateMany = jest.fn().mockResolvedValue({ count: 1 });
 
       const result = await service.rescoreCandidate('c1', TENANT_ID);
 
@@ -545,7 +550,12 @@ describe('CandidatesService', () => {
           breakdown: expect.objectContaining({ version: 1 }),
         }),
       );
-      expect(prismaMock.candidate.update).toHaveBeenCalledWith(expect.objectContaining({ data: { aiScore: 75 } }));
+      expect(prismaMock.candidate.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ isScoreOverridden: false }),
+          data: { aiScore: 75 },
+        }),
+      );
     });
 
     it('returns null when the candidate has no assigned job', async () => {
@@ -578,6 +588,7 @@ describe('CandidatesService', () => {
       );
       const update = jest.fn().mockResolvedValue({});
       prismaMock.candidate.update = update;
+      prismaMock.candidate.updateMany = jest.fn().mockResolvedValue({ count: 1 });
       prismaMock.job = {
         findFirst: jest.fn().mockResolvedValue({
           id: 'job-1',

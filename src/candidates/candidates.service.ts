@@ -680,8 +680,8 @@ export class CandidatesService {
       });
     }
 
-    await this.prisma.candidate.update({
-      where: { id: candidate.id },
+    await this.prisma.candidate.updateMany({
+      where: { id: candidate.id, isScoreOverridden: false },
       data: { aiScore: scoreResult.score },
     });
 

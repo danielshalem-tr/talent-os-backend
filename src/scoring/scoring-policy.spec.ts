@@ -68,7 +68,7 @@ describe('computeScore', () => {
       ev({ must_haves: [req({ status: 'partial', evidence_strength: 'claimed' }), req(), req()] }),
       range,
     );
-    expect(breakdown.must_have_coverage).toBeCloseTo((0.5 + 1 + 1) / 3, 5);
+    expect(breakdown.must_have_coverage).toBeCloseTo((0.5 + 1 + 1) / 3, 2);
   });
 
   it('exact_match is normalized to false for non-tool kinds', () => {
@@ -82,7 +82,7 @@ describe('computeScore', () => {
       ev({ must_haves: [req({ evidence_strength: 'claimed' }), req(), req()] }),
       range,
     );
-    expect(breakdown.must_have_coverage).toBeCloseTo((0.75 + 1 + 1) / 3, 5);
+    expect(breakdown.must_have_coverage).toBeCloseTo((0.75 + 1 + 1) / 3, 2);
   });
 
   it('missing credential is a -5 adjustment, never a cap, and is excluded from coverage', () => {
@@ -141,10 +141,10 @@ describe('computeScore', () => {
     expect(breakdown.caps_applied.map((c) => c.label)).not.toContain('below_min_experience');
   });
 
-  it('above maximum experience: light penalty 0.92 + over_qualified flag, no cap', () => {
+  it('above maximum experience: light penalty down to 0.92 + over_qualified flag, no cap', () => {
     const { breakdown } = computeScore(ev({ relevant_years: 15 }), range);
     expect(breakdown.experience_fit).toBe('above_max');
-    expect(breakdown.experience_factor).toBe(0.92);
+    expect(breakdown.experience_factor).toBeCloseTo(0.92, 3);
     expect(breakdown.flags).toContain('over_qualified');
     expect(breakdown.caps_applied).toEqual([]);
   });
@@ -230,5 +230,40 @@ describe('experience-kind must-haves', () => {
     expect(a.score).toBe(b.score);
     expect(a.breakdown.caps_applied).toEqual([]);
     expect(a.breakdown.must_haves).toHaveLength(3);
+  });
+});
+
+describe('experience factor is continuous for every job range shape', () => {
+  const f = (years: number, job: { expYearsMin: number | null; expYearsMax: number | null }) =>
+    computeScore(ev({ relevant_years: years }), job).breakdown.experience_factor;
+
+  it('min only: full credit at/above min, no cliff just below it', () => {
+    const job = { expYearsMin: 3, expYearsMax: null };
+    expect(f(3, job)).toBe(1);
+    expect(f(10, job)).toBe(1);
+    expect(f(2.9, job)).toBeGreaterThan(0.98);
+    expect(f(0, job)).toBeCloseTo(0.6, 3);
+  });
+
+  it('max only: full credit up to max, light continuous penalty above it', () => {
+    const job = { expYearsMin: null, expYearsMax: 5 };
+    expect(f(1, job)).toBe(1);
+    expect(f(5, job)).toBe(1);
+    expect(f(5.5, job)).toBeGreaterThan(0.99);
+    expect(f(10, job)).toBeCloseTo(0.92, 3);
+    expect(f(30, job)).toBeCloseTo(0.92, 3);
+  });
+
+  it('min == max: no ramp, full credit at the value', () => {
+    expect(f(4, { expYearsMin: 4, expYearsMax: 4 })).toBe(1);
+  });
+
+  it('interval: 0.8 at min, 1.0 at max, continuous just past both ends', () => {
+    const job = { expYearsMin: 3, expYearsMax: 5 };
+    expect(f(3, job)).toBeCloseTo(0.8, 3);
+    expect(f(2.99, job)).toBeCloseTo(0.8, 2);
+    expect(f(5, job)).toBe(1);
+    expect(f(5.01, job)).toBeCloseTo(1, 2);
+    expect(f(10, job)).toBeCloseTo(0.92, 3);
   });
 });
