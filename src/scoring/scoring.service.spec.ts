@@ -1,37 +1,51 @@
 import { ConfigService } from '@nestjs/config';
-import { ScoringAgentService, ScoreSchema, ScoringInput } from './scoring.service';
 import { generateObject } from 'ai';
+import { ScoringAgentService, ScoringInput } from './scoring.service';
+import { SCORING_SYSTEM_PROMPT } from './scoring-prompt';
 
-jest.mock('ai', () => ({
-  generateObject: jest.fn(),
-}));
-
+jest.mock('ai', () => ({ generateObject: jest.fn() }));
 jest.mock('@openrouter/ai-sdk-provider', () => ({
-  createOpenRouter: jest.fn().mockReturnValue({
-    chat: jest.fn().mockReturnValue('mocked-model'),
-  }),
+  createOpenRouter: jest.fn().mockReturnValue({ chat: jest.fn().mockReturnValue('mocked-model') }),
 }));
 
 const mockGenerateObject = generateObject as jest.MockedFunction<typeof generateObject>;
 
-function makeService(): ScoringAgentService {
+function makeService(model?: string): ScoringAgentService {
   const configService = {
-    get: jest.fn().mockImplementation((key: string) => {
-      if (key === 'SCORING_MODEL') return 'openai/gpt-4o-mini';
-      return 'fake-openrouter-key';
-    }),
+    get: jest.fn().mockImplementation((key: string) => (key === 'SCORING_MODEL' ? model : 'fake-openrouter-key')),
   } as unknown as ConfigService;
   return new ScoringAgentService(configService);
 }
 
-const validScoreObject = {
-  score: 85,
-  reasoning: 'Strong match. Candidate has relevant TypeScript experience.',
-  strengths: ['TypeScript expertise', '6+ years experience'],
+const evaluation = {
+  must_haves: [
+    {
+      requirement: 'TypeScript',
+      kind: 'skill',
+      status: 'met',
+      evidence: 'TypeScript at Acme',
+      evidence_strength: 'demonstrated',
+      exact_match: false,
+    },
+    {
+      requirement: 'PostgreSQL',
+      kind: 'skill',
+      status: 'missing',
+      evidence: 'not found',
+      evidence_strength: 'none',
+      exact_match: false,
+    },
+  ],
+  nice_to_haves: [],
+  relevant_years: 7,
+  role_relevance: 90,
+  cv_informative: true,
+  reasoning: 'Strong TS, no Postgres.',
+  strengths: ['TypeScript expertise'],
   gaps: ['No PostgreSQL mentioned'],
 };
 
-const mockScoringInput = (overrides: Partial<ScoringInput> = {}): ScoringInput => ({
+const input = (): ScoringInput => ({
   cvText: 'Experienced TypeScript engineer with Node.js background.',
   candidateFields: {
     currentRole: 'Senior Software Engineer',
@@ -41,120 +55,63 @@ const mockScoringInput = (overrides: Partial<ScoringInput> = {}): ScoringInput =
   job: {
     title: 'Backend Engineer',
     description: 'Build scalable APIs.',
-    mustHaveSkills: ['TypeScript', 'PostgreSQL'],
     roleSummary: null,
     responsibilities: null,
+    mustHaveSkills: ['TypeScript', 'PostgreSQL'],
     niceToHaveSkills: [],
-    expYearsMin: null,
-    expYearsMax: null,
+    expYearsMin: 3,
+    expYearsMax: 8,
     preferredOrgTypes: [],
     screeningQuestions: [],
   },
-  ...overrides,
 });
 
 describe('ScoringAgentService', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
+  beforeEach(() => jest.clearAllMocks());
 
-  // SCOR-03: score() calls generateObject with correct model
-  it('SCOR-03: score() calls generateObject with mocked-model', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: validScoreObject } as any);
-
-    const service = makeService();
-    await service.score(mockScoringInput());
-
-    expect(mockGenerateObject).toHaveBeenCalledWith(expect.objectContaining({ model: 'mocked-model' }));
-  });
-
-  // ConfigService used to get API key
-  it('reads OPENROUTER_API_KEY from ConfigService', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: validScoreObject } as any);
-
-    const configService = { get: jest.fn().mockReturnValue('test-key') } as unknown as ConfigService;
-    const service = new ScoringAgentService(configService);
-    await service.score(mockScoringInput());
-
-    expect(configService.get).toHaveBeenCalledWith('OPENROUTER_API_KEY');
-  });
-
-  // SCOR-05: modelUsed is set to 'openai/gpt-4o-mini'
-  it('SCOR-05: score() returns modelUsed = "openai/gpt-4o-mini"', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: validScoreObject } as any);
-
-    const service = makeService();
-    const result = await service.score(mockScoringInput());
-
-    expect(result.modelUsed).toBe('openai/gpt-4o-mini');
-  });
-
-  // SCOR-03 shape: result passes ScoreSchema validation
-  it('SCOR-03: score result satisfies ScoreSchema', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: validScoreObject } as any);
-
-    const service = makeService();
-    const result = await service.score(mockScoringInput());
-
-    expect(() => ScoreSchema.parse(result)).not.toThrow();
-    expect(result.score).toBe(85);
-  });
-
-  // Error propagation: generateObject() failure throws (not swallowed)
-  it('throws when generateObject() rejects', async () => {
-    mockGenerateObject.mockRejectedValueOnce(new Error('OpenRouter rate limit'));
-
-    const service = makeService();
-    await expect(service.score(mockScoringInput())).rejects.toThrow('OpenRouter rate limit');
-  });
-});
-
-describe('ScoreSchema - float coercion', () => {
-  it('should coerce 85.5 to 86', () => {
-    const result = ScoreSchema.parse({ score: 85.5, reasoning: 'ok', strengths: [], gaps: [] });
-    expect(result.score).toBe(86);
-  });
-
-  it('should reject score > 100', () => {
-    expect(() => ScoreSchema.parse({ score: 150, reasoning: 'ok', strengths: [], gaps: [] })).toThrow();
-  });
-
-  it('should accept integer score unchanged', () => {
-    const result = ScoreSchema.parse({ score: 85, reasoning: 'ok', strengths: [], gaps: [] });
-    expect(result.score).toBe(85);
-  });
-});
-
-describe('ScoringAgentService - context limits', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-  });
-
-  it('should not throw on 50K char cvText (truncated internally)', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: validScoreObject } as any);
-    const input: ScoringInput = {
-      cvText: 'a'.repeat(50_000),
-      candidateFields: { currentRole: 'Dev', yearsExperience: 5, skills: ['ts'] },
-      job: {
-        title: 'Engineer',
-        description: 'b'.repeat(50_000),
-        roleSummary: null,
-        responsibilities: null,
-        mustHaveSkills: [],
-        niceToHaveSkills: [],
-        expYearsMin: null,
-        expYearsMax: null,
-        preferredOrgTypes: [],
-        screeningQuestions: [],
-      },
+  it('calls generateObject with the system prompt, the built user prompt and temperature 0', async () => {
+    mockGenerateObject.mockResolvedValueOnce({ object: evaluation } as never);
+    await makeService('openai/gpt-4.1-mini').score(input());
+    const args = mockGenerateObject.mock.calls[0][0] as unknown as {
+      model: string;
+      system: string;
+      prompt: string;
+      temperature: number;
+      schemaName: string;
     };
-    const service = makeService();
-    await expect(service.score(input)).resolves.toBeDefined();
+    expect(args.model).toBe('mocked-model');
+    expect(args.system).toBe(SCORING_SYSTEM_PROMPT);
+    expect(args.prompt).toContain('M1. TypeScript');
+    expect(args.prompt).toContain('Experienced TypeScript engineer');
+    expect(args.temperature).toBe(0);
+    expect(args.schemaName).toBe('CandidateEvaluation');
   });
 
-  it('should propagate errors from generateObject', async () => {
-    mockGenerateObject.mockRejectedValueOnce(new Error('API error'));
-    const service = makeService();
-    await expect(service.score(mockScoringInput())).rejects.toThrow('API error');
+  it('computes the score from the evaluation via the policy and returns the breakdown', async () => {
+    mockGenerateObject.mockResolvedValueOnce({ object: evaluation } as never);
+    const result = await makeService('openai/gpt-4.1-mini').score(input());
+    expect(result.score).toBeLessThanOrEqual(60); // one core must-have missing → cap 60
+    expect(result.breakdown.caps_applied).toContainEqual({ label: 'core_must_have_missing', cap: 60 });
+    expect(result.breakdown.must_haves).toHaveLength(2);
+    expect(result.reasoning).toBe('Strong TS, no Postgres.');
+    expect(result.strengths).toEqual(['TypeScript expertise']);
+    expect(result.gaps).toEqual(['No PostgreSQL mentioned']);
+    expect(result.modelUsed).toBe('openai/gpt-4.1-mini');
+  });
+
+  it('defaults SCORING_MODEL to anthropic/claude-sonnet-5', async () => {
+    mockGenerateObject.mockResolvedValueOnce({ object: evaluation } as never);
+    const result = await makeService(undefined).score(input());
+    expect(result.modelUsed).toBe('anthropic/claude-sonnet-5');
+  });
+
+  it('propagates generateObject failures', async () => {
+    mockGenerateObject.mockRejectedValueOnce(new Error('rate limited'));
+    await expect(makeService('x').score(input())).rejects.toThrow('rate limited');
+  });
+
+  it('does not throw on a 50K-char CV (truncated internally)', async () => {
+    mockGenerateObject.mockResolvedValueOnce({ object: evaluation } as never);
+    await expect(makeService('x').score({ ...input(), cvText: 'a'.repeat(50_000) })).resolves.toBeDefined();
   });
 });

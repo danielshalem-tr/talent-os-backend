@@ -2,16 +2,11 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { z } from 'zod';
 import { ScoringJob } from './scoring-job-context';
+import { computeScore, ScoreBreakdown } from './scoring-policy';
+import { buildScoringUserPrompt, EvaluationSchema, SCORING_SYSTEM_PROMPT } from './scoring-prompt';
 
-export const ScoreSchema = z.object({
-  score: z.number().min(0).max(100).transform(Math.round),
-  reasoning: z.string(),
-  strengths: z.array(z.string()),
-  gaps: z.array(z.string()),
-});
-export type ScoreResult = z.infer<typeof ScoreSchema>;
+export const DEFAULT_SCORING_MODEL = 'anthropic/claude-sonnet-5';
 
 export interface ScoringInput {
   cvText: string;
@@ -23,35 +18,25 @@ export interface ScoringInput {
   job: ScoringJob;
 }
 
+export interface ScoreResult {
+  score: number;
+  reasoning: string;
+  strengths: string[];
+  gaps: string[];
+  breakdown: ScoreBreakdown;
+}
+
 export interface ScoringWithMatchResult {
   matched: boolean;
   matchConfidence?: number;
   score?: ScoreResult & { modelUsed: string };
 }
 
-const SCORING_INSTRUCTIONS = `You are a technical recruiter evaluating candidate fit for a job opening.
-Score the candidate 0-100 against the job requirements.
-
-Return ONLY a raw JSON object — no markdown, no code fences, no explanation.
-The JSON must contain exactly these keys:
-- "score" (integer 0-100): Overall fit score. 0-30 = poor fit, 31-50 = weak, 51-70 = moderate, 71-85 = strong, 86-100 = exceptional.
-- "reasoning" (string): 1-2 sentences explaining the score.
-- "strengths" (string[]): 2-5 specific strengths relevant to this job.
-- "gaps" (string[]): 0-5 specific gaps or missing requirements.
-
-RULES:
-- Base score solely on the provided information — do not assume skills not mentioned.
-- If the CV text is very short or uninformative, score conservatively (30-50 range).
-- Be specific in strengths and gaps — reference actual skills/requirements, not generic statements.
-
-Example output:
-{
-  "score": 85,
-  "reasoning": "Strong match. Candidate has 6 years backend experience with Node.js/TypeScript — both key requirements. Missing advanced system design experience.",
-  "strengths": ["Node.js/TypeScript expertise", "PostgreSQL + AWS infrastructure", "6+ years relevant experience"],
-  "gaps": ["No mention of microservices experience", "System design portfolio not detailed"]
-}`;
-
+/**
+ * Two-step scoring: the model audits the CV against each requirement (structured
+ * evaluation with quoted evidence); `computeScore` applies the policy. See scoring-policy.ts
+ * for why the model never emits the number itself.
+ */
 @Injectable()
 export class ScoringAgentService {
   private readonly logger = new Logger(ScoringAgentService.name);
@@ -60,44 +45,36 @@ export class ScoringAgentService {
 
   constructor(private readonly config: ConfigService) {
     this.openrouter = createOpenRouter({ apiKey: config.get<string>('OPENROUTER_API_KEY')! });
-    this.scoringModel = config.get<string>('SCORING_MODEL') ?? 'openai/gpt-4o-mini';
+    this.scoringModel = config.get<string>('SCORING_MODEL') ?? DEFAULT_SCORING_MODEL;
   }
 
   async score(input: ScoringInput): Promise<ScoreResult & { modelUsed: string }> {
-    const MAX_CV_LENGTH = 15_000;
-    const MAX_JOB_DESC_LENGTH = 15_000;
-
-    const safeCvText = input.cvText.substring(0, MAX_CV_LENGTH);
-    const safeJobDesc = (input.job.description ?? '').substring(0, MAX_JOB_DESC_LENGTH);
-    const requirements = input.job.mustHaveSkills;
-
-    const candidateSection = [
-      `Candidate:`,
-      `- Current Role: ${input.candidateFields.currentRole ?? 'Unknown'}`,
-      `- Years of Experience: ${input.candidateFields.yearsExperience ?? 'Unknown'}`,
-      `- Skills: ${input.candidateFields.skills.length > 0 ? input.candidateFields.skills.join(', ') : 'None listed'}`,
-      ``,
-      `CV Text:`,
-      safeCvText,
-    ].join('\n');
-
-    const jobSection = [
-      `Job:`,
-      `- Title: ${input.job.title}`,
-      `- Description: ${safeJobDesc || 'N/A'}`,
-      `- Requirements: ${requirements.length > 0 ? requirements.join(', ') : 'None specified'}`,
-    ].join('\n');
-
-    const { object } = await generateObject({
+    const { object: evaluation } = await generateObject({
       model: this.openrouter.chat(this.scoringModel),
-      schema: ScoreSchema,
-      schemaName: 'CandidateScore',
-      system: SCORING_INSTRUCTIONS,
-      prompt: `${candidateSection}\n\n${jobSection}`,
+      schema: EvaluationSchema,
+      schemaName: 'CandidateEvaluation',
+      system: SCORING_SYSTEM_PROMPT,
+      prompt: buildScoringUserPrompt(input),
       temperature: 0,
     });
 
-    this.logger.log(`Scored candidate — score: ${object.score}`);
-    return { ...object, modelUsed: this.scoringModel };
+    const { score, breakdown } = computeScore(evaluation, {
+      expYearsMin: input.job.expYearsMin,
+      expYearsMax: input.job.expYearsMax,
+    });
+
+    this.logger.log(
+      `Scored candidate — score: ${score} (raw ${breakdown.raw_score}, caps: ${
+        breakdown.caps_applied.map((c) => c.label).join(',') || 'none'
+      })`,
+    );
+    return {
+      score,
+      reasoning: evaluation.reasoning,
+      strengths: evaluation.strengths,
+      gaps: evaluation.gaps,
+      breakdown,
+      modelUsed: this.scoringModel,
+    };
   }
 }

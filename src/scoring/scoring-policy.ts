@@ -142,11 +142,16 @@ export function computeScore(
   const coreCoverage = coverage(core, p) ?? relevance;
   const niceCoverage = coverage(ev.nice_to_haves, p);
 
-  const w = niceCoverage == null ? p.weights.withoutNice : p.weights.withNice;
-  let raw =
-    niceCoverage == null
-      ? 100 * (w.core * coreCoverage + w.relevance * relevance)
-      : 100 * (w.core * coreCoverage + (w as { nice: number }).nice * niceCoverage + w.relevance * relevance);
+  // A job with no nice-to-haves redistributes that weight onto the two remaining terms rather
+  // than scoring everyone as if they missed a category that was never asked for.
+  let raw: number;
+  if (niceCoverage == null) {
+    const w = p.weights.withoutNice;
+    raw = 100 * (w.core * coreCoverage + w.relevance * relevance);
+  } else {
+    const w = p.weights.withNice;
+    raw = 100 * (w.core * coreCoverage + w.nice * niceCoverage + w.relevance * relevance);
+  }
 
   const flags: string[] = [];
   const exp = experienceFactor(ev.relevant_years, job, p);

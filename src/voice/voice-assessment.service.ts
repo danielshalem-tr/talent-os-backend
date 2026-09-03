@@ -87,7 +87,7 @@ export class VoiceAssessmentService {
     config: ConfigService,
   ) {
     this.openrouter = createOpenRouter({ apiKey: config.get<string>('OPENROUTER_API_KEY')! });
-    this.model = config.get<string>('SCORING_MODEL') ?? 'openai/gpt-4o-mini';
+    this.model = config.get<string>('VOICE_ASSESSMENT_MODEL') ?? 'openai/gpt-4o-mini';
   }
 
   async generateAssessment(input: {
