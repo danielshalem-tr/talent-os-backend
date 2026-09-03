@@ -59,12 +59,12 @@ async function main() {
   const models = arg('models', 'anthropic/claude-sonnet-5').split(',');
   const runs = Number(arg('runs', '2'));
   const out = arg('out', '');
+  // Full evaluations (per-requirement status/evidence) for diagnosis — written next to --out as .json.
+  const dump: Record<string, unknown[]> = {};
 
   const lines: string[] = [`# Scoring eval — ${new Date().toISOString().slice(0, 10)}`, ''];
   for (const model of models) {
-    const config = {
-      get: (key: string) => (key === 'SCORING_MODEL' ? model : process.env[key]),
-    } as unknown as ConfigService;
+    const config = { get: (key: string) => process.env[key] } as unknown as ConfigService;
     const service = new ScoringAgentService(config);
 
     lines.push(
@@ -86,12 +86,16 @@ async function main() {
       const scores: number[] = [];
       let lastCaps = '';
       for (let r = 0; r < runs; r++) {
-        const res = await service.score({
-          cvText,
-          candidateFields: { currentRole: c.currentRole, yearsExperience: c.yearsExperience, skills: c.skills },
-          job: fixtures.job,
-        });
+        const res = await service.score(
+          {
+            cvText,
+            candidateFields: { currentRole: c.currentRole, yearsExperience: c.yearsExperience, skills: c.skills },
+            job: fixtures.job,
+          },
+          { model },
+        );
         scores.push(res.score);
+        (dump[`${model}/${c.id}`] ??= []).push({ score: res.score, ...res.breakdown, reasoning: res.reasoning });
         lastCaps = [...res.breakdown.caps_applied.map((x) => x.label), ...res.breakdown.flags].join(', ') || '—';
       }
       const [lo, hi] = c.expected;
@@ -118,7 +122,10 @@ async function main() {
     );
   }
   const report = lines.join('\n');
-  if (out) writeFileSync(resolve(process.cwd(), out), report);
+  if (out) {
+    writeFileSync(resolve(process.cwd(), out), report);
+    writeFileSync(resolve(process.cwd(), out.replace(/\.md$/, '') + '.json'), JSON.stringify(dump, null, 2));
+  }
   console.log(report);
 }
 

@@ -16,8 +16,13 @@ export const RequirementEvaluationSchema = z.object({
 export const EvaluationSchema = z.object({
   must_haves: z.array(RequirementEvaluationSchema),
   nice_to_haves: z.array(RequirementEvaluationSchema),
-  relevant_years: z.number().min(0).max(50).nullable(),
-  role_relevance: z.number().min(0).max(100),
+  // Clamp rather than reject: a model that says "55 years" or "105" must not fail the whole
+  // intake (generateObject throws on schema violations and ingestion marks the email failed).
+  relevant_years: z
+    .number()
+    .nullable()
+    .transform((v) => (v == null ? null : Math.min(50, Math.max(0, v)))),
+  role_relevance: z.number().transform((v) => Math.min(100, Math.max(0, v))),
   cv_informative: z.boolean(),
   reasoning: z.string(),
   strengths: z.array(z.string()),
@@ -29,13 +34,14 @@ export const SCORING_SYSTEM_PROMPT = `You are a senior technical recruiter audit
 Evaluate EVERY must-have and nice-to-have requirement, one entry each, in the order given, copying the requirement text verbatim into "requirement".
 
 For each requirement:
-- kind: skill (technology/language/framework), tool (a named product such as an IDE, AI assistant, SaaS), credential (degree, certification, license), experience (years/seniority statements), domain (industry/business knowledge), other.
+- kind: skill (technology/language/framework — INCLUDING when years are attached, e.g. "3+ years React" is a skill; judge the technology, the years go into relevant_years), tool (a named product such as an IDE, AI assistant, SaaS), credential (degree, certification, license), experience (ONLY a bare tenure/seniority statement such as "5+ years of experience" or "senior-level"; a requirement that names a technology, activity or system — e.g. "Experience integrating with APIs and databases" — is a skill even though it starts with the word Experience), domain (industry/business knowledge), other.
 - status: met = clearly satisfied by the CV; partial = some but not all of it, or weaker than asked; missing = no evidence.
 - Compound requirements written as "A+B", "A and B", "A/B" are satisfied only when EVERY component is; report the status of the WEAKEST component and name it in evidence.
 - evidence: a short quote (max 25 words) from the CV that supports the status, or "not found".
 - evidence_strength: demonstrated = used in a described role or project; claimed = appears only in a skills/keywords list or self-description; none = missing.
 - Tool requirements are met by demonstrated use of an equivalent tool in the same category (e.g. another AI coding assistant for a named one). Set exact_match=true only when the exact named tool appears.
-- Credential requirements: report status honestly; a bootcamp or diploma is not a bachelor's degree. Never infer a degree that is not written.
+- Credential requirements: report status honestly; a bootcamp or diploma is not a bachelor's degree, while a higher degree (master's, PhD) fully satisfies a bachelor's requirement. Never infer a degree that is not written.
+- exact_match is only meaningful for kind=tool; set it false for every other kind.
 
 Also return:
 - relevant_years: professional years relevant to this role's function, computed from the CV's work history (start/end dates). Exclude education, military service and internships unless clearly professional roles. Do not trust the extracted "years" hint if the CV contradicts it. null only if no dates exist.

@@ -87,18 +87,45 @@ describe('EvaluationSchema', () => {
     expect(parsed.must_haves[0].status).toBe('met');
   });
 
-  it('rejects unknown status values and out-of-range relevance', () => {
+  it('rejects unknown status values', () => {
     expect(() =>
       EvaluationSchema.parse({
-        must_haves: [],
+        must_haves: [
+          {
+            requirement: 'x',
+            kind: 'skill',
+            status: 'maybe',
+            evidence: '',
+            evidence_strength: 'none',
+            exact_match: false,
+          },
+        ],
         nice_to_haves: [],
         relevant_years: null,
-        role_relevance: 140,
+        role_relevance: 50,
         cv_informative: true,
         reasoning: '',
         strengths: [],
         gaps: [],
       }),
     ).toThrow();
+  });
+});
+
+describe('EvaluationSchema clamps out-of-range numbers instead of rejecting', () => {
+  it('clamps relevant_years to 0..50 and role_relevance to 0..100', () => {
+    const parsed = EvaluationSchema.parse({
+      must_haves: [],
+      nice_to_haves: [],
+      relevant_years: 62,
+      role_relevance: 130,
+      cv_informative: true,
+      reasoning: 'r',
+      strengths: [],
+      gaps: [],
+    });
+    expect(parsed.relevant_years).toBe(50);
+    expect(parsed.role_relevance).toBe(100);
+    expect(EvaluationSchema.parse({ ...parsed, relevant_years: null, role_relevance: -4 }).role_relevance).toBe(0);
   });
 });

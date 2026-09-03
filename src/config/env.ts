@@ -29,10 +29,8 @@ export const envSchema = z.object({
   // Set  = other domains are rejected, and new users join the TENANT_ID org as 'member'.
   AUTH_ALLOWED_DOMAINS: z.string().optional(),
   EXTRACTION_MODEL: z.string().default('openai/gpt-4o-mini'),
-  // Scoring v2 (2026-09-03) runs a per-requirement audit, not a one-shot number — a stronger
-  // model earns its cost here. The post-call voice assessor stays on its own key below so this
-  // change does not silently re-model voice screening too.
-  SCORING_MODEL: z.string().default('anthropic/claude-sonnet-5'),
+  // The CV scoring model is hard-coded in src/scoring/scoring.service.ts (chosen by bake-off,
+  // policy tuned to it). The post-call voice assessor keeps its own key.
   VOICE_ASSESSMENT_MODEL: z.string().default('openai/gpt-4o-mini'),
   CLASSIFIER_MODEL: z.string().default('openai/gpt-4o-mini'),
   // Comma-separated "wrongNumber:realShortId" pairs applied to job numbers parsed out of

@@ -10,10 +10,8 @@ jest.mock('@openrouter/ai-sdk-provider', () => ({
 
 const mockGenerateObject = generateObject as jest.MockedFunction<typeof generateObject>;
 
-function makeService(model?: string): ScoringAgentService {
-  const configService = {
-    get: jest.fn().mockImplementation((key: string) => (key === 'SCORING_MODEL' ? model : 'fake-openrouter-key')),
-  } as unknown as ConfigService;
+function makeService(): ScoringAgentService {
+  const configService = { get: jest.fn().mockReturnValue('fake-openrouter-key') } as unknown as ConfigService;
   return new ScoringAgentService(configService);
 }
 
@@ -70,8 +68,8 @@ describe('ScoringAgentService', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('calls generateObject with the system prompt, the built user prompt and temperature 0', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: evaluation } as never);
-    await makeService('openai/gpt-4.1-mini').score(input());
+    mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
+    await makeService().score(input());
     const args = mockGenerateObject.mock.calls[0][0] as unknown as {
       model: string;
       system: string;
@@ -88,30 +86,59 @@ describe('ScoringAgentService', () => {
   });
 
   it('computes the score from the evaluation via the policy and returns the breakdown', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: evaluation } as never);
-    const result = await makeService('openai/gpt-4.1-mini').score(input());
+    mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
+    const result = await makeService().score(input());
     expect(result.score).toBeLessThanOrEqual(60); // one core must-have missing → cap 60
     expect(result.breakdown.caps_applied).toContainEqual({ label: 'core_must_have_missing', cap: 60 });
     expect(result.breakdown.must_haves).toHaveLength(2);
     expect(result.reasoning).toBe('Strong TS, no Postgres.');
     expect(result.strengths).toEqual(['TypeScript expertise']);
     expect(result.gaps).toEqual(['No PostgreSQL mentioned']);
-    expect(result.modelUsed).toBe('openai/gpt-4.1-mini');
+    expect(result.modelUsed).toBe('anthropic/claude-sonnet-5');
   });
 
-  it('defaults SCORING_MODEL to anthropic/claude-sonnet-5', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: evaluation } as never);
-    const result = await makeService(undefined).score(input());
+  it('always reports the hard-coded anthropic/claude-sonnet-5 model', async () => {
+    mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
+    const result = await makeService().score(input());
     expect(result.modelUsed).toBe('anthropic/claude-sonnet-5');
   });
 
   it('propagates generateObject failures', async () => {
-    mockGenerateObject.mockRejectedValueOnce(new Error('rate limited'));
-    await expect(makeService('x').score(input())).rejects.toThrow('rate limited');
+    mockGenerateObject.mockRejectedValue(new Error('rate limited'));
+    await expect(makeService().score(input())).rejects.toThrow('rate limited');
   });
 
   it('does not throw on a 50K-char CV (truncated internally)', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: evaluation } as never);
-    await expect(makeService('x').score({ ...input(), cvText: 'a'.repeat(50_000) })).resolves.toBeDefined();
+    mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
+    await expect(makeService().score({ ...input(), cvText: 'a'.repeat(50_000) })).resolves.toBeDefined();
+  });
+});
+
+describe('ScoringAgentService sampling', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('runs SCORING_SAMPLES evaluations and persists the median one', async () => {
+    const met = { ...evaluation.must_haves[0] };
+    const missing = { ...evaluation.must_haves[1] };
+    const strong = {
+      ...evaluation,
+      must_haves: [met, { ...missing, status: 'met', evidence_strength: 'demonstrated' }],
+      reasoning: 'strong',
+    };
+    const weak = { ...evaluation, must_haves: [{ ...met, status: 'missing' }, missing], reasoning: 'weak' };
+    mockGenerateObject
+      .mockResolvedValueOnce({ object: strong } as never)
+      .mockResolvedValueOnce({ object: weak } as never)
+      .mockResolvedValueOnce({ object: evaluation } as never);
+    const result = await makeService().score(input());
+    expect(mockGenerateObject).toHaveBeenCalledTimes(3);
+    expect(result.reasoning).toBe('Strong TS, no Postgres.'); // the middle score's evaluation
+    expect(result.breakdown.caps_applied).toContainEqual({ label: 'core_must_have_missing', cap: 60 });
+  });
+
+  it('honours opts.samples for the eval harness', async () => {
+    mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
+    await makeService().score(input(), { samples: 1 });
+    expect(mockGenerateObject).toHaveBeenCalledTimes(1);
   });
 });

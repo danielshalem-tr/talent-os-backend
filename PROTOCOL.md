@@ -199,7 +199,7 @@ Fetch a single candidate by ID.
 }
 ```
 
-`experience_fit` ∈ `below_min | in_range | above_max | unknown | no_range`. `flags` ∈ `below_min_experience | over_qualified | experience_unknown`. `caps_applied[].label` ∈ `low_role_relevance | multiple_core_must_haves_missing | core_must_have_missing | core_must_have_partial | cv_uninformative | below_min_experience`. `breakdown` is `null` for scores written before Scoring v2.
+`experience_fit` ∈ `below_min | in_range | above_max | unknown | no_range`. `flags` ∈ `below_min_experience | over_qualified | experience_unknown`. `caps_applied[].label` ∈ `low_role_relevance | multiple_core_must_haves_missing | core_must_have_missing | multiple_core_must_haves_partial | core_must_have_partial | cv_uninformative | below_min_experience`. `must_haves[].exact_match` is only ever `true` for `kind: "tool"`. The stored evaluation is the median of three independent model samples. `breakdown` is `null` for scores written before Scoring v2.
 
 **Errors:**
 

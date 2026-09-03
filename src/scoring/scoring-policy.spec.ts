@@ -51,10 +51,30 @@ describe('computeScore', () => {
     expect(breakdown.caps_applied).toContainEqual({ label: 'multiple_core_must_haves_missing', cap: 45 });
   });
 
-  it('a partial core must-have (none missing) caps at 78', () => {
-    const { score, breakdown } = computeScore(ev({ must_haves: [req({ status: 'partial' }), req(), req()] }), range);
-    expect(score).toBeLessThanOrEqual(78);
-    expect(breakdown.caps_applied).toContainEqual({ label: 'core_must_have_partial', cap: 78 });
+  it('one partial core must-have (none missing) caps at 88; two or more at 78', () => {
+    const one = computeScore(ev({ must_haves: [req({ status: 'partial' }), req(), req()] }), range);
+    expect(one.score).toBeLessThanOrEqual(88);
+    expect(one.breakdown.caps_applied).toContainEqual({ label: 'core_must_have_partial', cap: 88 });
+    const two = computeScore(
+      ev({ must_haves: [req({ status: 'partial' }), req({ status: 'partial' }), req()] }),
+      range,
+    );
+    expect(two.score).toBeLessThanOrEqual(78);
+    expect(two.breakdown.caps_applied).toContainEqual({ label: 'multiple_core_must_haves_partial', cap: 78 });
+  });
+
+  it('claimed discount applies to met only — a claimed partial stays 0.5', () => {
+    const { breakdown } = computeScore(
+      ev({ must_haves: [req({ status: 'partial', evidence_strength: 'claimed' }), req(), req()] }),
+      range,
+    );
+    expect(breakdown.must_have_coverage).toBeCloseTo((0.5 + 1 + 1) / 3, 5);
+  });
+
+  it('exact_match is normalized to false for non-tool kinds', () => {
+    const { breakdown } = computeScore(ev({ must_haves: [req({ exact_match: true }), req(), req()] }), range);
+    expect(breakdown.must_haves[0].exact_match).toBe(false);
+    expect(breakdown.adjustments).toEqual([]);
   });
 
   it('claimed-only evidence counts 0.75 of a met requirement', () => {
@@ -104,12 +124,21 @@ describe('computeScore', () => {
     expect(breakdown.adjustments.find((a) => a.label === 'exact_tool_match')).toBeUndefined();
   });
 
-  it('below minimum experience: factor 0.6, cap 45, flag', () => {
+  it('zero experience against a minimum: factor 0.6, cap 45, flag', () => {
     const { score, breakdown } = computeScore(ev({ relevant_years: 0 }), range);
     expect(breakdown.experience_fit).toBe('below_min');
-    expect(breakdown.experience_factor).toBe(0.6);
+    expect(breakdown.experience_factor).toBeCloseTo(0.6, 5);
     expect(breakdown.flags).toContain('below_min_experience');
+    expect(breakdown.caps_applied).toContainEqual({ label: 'below_min_experience', cap: 45 });
     expect(score).toBeLessThanOrEqual(45);
+  });
+
+  it('slightly below the minimum is continuous with in-range: no cap, factor between 0.6 and 0.8', () => {
+    const { breakdown } = computeScore(ev({ relevant_years: 0.75 }), range);
+    expect(breakdown.experience_fit).toBe('below_min');
+    expect(breakdown.experience_factor).toBeCloseTo(0.75, 5);
+    expect(breakdown.flags).toContain('below_min_experience');
+    expect(breakdown.caps_applied.map((c) => c.label)).not.toContain('below_min_experience');
   });
 
   it('above maximum experience: light penalty 0.92 + over_qualified flag, no cap', () => {
@@ -177,5 +206,29 @@ describe('computeScore', () => {
     expect(Number.isInteger(a.score)).toBe(true);
     expect(a.score).toBeGreaterThanOrEqual(0);
     expect(a.score).toBeLessThanOrEqual(100);
+  });
+});
+
+describe('experience-kind must-haves', () => {
+  it('are excluded from coverage and caps — the experience factor already prices years', () => {
+    const withExp = ev({
+      must_haves: [
+        req(),
+        req({ requirement: 'Node.js' }),
+        req({
+          requirement: '5+ years as a developer',
+          kind: 'experience',
+          status: 'missing',
+          evidence_strength: 'none',
+        }),
+      ],
+      relevant_years: 3,
+    });
+    const without = ev({ must_haves: [req(), req({ requirement: 'Node.js' })], relevant_years: 3 });
+    const a = computeScore(withExp, range);
+    const b = computeScore(without, range);
+    expect(a.score).toBe(b.score);
+    expect(a.breakdown.caps_applied).toEqual([]);
+    expect(a.breakdown.must_haves).toHaveLength(3);
   });
 });

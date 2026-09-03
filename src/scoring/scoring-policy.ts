@@ -63,7 +63,15 @@ export interface ScoringPolicy {
     withNice: { core: number; nice: number; relevance: number };
     withoutNice: { core: number; relevance: number };
   };
-  experience: { belowMin: number; aboveMax: number; unknown: number; inRangeFloor: number };
+  experience: {
+    /** Factor at zero relevant years; rises linearly to inRangeFloor at the job's minimum. */
+    belowMinFloor: number;
+    /** The hard cap applies only when the candidate has less than this share of the minimum. */
+    belowMinCapShortfall: number;
+    aboveMax: number;
+    unknown: number;
+    inRangeFloor: number;
+  };
   credentialMissingDelta: number;
   credentialMissingFloor: number;
   exactToolBonus: number;
@@ -72,7 +80,10 @@ export interface ScoringPolicy {
     lowRoleRelevance: { below: number; cap: number };
     multipleCoreMissing: number;
     oneCoreMissing: number;
+    /** One core must-have only partially met. */
     corePartial: number;
+    /** Two or more partially met. */
+    multipleCorePartial: number;
     cvUninformative: number;
     belowMinExperience: number;
   };
@@ -85,7 +96,7 @@ export const SCORING_POLICY: ScoringPolicy = {
     withNice: { core: 0.55, nice: 0.15, relevance: 0.3 },
     withoutNice: { core: 0.65, relevance: 0.35 },
   },
-  experience: { belowMin: 0.6, aboveMax: 0.92, unknown: 0.85, inRangeFloor: 0.8 },
+  experience: { belowMinFloor: 0.6, belowMinCapShortfall: 0.5, aboveMax: 0.92, unknown: 0.85, inRangeFloor: 0.8 },
   credentialMissingDelta: -5,
   credentialMissingFloor: -10,
   exactToolBonus: 3,
@@ -94,7 +105,8 @@ export const SCORING_POLICY: ScoringPolicy = {
     lowRoleRelevance: { below: 40, cap: 30 },
     multipleCoreMissing: 45,
     oneCoreMissing: 60,
-    corePartial: 78,
+    corePartial: 88,
+    multipleCorePartial: 78,
     cvUninformative: 50,
     belowMinExperience: 45,
   },
@@ -102,7 +114,9 @@ export const SCORING_POLICY: ScoringPolicy = {
 
 function requirementValue(r: RequirementEvaluation, p: ScoringPolicy): number {
   const base = p.statusValue[r.status];
-  return r.evidence_strength === 'claimed' ? base * p.claimedEvidenceFactor : base;
+  // "partial" is already a discount; stacking the claimed factor on top punished a listed
+  // tool twice (0.375) and made one model flip swing the score.
+  return r.status === 'met' && r.evidence_strength === 'claimed' ? base * p.claimedEvidenceFactor : base;
 }
 
 function coverage(reqs: RequirementEvaluation[], p: ScoringPolicy): number | null {
@@ -114,17 +128,23 @@ function experienceFactor(
   years: number | null,
   job: { expYearsMin: number | null; expYearsMax: number | null },
   p: ScoringPolicy,
-): { fit: ExperienceFit; factor: number } {
+): { fit: ExperienceFit; factor: number; shortfall: number } {
   const { expYearsMin: min, expYearsMax: max } = job;
-  if (min == null && max == null) return { fit: 'no_range', factor: 1 };
-  if (years == null) return { fit: 'unknown', factor: p.experience.unknown };
-  if (min != null && years < min) return { fit: 'below_min', factor: p.experience.belowMin };
-  if (max != null && years > max) return { fit: 'above_max', factor: p.experience.aboveMax };
+  if (min == null && max == null) return { fit: 'no_range', factor: 1, shortfall: 0 };
+  if (years == null) return { fit: 'unknown', factor: p.experience.unknown, shortfall: 0 };
+  if (min != null && years < min) {
+    // Continuous, not a cliff: 0.9 years against a 1-year minimum is nearly in range, and the
+    // model's own year estimate wobbles by a few months between runs.
+    const shortfall = Math.min(1, (min - years) / min);
+    const factor = p.experience.inRangeFloor - (p.experience.inRangeFloor - p.experience.belowMinFloor) * shortfall;
+    return { fit: 'below_min', factor, shortfall };
+  }
+  if (max != null && years > max) return { fit: 'above_max', factor: p.experience.aboveMax, shortfall: 0 };
   const lo = min ?? years;
   const hi = max ?? years;
-  if (hi <= lo) return { fit: 'in_range', factor: 1 };
+  if (hi <= lo) return { fit: 'in_range', factor: 1, shortfall: 0 };
   const frac = (years - lo) / (hi - lo);
-  return { fit: 'in_range', factor: p.experience.inRangeFloor + (1 - p.experience.inRangeFloor) * frac };
+  return { fit: 'in_range', factor: p.experience.inRangeFloor + (1 - p.experience.inRangeFloor) * frac, shortfall: 0 };
 }
 
 export function computeScore(
@@ -134,10 +154,20 @@ export function computeScore(
 ): { score: number; breakdown: ScoreBreakdown } {
   const p = policy;
   const relevance = Math.min(100, Math.max(0, ev.role_relevance)) / 100;
+  // exact_match only means something for a named tool; the model tends to set it on every
+  // met skill, which would leak "exact match" badges into the UI.
+  const normalize = (r: RequirementEvaluation): RequirementEvaluation => ({
+    ...r,
+    exact_match: r.kind === 'tool' && r.exact_match,
+  });
+  ev = { ...ev, must_haves: ev.must_haves.map(normalize), nice_to_haves: ev.nice_to_haves.map(normalize) };
 
   // Credentials never gate the score (Daniel, 2026-09-03): they are a small deduction below,
   // so they are pulled out of the coverage average and out of the cap rules entirely.
-  const core = ev.must_haves.filter((r) => r.kind !== 'credential');
+  // Pure years/seniority statements ("5+ years as a developer") are likewise excluded: the
+  // experience factor below already prices relevant_years against the job's range, and counting
+  // the same fact twice would punish a junior twice for one shortfall.
+  const core = ev.must_haves.filter((r) => r.kind !== 'credential' && r.kind !== 'experience');
   const credentials = ev.must_haves.filter((r) => r.kind === 'credential');
   const coreCoverage = coverage(core, p) ?? relevance;
   const niceCoverage = coverage(ev.nice_to_haves, p);
@@ -168,8 +198,8 @@ export function computeScore(
   if (credentialDelta !== 0) {
     // Emit one line per missing credential so the UI can list them, but clamp the sum.
     let remaining = credentialDelta;
-    for (const r of credentials.filter((c) => c.status === 'missing')) {
-      if (remaining >= 0) break;
+    const missingCredentials = credentials.filter((c) => c.status === 'missing').length;
+    for (let i = 0; i < missingCredentials && remaining < 0; i++) {
       const d = Math.max(remaining, p.credentialMissingDelta);
       adjustments.push({ label: 'credential_missing', delta: d });
       remaining -= d;
@@ -193,9 +223,12 @@ export function computeScore(
   }
   if (missing >= 2) caps.push({ label: 'multiple_core_must_haves_missing', cap: p.caps.multipleCoreMissing });
   else if (missing === 1) caps.push({ label: 'core_must_have_missing', cap: p.caps.oneCoreMissing });
-  else if (partial >= 1) caps.push({ label: 'core_must_have_partial', cap: p.caps.corePartial });
+  else if (partial >= 2) caps.push({ label: 'multiple_core_must_haves_partial', cap: p.caps.multipleCorePartial });
+  else if (partial === 1) caps.push({ label: 'core_must_have_partial', cap: p.caps.corePartial });
   if (!ev.cv_informative) caps.push({ label: 'cv_uninformative', cap: p.caps.cvUninformative });
-  if (exp.fit === 'below_min') caps.push({ label: 'below_min_experience', cap: p.caps.belowMinExperience });
+  if (exp.fit === 'below_min' && exp.shortfall >= p.experience.belowMinCapShortfall) {
+    caps.push({ label: 'below_min_experience', cap: p.caps.belowMinExperience });
+  }
   for (const c of caps) score = Math.min(score, c.cap);
 
   const final = Math.round(Math.min(100, Math.max(0, score)));
