@@ -2,13 +2,13 @@
  * Scoring regression harness. Runs the REAL ScoringAgentService over a local fixture set of
  * real CVs and compares against the expected range per candidate.
  *
- * Fixtures are PII and live OUTSIDE the repo (talento/docs/superpowers/scoring-eval). This
- * script must never write them anywhere inside the repo.
+ * Fixtures are PII and live OUTSIDE the repo (pass --fixtures / --out). This script must never
+ * write them anywhere inside the repo.
  *
  * Needs OPENROUTER_API_KEY in the environment (there is no dotenv in this repo):
  *
  *   export OPENROUTER_API_KEY=sk-or-...
- *   npm run scoring:eval -- --models=anthropic/claude-sonnet-5 --runs=2 --out=../docs/superpowers/scoring-eval/results.md
+ *   npm run scoring:eval -- --models=anthropic/claude-sonnet-5 --runs=2 --fixtures=/path/to/fixtures.json --out=/path/to/results.md
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';

@@ -8,7 +8,12 @@ export const RequirementEvaluationSchema = z.object({
   requirement: z.string(),
   kind: z.enum(['skill', 'tool', 'credential', 'experience', 'domain', 'other']),
   status: z.enum(['met', 'partial', 'missing']),
-  evidence: z.string(),
+  // The prompt asks for "not found", but a model that returns null for absent evidence must not
+  // fail the whole sample — three correlated nulls on one CV would fail the intake.
+  evidence: z
+    .string()
+    .nullable()
+    .transform((v) => (v == null || v.trim() === '' ? 'not found' : v)),
   evidence_strength: z.enum(['demonstrated', 'claimed', 'none']),
   exact_match: z.boolean(),
 });
@@ -90,7 +95,7 @@ export function buildScoringUserPrompt(input: ScoringInput): string {
     `Skills hint: ${candidateFields.skills.length ? candidateFields.skills.join(', ') : 'none'}`,
     '',
     '<cv>',
-    clip(input.cvText, MAX_CV_LENGTH).replace(/<\/?cv>/gi, ''),
+    clip(input.cvText, MAX_CV_LENGTH).replace(/<\s*\/?\s*cv\s*>/gi, ''),
     '</cv>',
   ].join('\n');
 }

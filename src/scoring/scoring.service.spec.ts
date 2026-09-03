@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { generateObject } from 'ai';
-import { ScoringAgentService, ScoringInput } from './scoring.service';
+import { completeEvaluation, ScoringAgentService, ScoringInput } from './scoring.service';
 import { SCORING_SYSTEM_PROMPT } from './scoring-prompt';
 
 jest.mock('ai', () => ({ generateObject: jest.fn() }));
@@ -151,5 +151,53 @@ describe('ScoringAgentService sampling', () => {
     mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
     await makeService().score(input(), { samples: 1 });
     expect(mockGenerateObject).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('completeEvaluation', () => {
+  const job = {
+    title: 'x',
+    description: null,
+    roleSummary: null,
+    responsibilities: null,
+    mustHaveSkills: ['TypeScript', 'PostgreSQL', 'React'],
+    niceToHaveSkills: ['Docker'],
+    expYearsMin: null,
+    expYearsMax: null,
+    preferredOrgTypes: [],
+    screeningQuestions: [],
+  };
+  const met = {
+    requirement: 'typescript ',
+    kind: 'skill' as const,
+    status: 'met' as const,
+    evidence: 'TS at Acme',
+    evidence_strength: 'demonstrated' as const,
+    exact_match: false,
+  };
+  const base = {
+    relevant_years: 3,
+    role_relevance: 80,
+    cv_informative: true,
+    reasoning: '',
+    strengths: [],
+    gaps: [],
+  };
+
+  it('appends every job requirement the model skipped as missing, so coverage cannot inflate', () => {
+    const out = completeEvaluation({ ...base, must_haves: [met], nice_to_haves: [] }, job);
+    expect(out.must_haves.map((r) => [r.requirement, r.status])).toEqual([
+      ['typescript ', 'met'],
+      ['PostgreSQL', 'missing'],
+      ['React', 'missing'],
+    ]);
+    expect(out.nice_to_haves).toEqual([expect.objectContaining({ requirement: 'Docker', status: 'missing' })]);
+  });
+
+  it('leaves a complete (or paraphrased but complete) evaluation untouched', () => {
+    const full = [met, { ...met, requirement: 'Postgres' }, { ...met, requirement: 'React' }];
+    expect(
+      completeEvaluation({ ...base, must_haves: full, nice_to_haves: [] }, { ...job, niceToHaveSkills: [] }).must_haves,
+    ).toBe(full);
   });
 });

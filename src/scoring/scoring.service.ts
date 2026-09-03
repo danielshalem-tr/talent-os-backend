@@ -3,16 +3,23 @@ import { ConfigService } from '@nestjs/config';
 import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { ScoringJob } from './scoring-job-context';
-import { computeScore, ScoreBreakdown } from './scoring-policy';
+import { computeScore, RequirementEvaluation, ScoreBreakdown, ScoringEvaluation } from './scoring-policy';
 import { buildScoringUserPrompt, EvaluationSchema, SCORING_SYSTEM_PROMPT } from './scoring-prompt';
 
 /**
- * Deliberately NOT an env var. The model was chosen by a bake-off on real CVs (see
- * docs/superpowers/specs/2026-09-03-scoring-accuracy-research.md §7) and the policy in
- * scoring-policy.ts is tuned to its evaluations; a stray SCORING_MODEL in a deployment env must
- * not silently swap it. Change it here, re-run `npm run scoring:eval`, commit.
+ * Deliberately NOT an env var. The model was chosen by a bake-off on real CVs (eval notes are
+ * kept outside the repo) and the policy in scoring-policy.ts is tuned to its evaluations; a
+ * stray SCORING_MODEL in a deployment env must not silently swap it. Change it here, re-run
+ * `npm run scoring:eval`, commit.
  */
 export const SCORING_MODEL = 'anthropic/claude-sonnet-5';
+
+/**
+ * Per-sample upstream budget. Without it a stalled OpenRouter call hangs the HTTP assign/rescore
+ * request forever; with three parallel samples the default `maxRetries: 2` would mean up to nine
+ * upstream requests per CV.
+ */
+export const SCORING_TIMEOUT_MS = 60_000;
 
 /**
  * Independent evaluations per CV, run in parallel; the median score wins and its evaluation is
@@ -44,6 +51,40 @@ export interface ScoringWithMatchResult {
   matched: boolean;
   matchConfidence?: number;
   score?: ScoreResult & { modelUsed: string };
+}
+
+const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * The policy divides by the number of requirements the model RETURNED. If the model drops a
+ * must-have it could not find, coverage rises and the must-have cap is skipped — a worse
+ * candidate scores higher. Any job requirement with no matching entry is therefore appended as
+ * `missing`. Entries the model added or paraphrased are left alone: guessing which one to drop
+ * risks discarding a real evaluation.
+ */
+export function completeEvaluation(evaluation: ScoringEvaluation, job: ScoringJob, logger?: Logger): ScoringEvaluation {
+  const fill = (evaluated: RequirementEvaluation[], expected: string[], group: string) => {
+    const seen = new Set(evaluated.map((r) => normalize(r.requirement)));
+    const absent = expected.filter((req) => req.trim() !== '' && !seen.has(normalize(req)));
+    if (absent.length === 0 || evaluated.length >= expected.length) return evaluated;
+    logger?.warn(`Model skipped ${absent.length} ${group} requirement(s), recorded as missing: ${absent.join(' | ')}`);
+    return [
+      ...evaluated,
+      ...absent.map<RequirementEvaluation>((requirement) => ({
+        requirement,
+        kind: 'other',
+        status: 'missing',
+        evidence: 'not found',
+        evidence_strength: 'none',
+        exact_match: false,
+      })),
+    ];
+  };
+  return {
+    ...evaluation,
+    must_haves: fill(evaluation.must_haves, job.mustHaveSkills, 'must-have'),
+    nice_to_haves: fill(evaluation.nice_to_haves, job.niceToHaveSkills, 'nice-to-have'),
+  };
 }
 
 /**
@@ -79,8 +120,11 @@ export class ScoringAgentService {
           system: SCORING_SYSTEM_PROMPT,
           prompt,
           temperature: 0,
+          maxRetries: 1,
+          abortSignal: AbortSignal.timeout(SCORING_TIMEOUT_MS),
         });
-        return { evaluation, ...computeScore(evaluation, range) };
+        const complete = completeEvaluation(evaluation, input.job, this.logger);
+        return { evaluation: complete, ...computeScore(complete, range) };
       }),
     );
     // One transient 429/5xx or schema miss must not fail the intake three times as often as
