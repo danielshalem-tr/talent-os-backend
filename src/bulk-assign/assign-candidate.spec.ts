@@ -53,6 +53,21 @@ const scoringAgent = {
     reasoning: 'good fit',
     strengths: ['node.js'],
     gaps: [],
+    breakdown: {
+      version: 1,
+      must_have_coverage: 1,
+      nice_to_have_coverage: null,
+      role_relevance: 90,
+      relevant_years: 6,
+      experience_fit: 'in_range',
+      experience_factor: 1,
+      raw_score: 96.5,
+      adjustments: [],
+      caps_applied: [],
+      flags: [],
+      must_haves: [],
+      nice_to_haves: [],
+    },
     modelUsed: 'openai/gpt-4o-mini',
   }),
 } as any;
@@ -74,7 +89,12 @@ describe('assignCandidateToJob', () => {
     );
     expect(prisma.candidate.update).toHaveBeenCalledWith({ where: { id: 'cand-1' }, data: { jobId: 'job-1' } });
     expect(moveMock).toHaveBeenCalledWith(prisma, 'cand-1', 'stage-1', 'tenant-1');
-    expect(prisma.candidateJobScore.upsert).toHaveBeenCalled();
+    expect(prisma.candidateJobScore.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ breakdown: expect.objectContaining({ version: 1 }) }),
+        update: expect.objectContaining({ breakdown: expect.objectContaining({ version: 1 }) }),
+      }),
+    );
     expect(result).toEqual({ outcome: 'scored', score: 84 });
   });
 
@@ -151,22 +171,20 @@ describe('assignCandidateToJob', () => {
   it('throws JOB_NOT_OPEN for a closed job', async () => {
     const prisma = makePrisma({
       job: {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({
-            id: 'job-1',
-            title: 't',
-            description: null,
-            mustHaveSkills: [],
-            roleSummary: null,
-            responsibilities: null,
-            niceToHaveSkills: [],
-            expYearsMin: null,
-            expYearsMax: null,
-            preferredOrgTypes: [],
-            screeningQuestions: [],
-            status: 'closed',
-          }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'job-1',
+          title: 't',
+          description: null,
+          mustHaveSkills: [],
+          roleSummary: null,
+          responsibilities: null,
+          niceToHaveSkills: [],
+          expYearsMin: null,
+          expYearsMax: null,
+          preferredOrgTypes: [],
+          screeningQuestions: [],
+          status: 'closed',
+        }),
       },
     });
     await expect(assignCandidateToJob(prisma, scoringAgent, params)).rejects.toThrow(BadRequestException);

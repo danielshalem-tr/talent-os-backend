@@ -76,7 +76,28 @@ describe('CandidatesService', () => {
         findMany: jest.fn(),
       },
     };
-    const scoreResult = { score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' };
+    const scoreResult = {
+      score: 75,
+      reasoning: 'Test',
+      strengths: [],
+      gaps: [],
+      modelUsed: 'test',
+      breakdown: {
+        version: 1,
+        must_have_coverage: 1,
+        nice_to_have_coverage: null,
+        role_relevance: 90,
+        relevant_years: 6,
+        experience_fit: 'in_range',
+        experience_factor: 1,
+        raw_score: 96.5,
+        adjustments: [],
+        caps_applied: [],
+        flags: [],
+        must_haves: [],
+        nice_to_haves: [],
+      },
+    };
     scoringMock = { score: jest.fn().mockResolvedValue(scoreResult) };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -167,21 +188,19 @@ describe('CandidatesService', () => {
       prismaMock.candidate.updateMany = jest.fn().mockResolvedValue({ count: 1 });
       prismaMock.jobStage = { findFirst: jest.fn().mockResolvedValue({ id: 'stage-1' }) };
       prismaMock.job = {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({
-            id: 'new-job',
-            title: 'Dev',
-            description: 'd',
-            mustHaveSkills: [],
-            roleSummary: null,
-            responsibilities: null,
-            niceToHaveSkills: [],
-            expYearsMin: null,
-            expYearsMax: null,
-            preferredOrgTypes: [],
-            screeningQuestions: [],
-          }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'new-job',
+          title: 'Dev',
+          description: 'd',
+          mustHaveSkills: [],
+          roleSummary: null,
+          responsibilities: null,
+          niceToHaveSkills: [],
+          expYearsMin: null,
+          expYearsMax: null,
+          preferredOrgTypes: [],
+          screeningQuestions: [],
+        }),
       };
       prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app-1' }) };
       prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };
@@ -192,7 +211,28 @@ describe('CandidatesService', () => {
       });
       scoringMock.score.mockImplementation(() => {
         order.push('score');
-        return Promise.resolve({ score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' });
+        return Promise.resolve({
+          score: 75,
+          reasoning: 'Test',
+          strengths: [],
+          gaps: [],
+          modelUsed: 'test',
+          breakdown: {
+            version: 1,
+            must_have_coverage: 1,
+            nice_to_have_coverage: null,
+            role_relevance: 90,
+            relevant_years: 6,
+            experience_fit: 'in_range',
+            experience_factor: 1,
+            raw_score: 96.5,
+            adjustments: [],
+            caps_applied: [],
+            flags: [],
+            must_haves: [],
+            nice_to_haves: [],
+          },
+        });
       });
 
       return { tx, order };
@@ -204,7 +244,13 @@ describe('CandidatesService', () => {
       await service.updateCandidate('cand-1', { job_id: 'new-job' } as never, TENANT_ID);
 
       expect(prismaMock.candidateJobScore.upsert).toHaveBeenCalledWith(
-        expect.objectContaining({ create: expect.objectContaining({ applicationId: 'app-1', score: 75 }) }),
+        expect.objectContaining({
+          create: expect.objectContaining({
+            applicationId: 'app-1',
+            score: 75,
+            breakdown: expect.objectContaining({ version: 1 }),
+          }),
+        }),
       );
       expect(prismaMock.candidate.updateMany).toHaveBeenCalledWith({
         where: { id: 'cand-1', isScoreOverridden: false },
@@ -368,21 +414,19 @@ describe('CandidatesService', () => {
         .mockResolvedValue(mockCandidate({ jobId: 'job-1', cvText: 'real cv', isScoreOverridden: true }));
       prismaMock.candidate.update = jest.fn().mockResolvedValue({});
       prismaMock.job = {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({
-            id: 'job-1',
-            title: 'Dev',
-            description: 'd',
-            mustHaveSkills: [],
-            roleSummary: null,
-            responsibilities: null,
-            niceToHaveSkills: [],
-            expYearsMin: null,
-            expYearsMax: null,
-            preferredOrgTypes: [],
-            screeningQuestions: [],
-          }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'job-1',
+          title: 'Dev',
+          description: 'd',
+          mustHaveSkills: [],
+          roleSummary: null,
+          responsibilities: null,
+          niceToHaveSkills: [],
+          expYearsMin: null,
+          expYearsMax: null,
+          preferredOrgTypes: [],
+          screeningQuestions: [],
+        }),
       };
       prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app-1' }) };
       prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };
@@ -400,34 +444,30 @@ describe('CandidatesService', () => {
 
   describe('rescoreCandidate', () => {
     it('rescores the assigned job and returns the score result', async () => {
-      prismaMock.candidate.findFirst = jest
-        .fn()
-        .mockResolvedValue(
-          mockCandidate({
-            id: 'c1',
-            jobId: 'j1',
-            cvText: 'Real CV',
-            currentRole: 'Dev',
-            yearsExperience: 5,
-            skills: ['ts'],
-          }),
-        );
+      prismaMock.candidate.findFirst = jest.fn().mockResolvedValue(
+        mockCandidate({
+          id: 'c1',
+          jobId: 'j1',
+          cvText: 'Real CV',
+          currentRole: 'Dev',
+          yearsExperience: 5,
+          skills: ['ts'],
+        }),
+      );
       prismaMock.job = {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({
-            id: 'j1',
-            title: 'Eng',
-            description: 'd',
-            mustHaveSkills: ['ts'],
-            roleSummary: null,
-            responsibilities: null,
-            niceToHaveSkills: [],
-            expYearsMin: null,
-            expYearsMax: null,
-            preferredOrgTypes: [],
-            screeningQuestions: [],
-          }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'j1',
+          title: 'Eng',
+          description: 'd',
+          mustHaveSkills: ['ts'],
+          roleSummary: null,
+          responsibilities: null,
+          niceToHaveSkills: [],
+          expYearsMin: null,
+          expYearsMax: null,
+          preferredOrgTypes: [],
+          screeningQuestions: [],
+        }),
       };
       prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app1' }) };
       prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };
@@ -435,7 +475,16 @@ describe('CandidatesService', () => {
 
       const result = await service.rescoreCandidate('c1', TENANT_ID);
 
-      expect(result).toEqual({ score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' });
+      expect(result).toEqual(
+        expect.objectContaining({
+          score: 75,
+          reasoning: 'Test',
+          strengths: [],
+          gaps: [],
+          modelUsed: 'test',
+          breakdown: expect.objectContaining({ version: 1 }),
+        }),
+      );
       expect(prismaMock.candidate.update).toHaveBeenCalledWith(expect.objectContaining({ data: { aiScore: 75 } }));
     });
 
@@ -470,21 +519,19 @@ describe('CandidatesService', () => {
       const update = jest.fn().mockResolvedValue({});
       prismaMock.candidate.update = update;
       prismaMock.job = {
-        findFirst: jest
-          .fn()
-          .mockResolvedValue({
-            id: 'job-1',
-            title: 'Dev',
-            description: 'd',
-            mustHaveSkills: [],
-            roleSummary: null,
-            responsibilities: null,
-            niceToHaveSkills: [],
-            expYearsMin: null,
-            expYearsMax: null,
-            preferredOrgTypes: [],
-            screeningQuestions: [],
-          }),
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'job-1',
+          title: 'Dev',
+          description: 'd',
+          mustHaveSkills: [],
+          roleSummary: null,
+          responsibilities: null,
+          niceToHaveSkills: [],
+          expYearsMin: null,
+          expYearsMax: null,
+          preferredOrgTypes: [],
+          screeningQuestions: [],
+        }),
       };
       prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app-1' }) };
       prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };

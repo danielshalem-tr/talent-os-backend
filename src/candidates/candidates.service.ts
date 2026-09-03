@@ -383,6 +383,7 @@ export class CandidatesService {
         reasoning: scoreResult.reasoning,
         strengths: scoreResult.strengths,
         gaps: scoreResult.gaps,
+        breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
         modelUsed: scoreResult.modelUsed,
       };
       await this.prisma.candidateJobScore.upsert({
@@ -641,6 +642,7 @@ export class CandidatesService {
           reasoning: scoreResult.reasoning,
           strengths: scoreResult.strengths,
           gaps: scoreResult.gaps,
+          breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
           modelUsed: scoreResult.modelUsed,
         },
         update: {
@@ -648,6 +650,7 @@ export class CandidatesService {
           reasoning: scoreResult.reasoning,
           strengths: scoreResult.strengths,
           gaps: scoreResult.gaps,
+          breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
           modelUsed: scoreResult.modelUsed,
         },
       });

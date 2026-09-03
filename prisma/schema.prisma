@@ -225,6 +225,7 @@ model CandidateJobScore {
   reasoning       String?  @db.Text
   strengths       String[] @default([])
   gaps            String[] @default([])
+  breakdown       Json?    @db.JsonB
   modelUsed       String   @map("model_used") @db.Text
   matchConfidence Decimal? @map("match_confidence") @db.Decimal(3, 2) // Phase 6.5: Track semantic job title match confidence
   scoredAt        DateTime @default(now()) @map("scored_at") @db.Timestamptz

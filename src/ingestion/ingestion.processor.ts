@@ -12,6 +12,7 @@ import { CvClassifierService, CvClassification } from './services/cv-classifier.
 import { JobMatcherService } from './services/job-matcher.service';
 import { StorageService } from '../storage/storage.service';
 import { DedupService, DedupResult } from '../dedup/dedup.service';
+import { Prisma } from '@prisma/client';
 import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
 import { scoringJobSelect, toScoringJob, ScoringJobRow } from '../scoring/scoring-job-context';
 import { VoiceCallsService } from '../voice/voice-calls.service';
@@ -579,6 +580,7 @@ export class IngestionProcessor extends WorkerHost {
               reasoning: scoreResult.reasoning,
               strengths: scoreResult.strengths,
               gaps: scoreResult.gaps,
+              breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
               modelUsed: scoreResult.modelUsed,
             },
             update: {},

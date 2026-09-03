@@ -1,4 +1,5 @@
 import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
 import { scoringJobSelect, toScoringJob } from '../scoring/scoring-job-context';
@@ -105,6 +106,7 @@ export async function assignCandidateToJob(
       reasoning: scoreResult.reasoning,
       strengths: scoreResult.strengths,
       gaps: scoreResult.gaps,
+      breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
       modelUsed: scoreResult.modelUsed,
     },
     update: {
@@ -112,6 +114,7 @@ export async function assignCandidateToJob(
       reasoning: scoreResult.reasoning,
       strengths: scoreResult.strengths,
       gaps: scoreResult.gaps,
+      breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
       modelUsed: scoreResult.modelUsed,
     },
   });
