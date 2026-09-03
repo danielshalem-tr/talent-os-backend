@@ -10,30 +10,32 @@ import { AttachmentExtractorService } from '../ingestion/services/attachment-ext
 const TENANT_ID = '11111111-1111-1111-1111-111111111111';
 
 // Helper to build a mock candidate row as Prisma would return it
-function mockCandidate(overrides: Partial<{
-  id: string;
-  fullName: string;
-  email: string | null;
-  phone: string | null;
-  currentRole: string | null;
-  location: string | null;
-  cvFileUrl: string | null;
-  source: string;
-  sourceAgency: string | null;
-  createdAt: Date;
-  skills: string[];
-  jobId: string | null;
-  hiringStageId: string | null;
-  hiringStage: { name: string } | null;
-  aiScore: number | null;
-  applications: { scores: { score: number }[] }[];
-  duplicateFlags: { id: string }[];
-  candidateStageSummaries: { jobStageId: string; summary: string }[];
-  status: string;
-  aiSummary: string | null;
-  cvText: string | null;
-  isScoreOverridden: boolean;
-}> = {}) {
+function mockCandidate(
+  overrides: Partial<{
+    id: string;
+    fullName: string;
+    email: string | null;
+    phone: string | null;
+    currentRole: string | null;
+    location: string | null;
+    cvFileUrl: string | null;
+    source: string;
+    sourceAgency: string | null;
+    createdAt: Date;
+    skills: string[];
+    jobId: string | null;
+    hiringStageId: string | null;
+    hiringStage: { name: string } | null;
+    aiScore: number | null;
+    applications: { scores: { score: number }[] }[];
+    duplicateFlags: { id: string }[];
+    candidateStageSummaries: { jobStageId: string; summary: string }[];
+    status: string;
+    aiSummary: string | null;
+    cvText: string | null;
+    isScoreOverridden: boolean;
+  }> = {},
+) {
   return {
     id: 'cand-1',
     fullName: 'John Doe',
@@ -84,7 +86,10 @@ describe('CandidatesService', () => {
         { provide: StorageService, useValue: { uploadFromBuffer: jest.fn().mockResolvedValue('cvs/t/cand-1.pdf') } },
         { provide: ScoringAgentService, useValue: scoringMock },
         { provide: CandidateAiService, useValue: { generateSummary: jest.fn().mockResolvedValue('New summary') } },
-        { provide: AttachmentExtractorService, useValue: { extract: jest.fn().mockResolvedValue('Extracted CV text') } },
+        {
+          provide: AttachmentExtractorService,
+          useValue: { extract: jest.fn().mockResolvedValue('Extracted CV text') },
+        },
       ],
     }).compile();
 
@@ -162,7 +167,21 @@ describe('CandidatesService', () => {
       prismaMock.candidate.updateMany = jest.fn().mockResolvedValue({ count: 1 });
       prismaMock.jobStage = { findFirst: jest.fn().mockResolvedValue({ id: 'stage-1' }) };
       prismaMock.job = {
-        findFirst: jest.fn().mockResolvedValue({ id: 'new-job', title: 'Dev', description: 'd', mustHaveSkills: [] }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({
+            id: 'new-job',
+            title: 'Dev',
+            description: 'd',
+            mustHaveSkills: [],
+            roleSummary: null,
+            responsibilities: null,
+            niceToHaveSkills: [],
+            expYearsMin: null,
+            expYearsMax: null,
+            preferredOrgTypes: [],
+            screeningQuestions: [],
+          }),
       };
       prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app-1' }) };
       prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };
@@ -349,7 +368,21 @@ describe('CandidatesService', () => {
         .mockResolvedValue(mockCandidate({ jobId: 'job-1', cvText: 'real cv', isScoreOverridden: true }));
       prismaMock.candidate.update = jest.fn().mockResolvedValue({});
       prismaMock.job = {
-        findFirst: jest.fn().mockResolvedValue({ id: 'job-1', title: 'Dev', description: 'd', mustHaveSkills: [] }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({
+            id: 'job-1',
+            title: 'Dev',
+            description: 'd',
+            mustHaveSkills: [],
+            roleSummary: null,
+            responsibilities: null,
+            niceToHaveSkills: [],
+            expYearsMin: null,
+            expYearsMax: null,
+            preferredOrgTypes: [],
+            screeningQuestions: [],
+          }),
       };
       prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app-1' }) };
       prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };
@@ -367,11 +400,34 @@ describe('CandidatesService', () => {
 
   describe('rescoreCandidate', () => {
     it('rescores the assigned job and returns the score result', async () => {
-      prismaMock.candidate.findFirst = jest.fn().mockResolvedValue(
-        mockCandidate({ id: 'c1', jobId: 'j1', cvText: 'Real CV', currentRole: 'Dev', yearsExperience: 5, skills: ['ts'] }),
-      );
+      prismaMock.candidate.findFirst = jest
+        .fn()
+        .mockResolvedValue(
+          mockCandidate({
+            id: 'c1',
+            jobId: 'j1',
+            cvText: 'Real CV',
+            currentRole: 'Dev',
+            yearsExperience: 5,
+            skills: ['ts'],
+          }),
+        );
       prismaMock.job = {
-        findFirst: jest.fn().mockResolvedValue({ id: 'j1', title: 'Eng', description: 'd', mustHaveSkills: ['ts'] }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({
+            id: 'j1',
+            title: 'Eng',
+            description: 'd',
+            mustHaveSkills: ['ts'],
+            roleSummary: null,
+            responsibilities: null,
+            niceToHaveSkills: [],
+            expYearsMin: null,
+            expYearsMax: null,
+            preferredOrgTypes: [],
+            screeningQuestions: [],
+          }),
       };
       prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app1' }) };
       prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };
@@ -380,9 +436,7 @@ describe('CandidatesService', () => {
       const result = await service.rescoreCandidate('c1', TENANT_ID);
 
       expect(result).toEqual({ score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' });
-      expect(prismaMock.candidate.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { aiScore: 75 } }),
-      );
+      expect(prismaMock.candidate.update).toHaveBeenCalledWith(expect.objectContaining({ data: { aiScore: 75 } }));
     });
 
     it('returns null when the candidate has no assigned job', async () => {
@@ -416,7 +470,21 @@ describe('CandidatesService', () => {
       const update = jest.fn().mockResolvedValue({});
       prismaMock.candidate.update = update;
       prismaMock.job = {
-        findFirst: jest.fn().mockResolvedValue({ id: 'job-1', title: 'Dev', description: 'd', mustHaveSkills: [] }),
+        findFirst: jest
+          .fn()
+          .mockResolvedValue({
+            id: 'job-1',
+            title: 'Dev',
+            description: 'd',
+            mustHaveSkills: [],
+            roleSummary: null,
+            responsibilities: null,
+            niceToHaveSkills: [],
+            expYearsMin: null,
+            expYearsMax: null,
+            preferredOrgTypes: [],
+            screeningQuestions: [],
+          }),
       };
       prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app-1' }) };
       prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };
@@ -553,9 +621,7 @@ describe('CandidatesService', () => {
 
   // Test 7: no scores → ai_score is null
   it('returns ai_score=null when candidate has no application scores', async () => {
-    prismaMock.candidate.findMany.mockResolvedValue([
-      mockCandidate({ applications: [] }),
-    ]);
+    prismaMock.candidate.findMany.mockResolvedValue([mockCandidate({ applications: [] })]);
 
     const result = await service.findAll(TENANT_ID);
 
@@ -685,9 +751,19 @@ describe('CandidatesService.createCandidate()', () => {
         CandidatesService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: StorageService, useValue: mockStorageService },
-        { provide: ScoringAgentService, useValue: { score: jest.fn().mockResolvedValue({ score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' }) } },
+        {
+          provide: ScoringAgentService,
+          useValue: {
+            score: jest
+              .fn()
+              .mockResolvedValue({ score: 75, reasoning: 'Test', strengths: [], gaps: [], modelUsed: 'test' }),
+          },
+        },
         { provide: CandidateAiService, useValue: { generateSummary: jest.fn().mockResolvedValue('Test summary') } },
-        { provide: AttachmentExtractorService, useValue: { extract: jest.fn().mockResolvedValue('Extracted CV text') } },
+        {
+          provide: AttachmentExtractorService,
+          useValue: { extract: jest.fn().mockResolvedValue('Extracted CV text') },
+        },
       ],
     }).compile();
 
@@ -924,9 +1000,18 @@ describe('CandidatesService.deleteCandidate()', () => {
 
   it('executes steps in order: DuplicateFlag → EmailIntakeLog → Candidate', async () => {
     const order: string[] = [];
-    txDuplicateFlag.deleteMany.mockImplementation(async () => { order.push('duplicateFlag'); return { count: 0 }; });
-    txEmailIntakeLog.updateMany.mockImplementation(async () => { order.push('emailIntakeLog'); return { count: 0 }; });
-    txCandidate.delete.mockImplementation(async () => { order.push('candidate'); return { id: CAND_ID }; });
+    txDuplicateFlag.deleteMany.mockImplementation(async () => {
+      order.push('duplicateFlag');
+      return { count: 0 };
+    });
+    txEmailIntakeLog.updateMany.mockImplementation(async () => {
+      order.push('emailIntakeLog');
+      return { count: 0 };
+    });
+    txCandidate.delete.mockImplementation(async () => {
+      order.push('candidate');
+      return { id: CAND_ID };
+    });
 
     await service.deleteCandidate(CAND_ID, TENANT_ID);
 
@@ -1115,8 +1200,22 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
 
   it('returns all candidates when unassigned=false', async () => {
     mockPrisma.candidate.findMany.mockResolvedValue([
-      { id: 'cand-1', jobId: null, fullName: 'Unassigned', applications: [], duplicateFlags: [], candidateStageSummaries: [] },
-      { id: 'cand-2', jobId: 'job-uuid', fullName: 'Assigned', applications: [], duplicateFlags: [], candidateStageSummaries: [] },
+      {
+        id: 'cand-1',
+        jobId: null,
+        fullName: 'Unassigned',
+        applications: [],
+        duplicateFlags: [],
+        candidateStageSummaries: [],
+      },
+      {
+        id: 'cand-2',
+        jobId: 'job-uuid',
+        fullName: 'Assigned',
+        applications: [],
+        duplicateFlags: [],
+        candidateStageSummaries: [],
+      },
     ]);
 
     const result = await service.findAll(TENANT_ID, undefined, undefined, undefined, false);
@@ -1126,7 +1225,14 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
 
   it('combines unassigned filter with search query', async () => {
     mockPrisma.candidate.findMany.mockResolvedValue([
-      { id: 'cand-1', jobId: null, fullName: 'John', applications: [], duplicateFlags: [], candidateStageSummaries: [] },
+      {
+        id: 'cand-1',
+        jobId: null,
+        fullName: 'John',
+        applications: [],
+        duplicateFlags: [],
+        candidateStageSummaries: [],
+      },
     ]);
 
     await service.findAll(TENANT_ID, 'john', undefined, undefined, true);
@@ -1143,7 +1249,13 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
 
   it('combines unassigned filter with duplicates filter', async () => {
     mockPrisma.candidate.findMany.mockResolvedValue([
-      { id: 'cand-1', jobId: null, duplicateFlags: [{ id: 'dup-1', reviewed: false }], applications: [], candidateStageSummaries: [] },
+      {
+        id: 'cand-1',
+        jobId: null,
+        duplicateFlags: [{ id: 'dup-1', reviewed: false }],
+        applications: [],
+        candidateStageSummaries: [],
+      },
     ]);
 
     await service.findAll(TENANT_ID, undefined, 'duplicates', undefined, true);

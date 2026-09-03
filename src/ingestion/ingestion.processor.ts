@@ -13,6 +13,7 @@ import { JobMatcherService } from './services/job-matcher.service';
 import { StorageService } from '../storage/storage.service';
 import { DedupService, DedupResult } from '../dedup/dedup.service';
 import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
+import { scoringJobSelect, toScoringJob, ScoringJobRow } from '../scoring/scoring-job-context';
 import { VoiceCallsService } from '../voice/voice-calls.service';
 import { sanitizePgText } from '../common/sanitize-pg-text';
 import { parseShortIdAliases, applyShortIdAliases } from '../config/short-id-aliases';
@@ -358,13 +359,7 @@ export class IngestionProcessor extends WorkerHost {
     const parsedShortIds = extractShortIds(payload.Subject, payload.TextBody);
     const matchedShortIds = applyShortIdAliases(parsedShortIds, this.shortIdAliases);
 
-    let matchedJobs: Array<{
-      id: string;
-      title: string;
-      description: string | null;
-      requirements: string[];
-      hiringStages: { id: string }[];
-    }> = [];
+    let matchedJobs: Array<ScoringJobRow & { id: string; shortId: string; hiringStages: { id: string }[] }> = [];
 
     // Stage the candidate ends up on for the primary matched job. Hoisted out of the try so
     // the scoring loop below can keep application.job_stage_id in lockstep with
@@ -404,10 +399,8 @@ export class IngestionProcessor extends WorkerHost {
           },
           select: {
             id: true,
-            title: true,
-            description: true,
-            requirements: true,
             shortId: true,
+            ...scoringJobSelect,
             hiringStages: {
               where: { isEnabled: true },
               orderBy: { order: 'asc' },
@@ -443,11 +436,9 @@ export class IngestionProcessor extends WorkerHost {
           where: { tenantId, status: 'open' },
           select: {
             id: true,
-            title: true,
-            description: true,
-            requirements: true,
             shortId: true,
             department: true,
+            ...scoringJobSelect,
             hiringStages: {
               where: { isEnabled: true },
               orderBy: { order: 'asc' },
@@ -575,11 +566,7 @@ export class IngestionProcessor extends WorkerHost {
               yearsExperience: extraction!.years_experience ?? null,
               skills: extraction!.skills ?? [],
             },
-            job: {
-              title: activeJob.title,
-              description: activeJob.description ?? null,
-              requirements: activeJob.requirements,
-            },
+            job: toScoringJob(activeJob),
           } satisfies ScoringInput);
 
           // SCOR-04, SCOR-05: upsert — idempotent on BullMQ retry

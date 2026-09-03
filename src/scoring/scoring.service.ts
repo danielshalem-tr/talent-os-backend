@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
+import { ScoringJob } from './scoring-job-context';
 
 export const ScoreSchema = z.object({
   score: z.number().min(0).max(100).transform(Math.round),
@@ -19,11 +20,7 @@ export interface ScoringInput {
     yearsExperience: number | null;
     skills: string[];
   };
-  job: {
-    title: string;
-    description: string | null;
-    requirements: string[];
-  };
+  job: ScoringJob;
 }
 
 export interface ScoringWithMatchResult {
@@ -72,6 +69,7 @@ export class ScoringAgentService {
 
     const safeCvText = input.cvText.substring(0, MAX_CV_LENGTH);
     const safeJobDesc = (input.job.description ?? '').substring(0, MAX_JOB_DESC_LENGTH);
+    const requirements = input.job.mustHaveSkills;
 
     const candidateSection = [
       `Candidate:`,
@@ -87,7 +85,7 @@ export class ScoringAgentService {
       `Job:`,
       `- Title: ${input.job.title}`,
       `- Description: ${safeJobDesc || 'N/A'}`,
-      `- Requirements: ${input.job.requirements.length > 0 ? input.job.requirements.join(', ') : 'None specified'}`,
+      `- Requirements: ${requirements.length > 0 ? requirements.join(', ') : 'None specified'}`,
     ].join('\n');
 
     const { object } = await generateObject({

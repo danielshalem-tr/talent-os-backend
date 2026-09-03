@@ -26,6 +26,13 @@ function makePrisma(overrides: Record<string, any> = {}) {
         title: 'Full Stack Developer',
         description: 'desc',
         mustHaveSkills: ['node.js'],
+        roleSummary: null,
+        responsibilities: null,
+        niceToHaveSkills: [],
+        expYearsMin: null,
+        expYearsMax: null,
+        preferredOrgTypes: [],
+        screeningQuestions: [],
         status: 'open',
       }),
     },
@@ -146,7 +153,20 @@ describe('assignCandidateToJob', () => {
       job: {
         findFirst: jest
           .fn()
-          .mockResolvedValue({ id: 'job-1', title: 't', description: null, mustHaveSkills: [], status: 'closed' }),
+          .mockResolvedValue({
+            id: 'job-1',
+            title: 't',
+            description: null,
+            mustHaveSkills: [],
+            roleSummary: null,
+            responsibilities: null,
+            niceToHaveSkills: [],
+            expYearsMin: null,
+            expYearsMax: null,
+            preferredOrgTypes: [],
+            screeningQuestions: [],
+            status: 'closed',
+          }),
       },
     });
     await expect(assignCandidateToJob(prisma, scoringAgent, params)).rejects.toThrow(BadRequestException);

@@ -18,6 +18,7 @@ import { CandidateResponse, computeCvReadable } from './dto/candidate-response.d
 import { Candidate, Prisma } from '@prisma/client';
 import { CandidateAiService } from './candidate-ai.service';
 import { ScoringAgentService } from '../scoring/scoring.service';
+import { scoringJobSelect, toScoringJob, ScoringJobRow } from '../scoring/scoring-job-context';
 import { AttachmentExtractorService } from '../ingestion/services/attachment-extractor.service';
 import { sanitizePgText } from '../common/sanitize-pg-text';
 import { moveCandidateToStage } from './stage-move';
@@ -347,7 +348,7 @@ export class CandidatesService {
     jobId: string;
     candidate: Pick<Candidate, 'cvText' | 'currentRole' | 'yearsExperience' | 'skills'>;
     dto: UpdateCandidateDto;
-    job: { title: string; description: string | null; mustHaveSkills: string[] };
+    job: ScoringJobRow;
   }): Promise<void> {
     const { candidateId, tenantId, jobId, candidate, dto, job } = args;
 
@@ -365,11 +366,7 @@ export class CandidatesService {
           yearsExperience: dto.years_experience ?? candidate.yearsExperience,
           skills: candidate.skills,
         },
-        job: {
-          title: job.title,
-          description: job.description || '',
-          requirements: job.mustHaveSkills || [],
-        },
+        job: toScoringJob(job),
       });
 
       // The application the transaction just created/moved is what the score hangs off.
@@ -447,7 +444,7 @@ export class CandidatesService {
 
         const job = await this.prisma.job.findFirst({
           where: { id: dto.job_id, tenantId },
-          select: { id: true, title: true, description: true, mustHaveSkills: true },
+          select: { id: true, ...scoringJobSelect },
         });
 
         if (!job) {
@@ -504,7 +501,7 @@ export class CandidatesService {
 
         const job = await this.prisma.job.findFirst({
           where: { id: dto.job_id, tenantId },
-          select: { id: true, title: true, description: true, mustHaveSkills: true },
+          select: { id: true, ...scoringJobSelect },
         });
 
         let newAiSummary = candidate.aiSummary;
@@ -612,7 +609,7 @@ export class CandidatesService {
   ): Promise<{ score: number; reasoning: string; strengths: string[]; gaps: string[]; modelUsed: string } | null> {
     const job = await this.prisma.job.findFirst({
       where: { id: candidate.jobId, tenantId },
-      select: { id: true, title: true, description: true, mustHaveSkills: true },
+      select: { id: true, ...scoringJobSelect },
     });
     if (!job) {
       await this.prisma.candidate.update({ where: { id: candidate.id }, data: { aiScore: null } });
@@ -626,11 +623,7 @@ export class CandidatesService {
         yearsExperience: candidate.yearsExperience,
         skills: candidate.skills,
       },
-      job: {
-        title: job.title,
-        description: job.description || '',
-        requirements: job.mustHaveSkills || [],
-      },
+      job: toScoringJob(job),
     });
 
     const application = await this.prisma.application.findFirst({

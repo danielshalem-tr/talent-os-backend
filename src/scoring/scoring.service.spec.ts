@@ -41,7 +41,14 @@ const mockScoringInput = (overrides: Partial<ScoringInput> = {}): ScoringInput =
   job: {
     title: 'Backend Engineer',
     description: 'Build scalable APIs.',
-    requirements: ['TypeScript', 'PostgreSQL'],
+    mustHaveSkills: ['TypeScript', 'PostgreSQL'],
+    roleSummary: null,
+    responsibilities: null,
+    niceToHaveSkills: [],
+    expYearsMin: null,
+    expYearsMax: null,
+    preferredOrgTypes: [],
+    screeningQuestions: [],
   },
   ...overrides,
 });
@@ -58,9 +65,7 @@ describe('ScoringAgentService', () => {
     const service = makeService();
     await service.score(mockScoringInput());
 
-    expect(mockGenerateObject).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'mocked-model' }),
-    );
+    expect(mockGenerateObject).toHaveBeenCalledWith(expect.objectContaining({ model: 'mocked-model' }));
   });
 
   // ConfigService used to get API key
@@ -130,7 +135,18 @@ describe('ScoringAgentService - context limits', () => {
     const input: ScoringInput = {
       cvText: 'a'.repeat(50_000),
       candidateFields: { currentRole: 'Dev', yearsExperience: 5, skills: ['ts'] },
-      job: { title: 'Engineer', description: 'b'.repeat(50_000), requirements: [] },
+      job: {
+        title: 'Engineer',
+        description: 'b'.repeat(50_000),
+        roleSummary: null,
+        responsibilities: null,
+        mustHaveSkills: [],
+        niceToHaveSkills: [],
+        expYearsMin: null,
+        expYearsMax: null,
+        preferredOrgTypes: [],
+        screeningQuestions: [],
+      },
     };
     const service = makeService();
     await expect(service.score(input)).resolves.toBeDefined();

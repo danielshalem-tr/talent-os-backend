@@ -100,7 +100,10 @@ describe('IngestionProcessor', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }), findUnique: jest.fn().mockResolvedValue(null) },
+      application: {
+        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
 
@@ -218,7 +221,14 @@ describe('IngestionProcessor', () => {
       id,
       title: `Job ${shortId}`,
       description: 'desc',
-      requirements: [],
+      roleSummary: null,
+      responsibilities: null,
+      mustHaveSkills: [],
+      niceToHaveSkills: [],
+      expYearsMin: null,
+      expYearsMax: null,
+      preferredOrgTypes: [],
+      screeningQuestions: [],
       shortId,
       department: 'Engineering',
       hiringStages: [{ id: `stage-${shortId}` }],
@@ -326,7 +336,21 @@ describe('IngestionProcessor', () => {
       const payload = mockEmailPayload({ Subject: 'Re: position #106', TextBody: LONG_BODY });
       storageService.downloadPayload.mockResolvedValue(payload);
       prisma.job.findMany.mockResolvedValue([
-        { id: 'job-106', title: 'Job 106', description: 'desc', requirements: [], shortId: '106', hiringStages: [{ id: 'stage-1' }] },
+        {
+          id: 'job-106',
+          title: 'Job 106',
+          description: 'desc',
+          roleSummary: null,
+          responsibilities: null,
+          mustHaveSkills: [],
+          niceToHaveSkills: [],
+          expYearsMin: null,
+          expYearsMax: null,
+          preferredOrgTypes: [],
+          screeningQuestions: [],
+          shortId: '106',
+          hiringStages: [{ id: 'stage-1' }],
+        },
       ]);
 
       await processor.process(makeJob('job-repeat', payload));
@@ -342,7 +366,21 @@ describe('IngestionProcessor', () => {
       const payload = mockEmailPayload({ Subject: 'Application for #106', TextBody: LONG_BODY });
       storageService.downloadPayload.mockResolvedValue(payload);
       prisma.job.findMany.mockResolvedValue([
-        { id: 'job-106', title: 'Job 106', description: 'desc', requirements: [], shortId: '106', hiringStages: [{ id: 'stage-1' }] },
+        {
+          id: 'job-106',
+          title: 'Job 106',
+          description: 'desc',
+          roleSummary: null,
+          responsibilities: null,
+          mustHaveSkills: [],
+          niceToHaveSkills: [],
+          expYearsMin: null,
+          expYearsMax: null,
+          preferredOrgTypes: [],
+          screeningQuestions: [],
+          shortId: '106',
+          hiringStages: [{ id: 'stage-1' }],
+        },
       ]);
 
       await processor.process(makeJob('job-sync', payload));
@@ -529,7 +567,10 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }), findUnique: jest.fn().mockResolvedValue(null) },
+      application: {
+        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
     extractionAgent = {
@@ -721,7 +762,10 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }), findUnique: jest.fn().mockResolvedValue(null) },
+      application: {
+        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
 
@@ -1014,7 +1058,14 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     shortId: '101',
     title: 'Senior Backend Developer',
     description: 'Build APIs.',
-    requirements: ['TypeScript'],
+    roleSummary: null,
+    responsibilities: null,
+    mustHaveSkills: ['TypeScript'],
+    niceToHaveSkills: [],
+    expYearsMin: null,
+    expYearsMax: null,
+    preferredOrgTypes: [],
+    screeningQuestions: [],
     hiringStages: [{ id: 'stage-1' }],
   };
 
@@ -1053,7 +1104,10 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         findFirst: jest.fn().mockResolvedValue(null),
         findUnique: jest.fn().mockResolvedValue(activeJob),
       },
-      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id-1' }), findUnique: jest.fn().mockResolvedValue(null) },
+      application: {
+        upsert: jest.fn().mockResolvedValue({ id: 'app-id-1' }),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
 
@@ -1235,6 +1289,20 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     expect(prisma.candidateJobScore.create).not.toHaveBeenCalled();
   });
 
+  // Regression: the ingestion path used to select the dead `requirements` column (always []),
+  // so an emailed CV scored against an empty requirement list while the assign paths used
+  // must_have_skills. One shared select now feeds every scoring call site.
+  it('scores against must_have_skills, never the legacy requirements column', async () => {
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    const job = makeJob('test-p7-must-have', payload);
+    await processor.process(job);
+
+    const input = scoringService.score.mock.calls[0][0] as { job: Record<string, unknown> };
+    expect(input.job.mustHaveSkills).toEqual(['TypeScript']);
+    expect(input.job.requirements).toBeUndefined();
+  });
+
   // 7-02-03b: uses candidateJobScore.upsert instead of create — prevents duplicate rows on retry
   it('uses candidateJobScore.upsert instead of create — prevents duplicate rows on retry', async () => {
     const payload = validJobPayload();
@@ -1374,7 +1442,14 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       title: 'Senior Software Engineer',
       shortId: '100',
       description: null,
-      requirements: [],
+      roleSummary: null,
+      responsibilities: null,
+      mustHaveSkills: [],
+      niceToHaveSkills: [],
+      expYearsMin: null,
+      expYearsMax: null,
+      preferredOrgTypes: [],
+      screeningQuestions: [],
       hiringStages: [{ id: 'stage-1' }],
     };
     const job2 = {
@@ -1382,7 +1457,14 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       title: 'Product Manager',
       shortId: '101',
       description: null,
-      requirements: [],
+      roleSummary: null,
+      responsibilities: null,
+      mustHaveSkills: [],
+      niceToHaveSkills: [],
+      expYearsMin: null,
+      expYearsMax: null,
+      preferredOrgTypes: [],
+      screeningQuestions: [],
       hiringStages: [{ id: 'stage-2' }],
     };
 
@@ -1419,7 +1501,10 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           findMany: jest.fn().mockResolvedValue([job1, job2]),
           findUnique: jest.fn(),
         },
-        application: { upsert: jest.fn().mockResolvedValue({ id: 'app-1' }), findUnique: jest.fn().mockResolvedValue(null) },
+        application: {
+          upsert: jest.fn().mockResolvedValue({ id: 'app-1' }),
+          findUnique: jest.fn().mockResolvedValue(null),
+        },
         candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
       };
       extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };
@@ -1664,7 +1749,10 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
         }),
       },
       job: { findMany: jest.fn().mockResolvedValue([]) },
-      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }), findUnique: jest.fn().mockResolvedValue(null) },
+      application: {
+        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
     dedupService = {
@@ -1780,7 +1868,10 @@ describe('IngestionProcessor — CV Classification Gate', () => {
         }),
       },
       job: { findMany: jest.fn().mockResolvedValue([]) },
-      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }), findUnique: jest.fn().mockResolvedValue(null) },
+      application: {
+        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
     extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };
@@ -1919,7 +2010,10 @@ describe('ingest gate (ai_ingest_enabled)', () => {
         }),
       },
       job: { findMany: jest.fn().mockResolvedValue([]) },
-      application: { upsert: jest.fn().mockResolvedValue({ id: 'app-id' }), findUnique: jest.fn().mockResolvedValue(null) },
+      application: {
+        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        findUnique: jest.fn().mockResolvedValue(null),
+      },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
     extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };

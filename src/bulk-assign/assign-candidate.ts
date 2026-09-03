@@ -1,6 +1,7 @@
 import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
+import { scoringJobSelect, toScoringJob } from '../scoring/scoring-job-context';
 import { moveCandidateToStage } from '../candidates/stage-move';
 
 const logger = new Logger('assignCandidateToJob');
@@ -42,7 +43,7 @@ export async function assignCandidateToJob(
 
   const job = await prisma.job.findFirst({
     where: { id: jobId, tenantId },
-    select: { id: true, title: true, description: true, mustHaveSkills: true, status: true },
+    select: { id: true, status: true, ...scoringJobSelect },
   });
   if (!job) {
     throw new NotFoundException({ error: { code: 'NOT_FOUND', message: 'Job not found' } });
@@ -92,11 +93,7 @@ export async function assignCandidateToJob(
       yearsExperience: candidate.yearsExperience,
       skills: candidate.skills,
     },
-    job: {
-      title: job.title,
-      description: job.description ?? '',
-      requirements: job.mustHaveSkills ?? [],
-    },
+    job: toScoringJob(job),
   } satisfies ScoringInput);
 
   await prisma.candidateJobScore.upsert({
