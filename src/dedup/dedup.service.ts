@@ -2,59 +2,49 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CandidateExtract } from '../ingestion/services/extraction-agent.service';
+import { normalizeEmail, phoneDigits } from './contact-normalize';
+import { findCandidateByPhoneDigits } from './phone-lookup';
 
-export interface DedupResult {
-  match: { id: string } | null;
-  confidence: number;
-  fields: string[];
-}
+/**
+ * Outcome of the identity check for an incoming submission.
+ * - `match`: this person already exists → the caller REUSES that row (no insert, no flag).
+ * - `new`: insert a fresh row. `sharedPhoneWith` is set when another candidate holds the same
+ *   phone but a different, non-null email (family / agency phone): two people, logged, no flag.
+ */
+export type DedupCheck =
+  | { outcome: 'match'; candidateId: string; field: 'email' | 'phone' }
+  | { outcome: 'new'; sharedPhoneWith: string | null };
+
+export type ContactField = 'email' | 'phone' | 'fullName';
 
 @Injectable()
 export class DedupService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async check(
-    candidate: CandidateExtract,
-    tenantId: string,
-    tx?: Prisma.TransactionClient,
-  ): Promise<DedupResult | null> {
+  async check(candidate: CandidateExtract, tenantId: string, tx?: Prisma.TransactionClient): Promise<DedupCheck> {
     const client = tx ?? this.prisma;
 
-    // Step 0: Email is the strongest identity key, and the DB enforces one email per tenant
-    // (partial unique index idx_candidates_tenant_email_unique). If a candidate with this exact
-    // email already exists, it is the same person — return it so the caller REUSES that row.
-    // Without this, every branch below ends in an INSERT that violates the unique index and the
-    // candidate is silently dropped (the "candidate not saved" bug). Matched exact, like the index.
-    if (candidate.email && candidate.email.trim() !== '') {
-      const emailMatch = await client.candidate.findFirst({
-        where: { tenantId, email: candidate.email },
-        select: { id: true },
-      });
-      if (emailMatch) {
-        return { match: { id: emailMatch.id }, confidence: 1.0, fields: ['email'] };
-      }
+    // Email is the strongest identity key and the DB enforces one email per tenant
+    // (idx_candidates_tenant_email_unique). Matched exact, like the index.
+    const email = normalizeEmail(candidate.email);
+    if (email) {
+      const emailMatch = await client.candidate.findFirst({ where: { tenantId, email }, select: { id: true } });
+      if (emailMatch) return { outcome: 'match', candidateId: emailMatch.id, field: 'email' };
     }
 
-    // Step 1: No phone — return sentinel so processor can create phone_missing flag for HR review
-    if (!candidate.phone || candidate.phone.trim() === '') {
-      return { match: null, confidence: 0, fields: ['phone_missing'] };
+    // Phone: digit-only compare on both sides; junk (< 7 digits) is "no phone".
+    const digits = phoneDigits(candidate.phone);
+    if (!digits) return { outcome: 'new', sharedPhoneWith: null };
+
+    const phoneMatch = await findCandidateByPhoneDigits(client, tenantId, digits);
+    if (!phoneMatch) return { outcome: 'new', sharedPhoneWith: null };
+
+    // D1 email-compatibility guard: same phone + two different non-null emails = two people.
+    const existingEmail = normalizeEmail(phoneMatch.email);
+    if (email && existingEmail && email !== existingEmail) {
+      return { outcome: 'new', sharedPhoneWith: phoneMatch.id };
     }
-
-    // Step 2: Exact phone match — strip non-digit characters from both sides before comparing
-    const phoneMatches = await client.$queryRaw<{ id: string }[]>`
-      SELECT id::text
-      FROM candidates
-      WHERE tenant_id = ${tenantId}::uuid
-        AND regexp_replace(phone, '[^0-9]', '', 'g') = regexp_replace(${candidate.phone}, '[^0-9]', '', 'g')
-      LIMIT 1
-    `;
-
-    if (phoneMatches.length > 0) {
-      return { match: { id: phoneMatches[0].id }, confidence: 1.0, fields: ['phone'] };
-    }
-
-    // Step 3: No match — new candidate
-    return null;
+    return { outcome: 'match', candidateId: phoneMatch.id, field: 'phone' };
   }
 
   async insertCandidate(
@@ -72,7 +62,7 @@ export class DedupService {
         email: candidate.email ?? null,
         phone: candidate.phone ?? null,
         source: source ?? 'direct',
-        sourceAgency: candidate.source_agency ?? null, // BUG-2 fix: propagate agency name to DB
+        sourceAgency: candidate.source_agency ?? null,
         sourceEmail: fromEmail,
         // Phase 7 enriches: currentRole, yearsExperience, skills, cvText, cvFileUrl, aiSummary, metadata
       },
@@ -81,46 +71,52 @@ export class DedupService {
     return created.id;
   }
 
-  async upsertCandidate(
+  /**
+   * D14: a merged submission must not lose contact data. COALESCE semantics — the existing
+   * value wins whenever present; only null/blank fields are filled. Email is filled only when
+   * no other row holds it (the caller's advisory lock serialises same-email submissions, this
+   * check covers the rest). Returns the fields that were written, for the intake log.
+   */
+  async fillContactFields(
     candidateId: string,
     candidate: CandidateExtract,
-    tx?: Prisma.TransactionClient,
-  ): Promise<void> {
-    const client = tx ?? this.prisma;
-    await client.candidate.update({
-      where: { id: candidateId },
-      data: {
-        fullName: candidate.full_name,
-        phone: candidate.phone ?? null,
-        // source and sourceEmail intentionally NOT updated — first-submission wins (D-07)
-      },
-    });
-  }
-
-  async createFlag(
-    candidateId: string,
-    matchedCandidateId: string | null,
-    confidence: number,
     tenantId: string,
-    fields: string[],
     tx?: Prisma.TransactionClient,
-  ): Promise<void> {
-    // When matchedCandidateId is null (phone_missing case), self-reference satisfies FK constraint
-    const resolvedMatchId = matchedCandidateId ?? candidateId;
+  ): Promise<ContactField[]> {
     const client = tx ?? this.prisma;
-    await client.duplicateFlag.upsert({
-      where: {
-        idx_duplicates_pair: { tenantId, candidateId, matchedCandidateId: resolvedMatchId },
-      },
-      create: {
-        tenantId,
-        candidateId,
-        matchedCandidateId: resolvedMatchId,
-        confidence: new Prisma.Decimal(confidence.toString()),
-        matchFields: fields,
-        reviewed: false,
-      },
-      update: {}, // No-op on BullMQ retry — idempotent (D-13)
+    const existing = await client.candidate.findUniqueOrThrow({
+      where: { id: candidateId },
+      select: { email: true, phone: true, fullName: true },
     });
+
+    const data: Prisma.CandidateUncheckedUpdateInput = {};
+    const filled: ContactField[] = [];
+
+    const incomingEmail = normalizeEmail(candidate.email);
+    if (!normalizeEmail(existing.email) && incomingEmail) {
+      const taken = await client.candidate.findFirst({
+        where: { tenantId, email: incomingEmail, NOT: { id: candidateId } },
+        select: { id: true },
+      });
+      if (!taken) {
+        data.email = incomingEmail;
+        filled.push('email');
+      }
+    }
+
+    if (!phoneDigits(existing.phone) && phoneDigits(candidate.phone)) {
+      data.phone = candidate.phone;
+      filled.push('phone');
+    }
+
+    if (existing.fullName.trim() === '' && candidate.full_name.trim() !== '') {
+      data.fullName = candidate.full_name;
+      filled.push('fullName');
+    }
+
+    if (filled.length > 0) {
+      await client.candidate.update({ where: { id: candidateId }, data });
+    }
+    return filled;
   }
 }

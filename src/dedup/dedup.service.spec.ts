@@ -3,9 +3,7 @@ import { DedupService } from './dedup.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { CandidateExtract } from '../ingestion/services/extraction-agent.service';
 
-export function mockCandidateDedupExtract(
-  overrides: Partial<CandidateExtract> = {},
-): CandidateExtract {
+export function mockCandidateDedupExtract(overrides: Partial<CandidateExtract> = {}): CandidateExtract {
   return {
     full_name: 'Jane Doe',
     email: 'jane.doe@example.com',
@@ -24,13 +22,7 @@ export function mockCandidateDedupExtract(
 describe('DedupService', () => {
   let service: DedupService;
   let prisma: {
-    candidate: {
-      create: jest.Mock;
-      update: jest.Mock;
-      upsert: jest.Mock;
-      findFirst: jest.Mock;
-    };
-    duplicateFlag: { upsert: jest.Mock };
+    candidate: { create: jest.Mock; update: jest.Mock; findFirst: jest.Mock; findUniqueOrThrow: jest.Mock };
     $queryRaw: jest.Mock;
   };
 
@@ -39,20 +31,14 @@ describe('DedupService', () => {
       candidate: {
         create: jest.fn().mockResolvedValue({ id: 'new-candidate-id' }),
         update: jest.fn().mockResolvedValue({}),
-        upsert: jest.fn().mockResolvedValue({ id: 'upserted-id' }),
         findFirst: jest.fn().mockResolvedValue(null),
-      },
-      duplicateFlag: {
-        upsert: jest.fn().mockResolvedValue({}),
+        findUniqueOrThrow: jest.fn(),
       },
       $queryRaw: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [
-        DedupService,
-        { provide: PrismaService, useValue: prisma },
-      ],
+      providers: [DedupService, { provide: PrismaService, useValue: prisma }],
     }).compile();
 
     service = module.get<DedupService>(DedupService);
@@ -60,112 +46,159 @@ describe('DedupService', () => {
 
   afterEach(() => jest.clearAllMocks());
 
-  // DEDUP-01: phone null → returns phone_missing sentinel
-  it('DEDUP-01: phone null returns { match: null, confidence: 0, fields: ["phone_missing"] }', async () => {
-    const extract = mockCandidateDedupExtract({ phone: null });
+  describe('check()', () => {
+    it('email match wins and skips the phone query', async () => {
+      prisma.candidate.findFirst.mockResolvedValue({ id: 'existing-by-email' });
 
-    const result = await service.check(extract, 'tenant-abc');
+      const result = await service.check(mockCandidateDedupExtract(), 'tenant-abc');
 
-    expect(result).toEqual({ match: null, confidence: 0, fields: ['phone_missing'] });
-    // $queryRaw must NOT be called — phone check short-circuits immediately
-    expect(prisma.$queryRaw).not.toHaveBeenCalled();
-  });
-
-  // DEDUP-02: exact phone match (digits only, formatting varies) → confidence 1.0
-  it('DEDUP-02: exact phone match returns confidence 1.0 and fields=["phone"]', async () => {
-    prisma.$queryRaw.mockResolvedValue([{ id: 'existing-123' }]);
-    const extract = mockCandidateDedupExtract({ phone: '+1-555-0100' });
-
-    const result = await service.check(extract, 'tenant-abc');
-
-    expect(result).toEqual({
-      match: { id: 'existing-123' },
-      confidence: 1.0,
-      fields: ['phone'],
+      expect(result).toEqual({ outcome: 'match', candidateId: 'existing-by-email', field: 'email' });
+      expect(prisma.candidate.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { tenantId: 'tenant-abc', email: 'jane.doe@example.com' } }),
+      );
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
     });
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+
+    it('null email skips the email lookup and falls through to phone', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ id: 'phone-match-id', email: null }]);
+
+      const result = await service.check(mockCandidateDedupExtract({ email: null }), 'tenant-abc');
+
+      expect(prisma.candidate.findFirst).not.toHaveBeenCalled();
+      expect(result).toEqual({ outcome: 'match', candidateId: 'phone-match-id', field: 'phone' });
+    });
+
+    it('no phone → new candidate, no phone query, no sentinel', async () => {
+      const result = await service.check(mockCandidateDedupExtract({ email: null, phone: null }), 'tenant-abc');
+
+      expect(result).toEqual({ outcome: 'new', sharedPhoneWith: null });
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('a phone with fewer than 7 digits is treated as no phone', async () => {
+      const result = await service.check(mockCandidateDedupExtract({ email: null, phone: '-' }), 'tenant-abc');
+
+      expect(result).toEqual({ outcome: 'new', sharedPhoneWith: null });
+      expect(prisma.$queryRaw).not.toHaveBeenCalled();
+    });
+
+    it('phone match with no DB hit → new candidate', async () => {
+      prisma.$queryRaw.mockResolvedValue([]);
+
+      const result = await service.check(mockCandidateDedupExtract({ phone: '+1-555-9999' }), 'tenant-abc');
+
+      expect(result).toEqual({ outcome: 'new', sharedPhoneWith: null });
+      expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
+    });
+
+    it('phone match with a compatible email (existing null) → match on phone', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ id: 'existing-123', email: null }]);
+
+      const result = await service.check(mockCandidateDedupExtract(), 'tenant-abc');
+
+      expect(result).toEqual({ outcome: 'match', candidateId: 'existing-123', field: 'phone' });
+    });
+
+    it('phone match with a compatible email (equal) → match on phone', async () => {
+      // Only reachable when the email lookup missed (e.g. case difference would have missed too) —
+      // guard must still treat equal strings as compatible.
+      prisma.$queryRaw.mockResolvedValue([{ id: 'existing-123', email: 'jane.doe@example.com' }]);
+
+      const result = await service.check(mockCandidateDedupExtract(), 'tenant-abc');
+
+      expect(result).toEqual({ outcome: 'match', candidateId: 'existing-123', field: 'phone' });
+    });
+
+    it('phone match with two different non-null emails → new candidate that shares a phone (D1)', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ id: 'existing-123', email: 'other.person@example.com' }]);
+
+      const result = await service.check(mockCandidateDedupExtract(), 'tenant-abc');
+
+      expect(result).toEqual({ outcome: 'new', sharedPhoneWith: 'existing-123' });
+    });
+
+    it('passes the digit-only phone into the raw query', async () => {
+      await service.check(mockCandidateDedupExtract({ email: null, phone: '+1 (555) 010-0100' }), 'tenant-abc');
+
+      // Tagged-template call: values are in the second argument onwards.
+      const [, ...values] = prisma.$queryRaw.mock.calls[0];
+      expect(values).toContain('15550100100');
+    });
   });
 
-  // DEDUP-03: phone provided but no DB match → returns null (new candidate)
-  it('DEDUP-03: phone provided but no DB match returns null', async () => {
-    prisma.$queryRaw.mockResolvedValue([]); // no match
-    const extract = mockCandidateDedupExtract({ phone: '+1-555-9999' });
+  describe('fillContactFields()', () => {
+    it('fills only null fields', async () => {
+      prisma.candidate.findUniqueOrThrow.mockResolvedValue({ email: null, phone: null, fullName: '' });
+      prisma.candidate.findFirst.mockResolvedValue(null); // email not held by anyone else
 
-    const result = await service.check(extract, 'tenant-abc');
+      const filled = await service.fillContactFields('cand-1', mockCandidateDedupExtract(), 'tenant-abc');
 
-    expect(result).toBeNull();
-    expect(prisma.$queryRaw).toHaveBeenCalledTimes(1);
-  });
+      expect(filled).toEqual(['email', 'phone', 'fullName']);
+      expect(prisma.candidate.update).toHaveBeenCalledWith({
+        where: { id: 'cand-1' },
+        data: { email: 'jane.doe@example.com', phone: '+1-555-0100', fullName: 'Jane Doe' },
+      });
+    });
 
-  // DEDUP-06: email already exists in tenant → returns email match so caller REUSES the row.
-  // Email is the strongest key and the DB enforces one email per tenant; this prevents the
-  // INSERT that would violate idx_candidates_tenant_email_unique and drop the candidate.
-  it('DEDUP-06: existing email returns { match, confidence 1.0, fields: ["email"] } and skips phone query', async () => {
-    prisma.candidate.findFirst.mockResolvedValue({ id: 'existing-by-email' });
-    const extract = mockCandidateDedupExtract({ email: 'jane.doe@example.com', phone: '+1-555-0100' });
+    it('never overwrites an existing value', async () => {
+      prisma.candidate.findUniqueOrThrow.mockResolvedValue({
+        email: 'kept@example.com',
+        phone: '+972-50-000-0000',
+        fullName: 'Kept Name',
+      });
 
-    const result = await service.check(extract, 'tenant-abc');
+      const filled = await service.fillContactFields('cand-1', mockCandidateDedupExtract(), 'tenant-abc');
 
-    expect(result).toEqual({ match: { id: 'existing-by-email' }, confidence: 1.0, fields: ['email'] });
-    expect(prisma.candidate.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId: 'tenant-abc', email: 'jane.doe@example.com' } }),
-    );
-    // email match short-circuits — phone lookup never runs
-    expect(prisma.$queryRaw).not.toHaveBeenCalled();
-  });
+      expect(filled).toEqual([]);
+      expect(prisma.candidate.update).not.toHaveBeenCalled();
+    });
 
-  // DEDUP-07: null email → skip the email lookup entirely, fall through to phone logic.
-  it('DEDUP-07: null email skips email lookup and uses phone match', async () => {
-    prisma.$queryRaw.mockResolvedValue([{ id: 'phone-match-id' }]);
-    const extract = mockCandidateDedupExtract({ email: null, phone: '+1-555-0100' });
+    it('does not fill an email another row already holds (idx_candidates_tenant_email_unique)', async () => {
+      prisma.candidate.findUniqueOrThrow.mockResolvedValue({ email: null, phone: '+1', fullName: 'X' });
+      prisma.candidate.findFirst.mockResolvedValue({ id: 'someone-else' });
 
-    const result = await service.check(extract, 'tenant-abc');
+      const filled = await service.fillContactFields('cand-1', mockCandidateDedupExtract({ phone: null }), 'tenant-abc');
 
-    expect(prisma.candidate.findFirst).not.toHaveBeenCalled();
-    expect(result).toEqual({ match: { id: 'phone-match-id' }, confidence: 1.0, fields: ['phone'] });
-  });
+      expect(filled).toEqual([]);
+      expect(prisma.candidate.findFirst).toHaveBeenCalledWith({
+        where: { tenantId: 'tenant-abc', email: 'jane.doe@example.com', NOT: { id: 'cand-1' } },
+        select: { id: true },
+      });
+      expect(prisma.candidate.update).not.toHaveBeenCalled();
+    });
 
-  // DEDUP-04: createFlag with fields=['phone_missing'] and matchedCandidateId=null self-references candidateId
-  it('DEDUP-04: createFlag with phone_missing self-references candidateId in upsert', async () => {
-    await service.createFlag('cand-id', null, 0, 'tenant-abc', ['phone_missing']);
+    it('does not fill a junk phone (under the digit floor)', async () => {
+      prisma.candidate.findUniqueOrThrow.mockResolvedValue({ email: 'a@b.c', phone: null, fullName: 'X' });
 
-    expect(prisma.duplicateFlag.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: {
-          idx_duplicates_pair: {
-            tenantId: 'tenant-abc',
-            candidateId: 'cand-id',
-            matchedCandidateId: 'cand-id', // self-reference when null
-          },
+      const filled = await service.fillContactFields('cand-1', mockCandidateDedupExtract({ phone: '-' }), 'tenant-abc');
+
+      expect(filled).toEqual([]);
+      expect(prisma.candidate.update).not.toHaveBeenCalled();
+    });
+
+    it('uses the transaction client when one is passed', async () => {
+      const tx = {
+        candidate: {
+          findUniqueOrThrow: jest.fn().mockResolvedValue({ email: 'a@b.c', phone: null, fullName: 'X' }),
+          findFirst: jest.fn(),
+          update: jest.fn().mockResolvedValue({}),
         },
-        create: expect.objectContaining({
-          reviewed: false,
-          matchFields: ['phone_missing'],
-          confidence: expect.anything(),
-        }),
-        update: {},
-      }),
-    );
+      };
+
+      await service.fillContactFields('cand-1', mockCandidateDedupExtract(), 'tenant-abc', tx as never);
+
+      expect(tx.candidate.update).toHaveBeenCalledWith({ where: { id: 'cand-1' }, data: { phone: '+1-555-0100' } });
+      expect(prisma.candidate.update).not.toHaveBeenCalled();
+    });
   });
 
-  // DEDUP-05: createFlag with fields=['phone'] passes through to matchFields in upsert
-  it('DEDUP-05: createFlag with fields=["phone"] passes matchFields=["phone"] to upsert', async () => {
-    await service.createFlag('new-id', 'match-id', 1.0, 'tenant-abc', ['phone']);
+  it('insertCandidate writes the shell row and returns its id', async () => {
+    const id = await service.insertCandidate(mockCandidateDedupExtract(), 'tenant-abc', 'from@example.com', undefined, 'agency');
 
-    expect(prisma.duplicateFlag.upsert).toHaveBeenCalledWith(
+    expect(id).toBe('new-candidate-id');
+    expect(prisma.candidate.create).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: {
-          idx_duplicates_pair: {
-            tenantId: 'tenant-abc',
-            candidateId: 'new-id',
-            matchedCandidateId: 'match-id',
-          },
-        },
-        create: expect.objectContaining({
-          reviewed: false,
-          matchFields: ['phone'],
-        }),
-        update: {},
+        data: expect.objectContaining({ tenantId: 'tenant-abc', fullName: 'Jane Doe', source: 'agency', sourceEmail: 'from@example.com' }),
       }),
     );
   });
