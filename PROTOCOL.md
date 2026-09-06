@@ -30,7 +30,7 @@ Retrieve lightweight counts for dashboard alerts.
 **Notes:**
 
 - `total` — count of active (non-rejected, non-deleted) candidates
-- `duplicates` — count of active candidates with at least one unreviewed duplicate flag. Includes candidates flagged as `phone_missing` (see `is_duplicate` note below)
+- `duplicates` — **deprecated, always `0`.** Duplicate flags are no longer produced: intake auto-merges email and phone matches (see `GET /candidates` notes). The counts shape is replaced in the Pool/Archive release.
 - `unassigned` — count of active candidates not yet linked to any job
 
 ---
@@ -42,9 +42,7 @@ Fetch candidates with optional search and filtering.
 **Query Parameters:**
 
 - `q` (optional): Search query matching name, role, or email (case-insensitive substring match)
-- `filter` (optional): Filter type
-  - `all` — all candidates (default)
-  - `duplicates` — candidates with unreviewed duplicate flags
+- `filter` (optional): only `all` is accepted. `duplicates` was removed with the duplicate-flag pipeline and now returns `400 INVALID_FILTER`.
 - `job_id` (optional): Filter candidates by job UUID (used for Kanban view)
 - `unassigned` (optional): `'true'` — filters candidates not yet assigned to any job
 - `created_within_days` (optional): Integer `1`–`3650`. Returns only candidates created within the last N days. Out-of-range or non-integer values return `400 VALIDATION_ERROR`.
@@ -89,14 +87,16 @@ Fetch candidates with optional search and filtering.
 }
 ```
 
-**Notes on `is_duplicate`:**
+**Notes on `is_duplicate` (deprecated):**
 
-`is_duplicate: true` means the candidate has at least one unreviewed `duplicate_flag`. There are two distinct cases:
+Always `false`. Intake no longer produces duplicate flags; the field is kept for one release and then removed.
 
-- **Phone match** (`fields: ["phone"]`): Another candidate with the same phone number already exists. Both submissions are stored as separate rows — the existing candidate is not updated. The flag links the new row to the existing one. HR should review and merge manually.
-- **Phone missing** (`fields: ["phone_missing"]`): No phone number could be extracted from the CV. This is a data quality flag, not a real duplicate signal. The candidate is flagged for HR review but is not linked to another person.
+**How intake deduplicates (since the dedup automation release):**
 
-Do not treat `is_duplicate: true` as a guarantee that two candidate rows represent the same person — always check the flag type.
+- **Email match** — the submission is folded into the existing candidate (no second row).
+- **Phone match** — phones are compared on digits only (fewer than 7 digits counts as no phone). A phone match is folded into the existing candidate **only when the emails are compatible** (incoming null, existing null, or equal). Two different non-null emails on one phone are two people: a new candidate is created and the event is logged.
+- On a fold, the existing row's `email`, `phone` and `full_name` are filled where null (existing values are never overwritten), the CV/enrichment fields refresh, and an Application is added for the matched job.
+- **Contact blocklist** — tenant staff / agency emails, domains and phones configured server-side are nulled on the extracted candidate before dedup and before insert; they never reach a candidate row.
 
 **Notes on `full_name`:**
 
@@ -253,6 +253,7 @@ Create a new candidate profile, optionally with a CV file upload.
 **Errors:**
 
 - `400 Bad Request` — validation failed
+- `409 Conflict` — `EMAIL_EXISTS` (email already belongs to a candidate) or `PHONE_EXISTS` (phone matches an existing candidate on digits)
 - `500 Internal Server Error` — server error
 
 ### `POST /candidates/bulk-assign`
@@ -1626,13 +1627,13 @@ Write and AI tools return a tool error for `viewer` callers.
 
 | Tool | Kind | Role | What it does |
 |------|------|------|--------------|
-| `search_candidates` | read | any | Search candidates in the org (`q`, `filter`, `job_id`, `unassigned`) + total. No CV text. |
+| `search_candidates` | read | any | Search candidates in the org (`q`, `job_id`, `unassigned`) + total. No CV text. |
 | `get_candidate` | read | any | Fetch one candidate by id (no CV text). |
 | `get_candidate_cv` | read | any | Short-lived presigned URL to the original CV file (never raw text). |
 | `list_jobs` | read | any | List jobs (optional `status`) + total. |
 | `get_job` | read | any | Fetch one job by id. |
 | `get_pipeline` | read | any | Candidates in a job's hiring pipeline (by stage). |
-| `dashboard_counts` | read | any | Org summary counts: total, duplicates, unassigned. |
+| `dashboard_counts` | read | any | Org summary counts: total, duplicates (deprecated, always 0), unassigned. |
 | `move_candidate_stage` | write | member+ | Move a candidate to a hiring stage. |
 | `reject_candidate` | write | member+ | Reject a candidate with a reason + optional note. |
 | `update_candidate` | write | member+ | Update candidate fields (or reassign job → auto-rescore). |
