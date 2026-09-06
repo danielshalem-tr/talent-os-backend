@@ -437,6 +437,15 @@ export class IngestionProcessor extends WorkerHost {
               payload.From,
               tx,
               extraction!.source_hint,
+              {
+                currentRole: extraction!.current_role ?? null,
+                yearsExperience: extraction!.years_experience ?? null,
+                location: extraction!.location ?? null,
+                skills: extraction!.skills ?? [],
+                cvText: context.cvText,
+                cvFileUrl: context.fileKey,
+                aiSummary: extraction!.ai_summary ?? null,
+              },
             );
             if (dedup.sharedPhoneWith) {
               // D1: same phone, two different emails → two people (shared family/agency

@@ -74,4 +74,44 @@ describe('mergeEnrichment', () => {
     expect(merged.skills).toEqual(['node.js']);
     expect(merged.cvText).toBe('full cv text');
   });
+  describe('CV replacement rule', () => {
+    const rich = {
+      jobId: null,
+      hiringStageId: null,
+      currentRole: 'Dev',
+      yearsExperience: 5,
+      location: null,
+      skills: ['ts'],
+      cvText: 'FULL CV TEXT '.repeat(50),
+      cvFileUrl: 'cvs/t/old.pdf',
+      aiSummary: 'x',
+    };
+    const thin = { ...rich, cvText: '--- Email Body ---\nattaching again', cvFileUrl: 'cvs/t/new.pdf', skills: [] };
+
+    it('a thin follow-up WITHOUT a document keeps the existing CV text AND file', () => {
+      const out = mergeEnrichment(rich, thin, { cvFromDocument: false });
+      expect(out.cvText).toBe(rich.cvText);
+      expect(out.cvFileUrl).toBe('cvs/t/old.pdf');
+    });
+
+    it('a new document replaces text and file together', () => {
+      const out = mergeEnrichment(rich, { ...thin, cvText: 'NEW CV TEXT' }, { cvFromDocument: true });
+      expect(out.cvText).toBe('NEW CV TEXT');
+      expect(out.cvFileUrl).toBe('cvs/t/new.pdf');
+    });
+
+    it('body-only text fills an EMPTY slot (first application pasted in the body)', () => {
+      const out = mergeEnrichment(
+        { ...rich, cvText: '', cvFileUrl: null },
+        { ...thin, cvFileUrl: null },
+        { cvFromDocument: false },
+      );
+      expect(out.cvText).toBe(thin.cvText);
+      expect(out.cvFileUrl).toBeNull();
+    });
+
+    it('defaults to the document rule (mergeCandidates callers unchanged)', () => {
+      expect(mergeEnrichment(rich, { ...thin, cvText: 'NEW' }).cvText).toBe('NEW');
+    });
+  });
 });

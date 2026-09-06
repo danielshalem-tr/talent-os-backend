@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CandidateExtract } from '../ingestion/services/extraction-agent.service';
 import { emailIdentity, normalizeEmail, phoneDigits } from './contact-normalize';
 import { findCandidatesByPhoneDigits } from './phone-lookup';
+import { EnrichmentFields } from '../ingestion/merge-enrichment';
 
 /**
  * Outcome of the identity check for an incoming submission.
@@ -16,6 +17,12 @@ export type DedupCheck =
   | { outcome: 'new'; sharedPhoneWith: string | null };
 
 export type ContactField = 'email' | 'phone' | 'fullName';
+
+/** Everything extraction already knows about a brand-new candidate — written at INSERT time. */
+export type CandidateEnrichment = Pick<
+  EnrichmentFields,
+  'currentRole' | 'yearsExperience' | 'location' | 'skills' | 'cvText' | 'cvFileUrl' | 'aiSummary'
+>;
 
 @Injectable()
 export class DedupService {
@@ -68,6 +75,7 @@ export class DedupService {
     fromEmail: string,
     tx?: Prisma.TransactionClient,
     source?: string | null, // optional source from extraction.source_hint
+    enrichment?: CandidateEnrichment,
   ): Promise<string> {
     const client = tx ?? this.prisma;
     const created = await client.candidate.create({
@@ -79,7 +87,19 @@ export class DedupService {
         source: source ?? 'direct',
         sourceAgency: candidate.source_agency ?? null,
         sourceEmail: fromEmail,
-        // Phase 7 enriches: currentRole, yearsExperience, skills, cvText, cvFileUrl, aiSummary, metadata
+        // Everything extraction already knows is written NOW. The row used to be a bare shell
+        // for the seconds until Phase 7 — or forever, when Phase 7 threw.
+        ...(enrichment
+          ? {
+              currentRole: enrichment.currentRole,
+              yearsExperience: enrichment.yearsExperience,
+              location: enrichment.location,
+              skills: enrichment.skills,
+              cvText: enrichment.cvText.trim() ? enrichment.cvText : null,
+              cvFileUrl: enrichment.cvFileUrl,
+              aiSummary: enrichment.aiSummary,
+            }
+          : {}),
       },
       select: { id: true },
     });

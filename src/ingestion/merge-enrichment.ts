@@ -23,8 +23,25 @@ export interface EnrichmentFields {
  * candidate the recruiter already advanced back to the first stage. This mirrors the
  * guard the bulk-assign path makes explicit in assign-candidate.ts.
  */
-export function mergeEnrichment(existing: EnrichmentFields, incoming: EnrichmentFields): EnrichmentFields {
+export interface MergeOptions {
+  /** True when THIS submission carried a readable CV document (attachment text was extracted). */
+  cvFromDocument: boolean;
+}
+
+export function mergeEnrichment(
+  existing: EnrichmentFields,
+  incoming: EnrichmentFields,
+  opts: MergeOptions = { cvFromDocument: true },
+): EnrichmentFields {
   const jobChanged = incoming.jobId !== null && incoming.jobId !== existing.jobId;
+
+  // The CV text + file PAIR moves together, and only for a real document. Any non-blank incoming
+  // text used to win, so "attaching my CV again" with nothing attached replaced a rich CV with a
+  // two-line note while the old PDF stayed — text, file, readability badge and score then
+  // described three different things. Body-only text still fills an EMPTY slot.
+  const hasIncomingCv = incoming.cvText.trim().length > 0;
+  const hasExistingCv = existing.cvText.trim().length > 0;
+  const replaceCv = hasIncomingCv && (opts.cvFromDocument || !hasExistingCv);
 
   return {
     jobId: incoming.jobId ?? existing.jobId,
@@ -33,8 +50,8 @@ export function mergeEnrichment(existing: EnrichmentFields, incoming: Enrichment
     yearsExperience: incoming.yearsExperience ?? existing.yearsExperience,
     location: incoming.location ?? existing.location,
     skills: incoming.skills.length > 0 ? incoming.skills : existing.skills,
-    cvText: incoming.cvText.trim().length > 0 ? incoming.cvText : existing.cvText,
-    cvFileUrl: incoming.cvFileUrl ?? existing.cvFileUrl,
+    cvText: replaceCv ? incoming.cvText : existing.cvText,
+    cvFileUrl: replaceCv ? (incoming.cvFileUrl ?? existing.cvFileUrl) : (existing.cvFileUrl ?? incoming.cvFileUrl),
     aiSummary: incoming.aiSummary ?? existing.aiSummary,
   };
 }

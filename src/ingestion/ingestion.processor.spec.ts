@@ -1223,6 +1223,23 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     expect(lockValues).toEqual(['15550100100']);
   });
 
+  it('inserts the new candidate with the CV file key the webhook stored', async () => {
+    prisma.emailIntakeLog.findUnique.mockResolvedValue({
+      candidateId: null,
+      cvFileKey: 'cvs/test-tenant-id/msg.pdf',
+      rawPayloadKey: null,
+      processingStatus: 'pending',
+    });
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+
+    await processor.process(makeJob('insert-enriched', payload));
+
+    expect(dedupService.insertCandidate.mock.calls[0][5]).toEqual(
+      expect.objectContaining({ cvFileUrl: 'cvs/test-tenant-id/msg.pdf' }),
+    );
+  });
+
   it('advisory lock on email uses the case-folded address', async () => {
     const txExecuteRaw = jest.fn().mockResolvedValue(0);
     const txClient = {
@@ -1273,6 +1290,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         'sender@example.com',
         expect.anything(),
         'direct',
+        expect.objectContaining({ cvText: expect.any(String) }),
       );
       expect(pinoLogger.warn).toHaveBeenCalledWith(
         expect.objectContaining({ blocked: ['email', 'phone'] }),

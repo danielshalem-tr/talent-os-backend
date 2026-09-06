@@ -181,6 +181,48 @@ describe('DedupService', () => {
     });
   });
 
+  describe('insertCandidate()', () => {
+    it('writes enrichment fields on insert so no bare shell is ever visible', async () => {
+      await service.insertCandidate(mockCandidateDedupExtract(), 'tenant-1', 'from@example.com', undefined, 'direct', {
+        currentRole: 'Dev',
+        yearsExperience: 5,
+        location: 'Tel Aviv, Israel',
+        skills: ['ts'],
+        cvText: 'CV',
+        cvFileUrl: 'cvs/t/m.pdf',
+        aiSummary: 'sum',
+      });
+
+      expect(prisma.candidate.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            currentRole: 'Dev',
+            yearsExperience: 5,
+            location: 'Tel Aviv, Israel',
+            skills: ['ts'],
+            cvText: 'CV',
+            cvFileUrl: 'cvs/t/m.pdf',
+            aiSummary: 'sum',
+          }),
+        }),
+      );
+    });
+
+    it('stores blank CV text as null', async () => {
+      await service.insertCandidate(mockCandidateDedupExtract(), 'tenant-1', 'from@example.com', undefined, 'direct', {
+        currentRole: null,
+        yearsExperience: null,
+        location: null,
+        skills: [],
+        cvText: '   ',
+        cvFileUrl: null,
+        aiSummary: null,
+      });
+
+      expect(prisma.candidate.create.mock.calls[0][0].data.cvText).toBeNull();
+    });
+  });
+
   describe('fillContactFields()', () => {
     it('fills only null fields', async () => {
       prisma.candidate.findUniqueOrThrow.mockResolvedValue({ email: null, phone: null, fullName: '' });
