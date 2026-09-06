@@ -53,6 +53,7 @@ function makeJob(id: string, payload: ReturnType<typeof mockEmailPayload>, attem
 
 describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
+  let cvClassifier: { classify: jest.Mock };
   let prisma: {
     emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock; updateMany: jest.Mock };
     organization: { findUnique: jest.Mock };
@@ -123,6 +124,8 @@ describe('IngestionProcessor', () => {
       fillContactFields: jest.fn().mockResolvedValue([]),
     };
 
+    cvClassifier = { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         IngestionProcessor,
@@ -140,10 +143,7 @@ describe('IngestionProcessor', () => {
               .mockResolvedValue({ score: 72, reasoning: '', strengths: [], gaps: [], modelUsed: 'test' }),
           },
         },
-        {
-          provide: CvClassifierService,
-          useValue: { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'test cv' }) },
-        },
+        { provide: CvClassifierService, useValue: cvClassifier },
         { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: JobMatcherService, useValue: jobMatcherService },
         { provide: ConfigService, useValue: configService },
@@ -580,6 +580,60 @@ describe('IngestionProcessor', () => {
       'test-tenant-id',
       payload.MessageID,
       'emails/t/m/payload.json',
+    );
+  });
+
+  it('caps the email body at 6 000 chars so attachment text always reaches the classifier', async () => {
+    const payload = mockEmailPayload({ Subject: 'CV', TextBody: 'b'.repeat(9_000) });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('budget', payload));
+    const fullText = cvClassifier.classify.mock.calls[0][0].fullText as string;
+    expect(fullText.length).toBeLessThanOrEqual(6_000 + '--- Email Body ---\n'.length);
+  });
+
+  it('finds a job number quoted in the full plain body even when stripped-text lost it', async () => {
+    prisma.job.findMany.mockResolvedValueOnce([]);
+    const payload = mockEmailPayload({
+      Subject: 'Re: your ad',
+      TextBody: 'Hi, CV attached. '.repeat(10),
+      PlainBody: 'Hi, CV attached.\n> Apply to position #106 today',
+    });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('plainbody', payload));
+    expect(prisma.job.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ shortId: { in: ['106'] } }) }),
+    );
+  });
+
+  it('uses the sender display name when extraction returns an empty name (direct applicant)', async () => {
+    extractionAgent.extract.mockResolvedValueOnce(mockCandidateExtract({ full_name: '' }));
+    const payload = mockEmailPayload({ From: 'emily@example.com', FromName: 'Emily M', TextBody: 'x'.repeat(200) });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('fromname', payload));
+    // Read the first argument directly — Task 13 adds a sixth parameter to insertCandidate.
+    expect(dedupService.insertCandidate.mock.calls[0][0]).toEqual(expect.objectContaining({ full_name: 'Emily M' }));
+    expect(dedupService.insertCandidate.mock.calls[0][2]).toBe('emily@example.com');
+    expect(prisma.emailIntakeLog.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: {
+          processingStatus: 'completed',
+          errorMessage: 'extraction returned empty full_name; used sender display name',
+        },
+      }),
+    );
+  });
+
+  it('falls back to "Unknown Candidate" when the sender is a known agency', async () => {
+    extractionAgent.extract.mockResolvedValueOnce(mockCandidateExtract({ full_name: '   ' }));
+    const payload = mockEmailPayload({
+      From: 'talent@jobhunt.co.il',
+      FromName: 'JobHunt Team',
+      TextBody: 'x'.repeat(200),
+    });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('unknown', payload));
+    expect(dedupService.insertCandidate.mock.calls[0][0]).toEqual(
+      expect.objectContaining({ full_name: 'Unknown Candidate' }),
     );
   });
 

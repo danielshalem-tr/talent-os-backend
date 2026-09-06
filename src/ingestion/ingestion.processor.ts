@@ -27,6 +27,12 @@ import { applyContactBlocklist, parseContactBlocklist } from '../dedup/contact-b
 import { IntakePhaseError } from './intake-errors';
 import { isRetryableUpstreamError } from '../common/upstream-errors';
 
+/**
+ * The classifier/extractor truncate their prompt at 20 000 chars. Without a body cap, a long
+ * quoted thread ate the whole budget and the CV text never reached the model.
+ */
+const BODY_CHARS_BUDGET = 6_000;
+
 /** A job arriving for a row in one of these states is a stale duplicate (redelivery, stalled re-run) — never reprocess. */
 const TERMINAL_STATUSES = new Set(['completed', 'spam', 'not_cv', 'needs_review']);
 
@@ -208,13 +214,18 @@ export class IngestionProcessor extends WorkerHost {
     // Step 1: Extract text from attachments (D-02, D-03)
     const attachmentText = await this.attachmentExtractor.extract(payload.Attachments ?? []);
 
-    // Build fullText: email body first, then attachment sections (D-02)
-    const bodySection = payload.TextBody?.trim() ? `--- Email Body ---\n${payload.TextBody.trim()}` : '';
+    // Build fullText: email body first, then attachment sections (D-02). The body is capped so a
+    // long thread cannot eat the 20 000-char budget the classifier/extractor apply before the CV.
+    const bodyText = (payload.TextBody ?? '').trim();
+    const bodySection = bodyText ? `--- Email Body ---\n${bodyText.slice(0, BODY_CHARS_BUDGET)}` : '';
 
     // Defense in depth: sanitize the combined text once more here. The attachment extractor
     // already strips NUL/lone-surrogates at the source, but the email body can carry them too,
     // and this fullText is what becomes candidates.cv_text (a Postgres text column) in Phase 7.
     const fullText = sanitizePgText([bodySection, attachmentText].filter(Boolean).join('\n\n'));
+
+    // Job numbers are often in the QUOTED ad the applicant replied to, which stripped-text drops.
+    const matchText = payload.PlainBody ?? payload.TextBody;
 
     // CV CLASSIFICATION GATE — decide whether this email is a job application
     // BEFORE any candidate is created. Runs after fullText is built (so attachment
@@ -297,16 +308,20 @@ export class IngestionProcessor extends WorkerHost {
       throw new IntakePhaseError('extraction', err);
     }
 
-    // D-04, D-05: empty fullName is treated the same as extraction failure (permanent — do not retry)
+    // An empty name is not a reason to drop a real applicant (PROTOCOL: "Unknown Candidate").
+    // The From display name is the strongest signal for a direct applicant; for a known agency
+    // it would be the agency's name, so use the contract placeholder instead.
+    let completionNote: string | null = null;
     if (!extraction!.full_name?.trim()) {
-      await this.prisma.emailIntakeLog.update({
-        where: {
-          idx_intake_message_id: { tenantId, messageId: payload.MessageID },
-        },
-        data: { processingStatus: 'failed' },
-      });
-      this.pinoLogger.error({ messageId: payload.MessageID }, 'Extraction returned empty fullName');
-      return;
+      const isAgency = resolveAgencyFromEmail(payload.From) !== null;
+      const senderName = payload.FromName?.trim();
+      const fullName = !isAgency && senderName ? senderName : 'Unknown Candidate';
+      extraction = { ...extraction!, full_name: fullName };
+      completionNote = `extraction returned empty full_name; used ${fullName === 'Unknown Candidate' ? '"Unknown Candidate"' : 'sender display name'}`;
+      this.pinoLogger.warn(
+        { messageId: payload.MessageID, fullName },
+        'Extraction returned empty fullName — fallback applied',
+      );
     }
 
     this.pinoLogger.log({ messageId: payload.MessageID, fullName: extraction!.full_name }, 'Phase 4 complete');
@@ -430,7 +445,7 @@ export class IngestionProcessor extends WorkerHost {
     // Phase 15: Deterministic Job ID extraction + multi-job lookup
     // Extract candidate short_ids (pure text parse — no DB query), then rewrite any
     // known-wrong ad number onto its real short_id before the lookup.
-    const parsedShortIds = extractShortIds(payload.Subject, payload.TextBody);
+    const parsedShortIds = extractShortIds(payload.Subject, matchText);
     const matchedShortIds = applyShortIdAliases(parsedShortIds, this.shortIdAliases);
 
     let matchedJobs: Array<ScoringJobRow & { id: string; shortId: string; hiringStages: { id: string }[] }> = [];
@@ -524,7 +539,7 @@ export class IngestionProcessor extends WorkerHost {
         const suggested = await this.jobMatcher.match({
           openJobs: openJobs.map((j) => ({ shortId: j.shortId, title: j.title, department: j.department })),
           emailSubject: payload.Subject ?? null,
-          emailBody: payload.TextBody ?? null,
+          emailBody: matchText ?? null,
           currentRole: extraction!.current_role ?? null,
         });
 
@@ -599,7 +614,7 @@ export class IngestionProcessor extends WorkerHost {
       this.pinoLogger.log({ messageId: payload.MessageID }, 'No matching jobs — skipping scoring');
       await this.prisma.emailIntakeLog.update({
         where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-        data: { processingStatus: 'completed', errorMessage: null },
+        data: { processingStatus: 'completed', errorMessage: completionNote },
       });
       return;
     }
@@ -708,7 +723,7 @@ export class IngestionProcessor extends WorkerHost {
     // D-16: terminal status — set AFTER all Phase 7 work completes (only reached if no error thrown)
     await this.prisma.emailIntakeLog.update({
       where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-      data: { processingStatus: 'completed', errorMessage: null },
+      data: { processingStatus: 'completed', errorMessage: completionNote },
     });
 
     this.pinoLogger.log({ jobId: job.id, jobName: job.name, tenantId }, 'Job completed');
