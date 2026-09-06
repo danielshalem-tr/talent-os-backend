@@ -1,4 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { WebhooksController } from './webhooks.controller';
@@ -28,6 +27,7 @@ describe('WebhooksController', () => {
   beforeEach(async () => {
     mockWebhooksService = {
       enqueue: jest.fn().mockResolvedValue({ status: 'queued' }),
+      recordRejected: jest.fn().mockResolvedValue({ status: 'rejected' }),
       checkHealth: jest.fn().mockResolvedValue({ status: 'ok', db: 'ok', redis: 'ok' }),
     };
 
@@ -50,22 +50,39 @@ describe('WebhooksController', () => {
           From: 'applicant@example.com',
           Subject: 'Applying for Engineer role',
         }),
+        [],
       );
     });
 
-    it('throws BadRequestException when timestamp is missing', async () => {
+    it('records a rejected row and answers 200 when the payload fails validation', async () => {
       const req = buildMockReq({ timestamp: undefined });
-      await expect(controller.ingestEmail(req as any)).rejects.toThrow(BadRequestException);
+      await expect(controller.ingestEmail(req as any)).resolves.toEqual({ status: 'rejected' });
+      expect(mockWebhooksService.recordRejected).toHaveBeenCalledWith(req.body, expect.stringMatching(/^payload rejected: /));
+      expect(mockWebhooksService.enqueue).not.toHaveBeenCalled();
     });
 
-    it('throws BadRequestException when from is missing', async () => {
+    it('records a rejected row when from is missing', async () => {
       const req = buildMockReq({ from: undefined });
-      await expect(controller.ingestEmail(req as any)).rejects.toThrow(BadRequestException);
+      await expect(controller.ingestEmail(req as any)).resolves.toEqual({ status: 'rejected' });
+      expect(mockWebhooksService.enqueue).not.toHaveBeenCalled();
     });
 
-    it('throws BadRequestException when message-headers is invalid JSON', async () => {
+    it('records a rejected row when message-headers is invalid JSON', async () => {
       const req = buildMockReq({ 'message-headers': 'not-json' });
-      await expect(controller.ingestEmail(req as any)).rejects.toThrow(BadRequestException);
+      await expect(controller.ingestEmail(req as any)).resolves.toEqual({ status: 'rejected' });
+      expect(mockWebhooksService.enqueue).not.toHaveBeenCalled();
+    });
+
+    it('records a rejected row and answers 200 when multer hit a limit', async () => {
+      const req = { ...buildMockReq(), multerError: Object.assign(new Error('Too many files'), { code: 'LIMIT_FILE_COUNT' }) };
+      await expect(controller.ingestEmail(req as any)).resolves.toEqual({ status: 'rejected' });
+      expect(mockWebhooksService.recordRejected).toHaveBeenCalledWith(req.body, 'multipart rejected: LIMIT_FILE_COUNT');
+    });
+
+    it('passes the multer files to enqueue alongside the normalized payload', async () => {
+      const files = [{ fieldname: 'attachment-1', originalname: 'cv.pdf', mimetype: 'application/pdf', size: 3, buffer: Buffer.from('pdf') }];
+      await controller.ingestEmail(buildMockReq({}, files) as any);
+      expect(mockWebhooksService.enqueue).toHaveBeenCalledWith(expect.objectContaining({ MessageID: 'msg-xyz-456@example.com' }), files);
     });
 
     it('maps uploaded files to base64 attachments and passes them to enqueue', async () => {

@@ -24,6 +24,7 @@ describe('WebhooksService', () => {
       emailIntakeLog: {
         findUnique: jest.fn(),
         create: jest.fn(),
+        upsert: jest.fn().mockResolvedValue({}),
       },
     };
 
@@ -241,6 +242,34 @@ describe('WebhooksService', () => {
       mockQueue.add.mockRejectedValue(new Error('Redis connection failed'));
 
       await expect(service.enqueue(basePayload)).rejects.toThrow();
+    });
+  });
+  describe('recordRejected', () => {
+    it('upserts a failed intake row keyed by the Message-Id and answers rejected', async () => {
+      const result = await service.recordRejected(
+        { from: 'Dana <d@example.com>', subject: 'CV', 'message-headers': JSON.stringify([['Message-Id', '<m1@example.com>']]) },
+        'multipart rejected: LIMIT_FILE_COUNT',
+      );
+      expect(result).toEqual({ status: 'rejected' });
+      expect(mockPrisma.emailIntakeLog.upsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { idx_intake_message_id: { tenantId, messageId: 'm1@example.com' } },
+          create: expect.objectContaining({
+            processingStatus: 'failed',
+            errorMessage: 'multipart rejected: LIMIT_FILE_COUNT',
+            fromEmail: 'Dana <d@example.com>',
+            subject: 'CV',
+          }),
+          update: {},
+        }),
+      );
+    });
+
+    it('derives a stable id when headers are missing', async () => {
+      await service.recordRejected({ from: 'a@example.com' }, 'payload rejected: {}');
+      const call = mockPrisma.emailIntakeLog.upsert.mock.calls[0][0];
+      expect(call.where.idx_intake_message_id.messageId).toMatch(/^gen-[0-9a-f]{40}$/);
+      expect(call.create.fromEmail).toBe('a@example.com');
     });
   });
 });

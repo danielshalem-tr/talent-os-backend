@@ -3,7 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
-import { EmailPayloadDto } from './dto/mailgun-payload.dto';
+import { EmailPayloadDto, fallbackMessageId, parseMessageHeaders } from './dto/mailgun-payload.dto';
+import { sanitizePgText } from '../common/sanitize-pg-text';
 import { StorageService } from '../storage/storage.service';
 
 export interface IngestJobData {
@@ -22,7 +23,7 @@ export class WebhooksService {
     private readonly storageService: StorageService,
   ) {}
 
-  async enqueue(payload: EmailPayloadDto): Promise<{ status: string }> {
+  async enqueue(payload: EmailPayloadDto, _files: Express.Multer.File[] = []): Promise<{ status: string }> {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
     const messageId = payload.MessageID;
 
@@ -93,6 +94,44 @@ export class WebhooksService {
 
     this.logger.log(`Enqueued job for MessageID: ${messageId}`);
     return { status: 'queued' };
+  }
+
+  /**
+   * The request authenticated (HMAC) but could not be parsed — a multipart limit or a schema
+   * miss. Record it as a `failed` intake row and let the controller answer 200 so Mailgun stops
+   * retrying an input that will never parse. Before this the email was lost with no trace.
+   */
+  async recordRejected(body: Record<string, unknown>, reason: string): Promise<{ status: 'rejected' }> {
+    const tenantId = this.configService.get<string>('TENANT_ID')!;
+    const str = (value: unknown): string => (typeof value === 'string' ? value : '');
+    const headers = parseMessageHeaders(str(body['message-headers']));
+    const find = (name: string) => headers.find(([n]) => n.toLowerCase() === name)?.[1];
+    const headerMessageId = find('message-id')
+      ?.replace(/^<|>$/g, '')
+      .trim();
+    const messageId =
+      headerMessageId ||
+      fallbackMessageId(
+        { from: str(body.from), subject: str(body.subject), 'body-plain': str(body['body-plain']) },
+        find('date'),
+      );
+
+    await this.prisma.emailIntakeLog.upsert({
+      where: { idx_intake_message_id: { tenantId, messageId } },
+      create: {
+        tenantId,
+        messageId,
+        fromEmail: sanitizePgText(str(body.from)).slice(0, 500) || 'unknown',
+        subject: sanitizePgText(str(body.subject)).slice(0, 1000),
+        receivedAt: new Date(),
+        processingStatus: 'failed',
+        errorMessage: reason,
+      },
+      // A row already here means an earlier delivery of this message was accepted — never downgrade it.
+      update: {},
+    });
+    this.logger.warn(`Rejected inbound email ${messageId}: ${reason}`);
+    return { status: 'rejected' };
   }
 
   async checkHealth(): Promise<{ status: string; db: string; redis: string }> {
