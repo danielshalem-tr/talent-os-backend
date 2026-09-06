@@ -33,10 +33,39 @@ import { isRetryableUpstreamError } from '../common/upstream-errors';
  */
 const BODY_CHARS_BUDGET = 6_000;
 
+/** One select for every Phase 15 job lookup (short-id hits, cache hits, open-jobs list for the matcher). */
+const MATCHED_JOB_SELECT = {
+  id: true,
+  shortId: true,
+  department: true,
+  ...scoringJobSelect,
+  hiringStages: { where: { isEnabled: true }, orderBy: { order: 'asc' as const }, take: 1 },
+} as const;
+
+type MatchedJob = ScoringJobRow & {
+  id: string;
+  shortId: string;
+  department: string | null;
+  hiringStages: { id: string }[];
+};
+
+/** Stable order: the caller's list decides, DB row order never does. Unknown keys sort last. */
+function sortByKeyOrder<T>(rows: T[], order: string[], key: (row: T) => string): T[] {
+  const rank = new Map(order.map((k, i) => [k, i]));
+  return [...rows].sort(
+    (a, b) => (rank.get(key(a)) ?? Number.MAX_SAFE_INTEGER) - (rank.get(key(b)) ?? Number.MAX_SAFE_INTEGER),
+  );
+}
+
 /** A job arriving for a row in one of these states is a stale duplicate (redelivery, stalled re-run) — never reprocess. */
 const TERMINAL_STATUSES = new Set(['completed', 'spam', 'not_cv', 'needs_review']);
 
-type IntakeRow = { candidateId: string | null; cvFileKey: string | null; rawPayloadKey: string | null; processingStatus: string };
+type IntakeRow = {
+  candidateId: string | null;
+  cvFileKey: string | null;
+  rawPayloadKey: string | null;
+  processingStatus: string;
+};
 
 export interface ProcessingContext {
   fullText: string;
@@ -137,7 +166,10 @@ export class IngestionProcessor extends WorkerHost {
       await this.setIntake(tenantId, messageId, { processingStatus: 'failed', errorMessage: message }).catch(
         () => undefined,
       );
-      this.pinoLogger.error({ jobId: job.id, jobName: job.name, tenantId, messageId, phase, error: message }, 'Job failed');
+      this.pinoLogger.error(
+        { jobId: job.id, jobName: job.name, tenantId, messageId, phase, error: message },
+        'Job failed',
+      );
       throw err;
     }
   }
@@ -455,7 +487,7 @@ export class IngestionProcessor extends WorkerHost {
     const parsedShortIds = extractShortIds(payload.Subject, matchText);
     const matchedShortIds = applyShortIdAliases(parsedShortIds, this.shortIdAliases);
 
-    let matchedJobs: Array<ScoringJobRow & { id: string; shortId: string; hiringStages: { id: string }[] }> = [];
+    let matchedJobs: MatchedJob[] = [];
 
     // Stage the candidate ends up on for the primary matched job. Hoisted out of the try so
     // the scoring loop below can keep application.job_stage_id in lockstep with
@@ -485,90 +517,98 @@ export class IngestionProcessor extends WorkerHost {
         },
       });
 
-      if (matchedShortIds.length > 0) {
-        // Look up each matched job
-        const jobsData = await this.prisma.job.findMany({
-          where: {
-            tenantId,
-            shortId: { in: matchedShortIds },
-            status: 'open',
-          },
-          select: {
-            id: true,
-            shortId: true,
-            ...scoringJobSelect,
-            hiringStages: {
-              where: { isEnabled: true },
-              orderBy: { order: 'asc' },
-              take: 1,
-            },
-          },
-        });
+      const cachedMatch = await this.storageService.loadMatchingCache(tenantId, payload.MessageID);
+      if (cachedMatch) {
+        // Attempt 1 already decided which jobs this email targets. Re-deriving would consult the
+        // candidate's CURRENT job (set by attempt 1's own enrichment) and skip the matcher, so a
+        // retry after a scoring failure completed with no application and no score.
+        const rows = cachedMatch.jobIds.length
+          ? await this.prisma.job.findMany({
+              where: { tenantId, id: { in: cachedMatch.jobIds }, status: 'open' },
+              select: MATCHED_JOB_SELECT,
+            })
+          : [];
+        matchedJobs = sortByKeyOrder(rows, cachedMatch.jobIds, (j) => j.id);
+        this.pinoLogger.log(
+          { messageId: payload.MessageID, count: matchedJobs.length },
+          'Phase 15: matching cache hit',
+        );
+      } else {
+        if (matchedShortIds.length > 0) {
+          const jobsData = await this.prisma.job.findMany({
+            where: { tenantId, shortId: { in: matchedShortIds }, status: 'open' },
+            select: MATCHED_JOB_SELECT,
+          });
+          // The email's order of mention decides the primary job — not the DB's row order.
+          matchedJobs = sortByKeyOrder(jobsData, matchedShortIds, (j) => j.shortId);
 
-        matchedJobs = jobsData;
+          if (matchedJobs.length > 0) {
+            this.pinoLogger.log(
+              { messageId: payload.MessageID, count: matchedJobs.length },
+              'Phase 15: matched jobs found',
+            );
+          }
+        } else {
+          this.pinoLogger.debug({ messageId: payload.MessageID }, 'Phase 15: no matching job short_ids');
+        }
 
-        if (matchedJobs.length > 0) {
+        // D3/D4: no job number resolved to an open job. Ask a small model which open job
+        // this application targets, then let CODE enforce "exactly one" — the model only
+        // suggests. Zero or 2+ suggestions leave the candidate in the talent pool for a
+        // human, which is strictly better than a wrong pipeline placement.
+        //
+        // Never runs for a candidate who ALREADY has a job. Follow-up mail from someone deep
+        // in a pipeline ("thanks for the interview, attaching my references") carries no job
+        // number, so it would reach the matcher, and a single confident guess would silently
+        // move them off the job a human put them on. An explicit job number in the email is
+        // still honoured above — that is stated intent, not a guess.
+        if (matchedJobs.length === 0 && !existing.jobId) {
+          const openJobs = await this.prisma.job.findMany({
+            where: { tenantId, status: 'open' },
+            select: MATCHED_JOB_SELECT,
+          });
+
+          const suggested = await this.jobMatcher.match({
+            openJobs: openJobs.map((j) => ({ shortId: j.shortId, title: j.title, department: j.department })),
+            emailSubject: payload.Subject ?? null,
+            emailBody: matchText ?? null,
+            currentRole: extraction!.current_role ?? null,
+          });
+
+          if (suggested.length === 1) {
+            const picked = openJobs.find((j) => j.shortId === suggested[0]);
+            if (picked) matchedJobs = [picked];
+          }
+
           this.pinoLogger.log(
-            { messageId: payload.MessageID, count: matchedJobs.length },
-            'Phase 15: matched jobs found',
+            {
+              messageId: payload.MessageID,
+              candidateId: context.candidateId,
+              matcher_result: suggested,
+              matcher_assigned: matchedJobs.length === 1,
+            },
+            'Phase 15: role matcher',
+          );
+        } else if (matchedJobs.length === 0) {
+          this.pinoLogger.log(
+            { messageId: payload.MessageID, candidateId: context.candidateId, jobId: existing.jobId },
+            'Phase 15: role matcher skipped — candidate already assigned to a job',
           );
         }
-      } else {
-        this.pinoLogger.debug({ messageId: payload.MessageID }, 'Phase 15: no matching job short_ids');
-      }
 
-      // D3/D4: no job number resolved to an open job. Ask a small model which open job
-      // this application targets, then let CODE enforce "exactly one" — the model only
-      // suggests. Zero or 2+ suggestions leave the candidate in the talent pool for a
-      // human, which is strictly better than a wrong pipeline placement.
-      //
-      // Never runs for a candidate who ALREADY has a job. Follow-up mail from someone deep
-      // in a pipeline ("thanks for the interview, attaching my references") carries no job
-      // number, so it would reach the matcher, and a single confident guess would silently
-      // move them off the job a human put them on. An explicit job number in the email is
-      // still honoured above — that is stated intent, not a guess.
-      if (matchedJobs.length === 0 && !existing.jobId) {
-        const openJobs = await this.prisma.job.findMany({
-          where: { tenantId, status: 'open' },
-          select: {
-            id: true,
-            shortId: true,
-            department: true,
-            ...scoringJobSelect,
-            hiringStages: {
-              where: { isEnabled: true },
-              orderBy: { order: 'asc' },
-              take: 1,
-            },
-          },
-        });
-
-        const suggested = await this.jobMatcher.match({
-          openJobs: openJobs.map((j) => ({ shortId: j.shortId, title: j.title, department: j.department })),
-          emailSubject: payload.Subject ?? null,
-          emailBody: matchText ?? null,
-          currentRole: extraction!.current_role ?? null,
-        });
-
-        if (suggested.length === 1) {
-          const picked = openJobs.find((j) => j.shortId === suggested[0]);
-          if (picked) matchedJobs = [picked];
+        try {
+          // Cached even when EMPTY: attempt 2 must reach the same conclusion as attempt 1.
+          await this.storageService.saveMatchingCache(
+            { jobIds: matchedJobs.map((j) => j.id) },
+            tenantId,
+            payload.MessageID,
+          );
+        } catch (cacheErr) {
+          this.pinoLogger.warn(
+            { messageId: payload.MessageID, error: (cacheErr as Error).message },
+            'Failed to cache matching result — a retry will re-match',
+          );
         }
-
-        this.pinoLogger.log(
-          {
-            messageId: payload.MessageID,
-            candidateId: context.candidateId,
-            matcher_result: suggested,
-            matcher_assigned: matchedJobs.length === 1,
-          },
-          'Phase 15: role matcher',
-        );
-      } else if (matchedJobs.length === 0) {
-        this.pinoLogger.log(
-          { messageId: payload.MessageID, candidateId: context.candidateId, jobId: existing.jobId },
-          'Phase 15: role matcher skipped — candidate already assigned to a job',
-        );
       }
 
       // For backward compatibility: set jobId/hiringStageId from first match (if any)

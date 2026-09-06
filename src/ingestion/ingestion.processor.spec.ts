@@ -116,6 +116,8 @@ describe('IngestionProcessor', () => {
     storageService = {
       upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/msg-id.pdf'),
       downloadPayload: jest.fn(),
+      loadMatchingCache: jest.fn().mockResolvedValue(null),
+      saveMatchingCache: jest.fn().mockResolvedValue(undefined),
     };
 
     dedupService = {
@@ -637,6 +639,65 @@ describe('IngestionProcessor', () => {
     );
   });
 
+  // Phase 15 job rows carry exactly what MATCHED_JOB_SELECT asks for.
+  const matchedJobRow = (id: string, shortId: string) => ({
+    id,
+    shortId,
+    title: 'T',
+    department: null,
+    description: null,
+    roleSummary: null,
+    responsibilities: null,
+    mustHaveSkills: [],
+    niceToHaveSkills: [],
+    expYearsMin: null,
+    expYearsMax: null,
+    preferredOrgTypes: [],
+    screeningQuestions: [],
+    hiringStages: [{ id: `${id}-s1` }],
+  });
+
+  it('a matching-cache hit skips both the short-id parse and the AI matcher', async () => {
+    storageService.loadMatchingCache.mockResolvedValue({ jobIds: ['job-cached'] });
+    prisma.job.findMany.mockResolvedValueOnce([matchedJobRow('job-cached', '777')]);
+    prisma.candidate.findUniqueOrThrow.mockResolvedValue({
+      jobId: 'job-cached',
+      hiringStageId: null,
+      currentRole: null,
+      yearsExperience: null,
+      location: null,
+      skills: [],
+      cvText: null,
+      cvFileUrl: null,
+      aiSummary: null,
+    });
+    const payload = mockEmailPayload({ Subject: 'no number here', TextBody: 'x'.repeat(200) });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('cache-hit', payload));
+    expect(jobMatcherService.match).not.toHaveBeenCalled();
+    expect(prisma.job.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ id: { in: ['job-cached'] }, status: 'open' }) }),
+    );
+    expect(prisma.application.upsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches the resolved job ids after matching — including an empty result', async () => {
+    const payload = mockEmailPayload({ Subject: 'nothing', TextBody: 'x'.repeat(200) });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('cache-save', payload));
+    expect(storageService.saveMatchingCache).toHaveBeenCalledWith({ jobIds: [] }, 'test-tenant-id', payload.MessageID);
+  });
+
+  it('keeps short-id order as the primary-job order regardless of DB row order', async () => {
+    prisma.job.findMany.mockResolvedValueOnce([matchedJobRow('job-b', '200'), matchedJobRow('job-a', '106')]);
+    const payload = mockEmailPayload({ Subject: 'Applying for 106 (and maybe 200)', TextBody: 'x'.repeat(200) });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('order', payload));
+    expect(prisma.candidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ jobId: 'job-a' }) }),
+    );
+  });
+
   describe('worker events', () => {
     it('onFailed stamps a still-pending/processing row failed once attempts are exhausted', async () => {
       await processor.onFailed({ ...makeJob('x', mockEmailPayload()), attemptsMade: 3 }, new Error('boom'));
@@ -723,6 +784,8 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
     storageService = {
       upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/test-message-id.pdf'),
       downloadPayload: jest.fn(),
+      loadMatchingCache: jest.fn().mockResolvedValue(null),
+      saveMatchingCache: jest.fn().mockResolvedValue(undefined),
     };
     dedupService = {
       check: jest.fn().mockResolvedValue({ outcome: 'new', sharedPhoneWith: null }),
@@ -927,6 +990,8 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     storageService = {
       upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/msg-id.pdf'),
       downloadPayload: jest.fn(),
+      loadMatchingCache: jest.fn().mockResolvedValue(null),
+      saveMatchingCache: jest.fn().mockResolvedValue(undefined),
     };
     dedupService = {
       check: jest.fn().mockResolvedValue({ outcome: 'new', sharedPhoneWith: null }),
@@ -1295,6 +1360,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     storageService = {
       upload: jest.fn().mockResolvedValue('cvs/test-tenant-id/msg-id.pdf'),
       downloadPayload: jest.fn(),
+      loadMatchingCache: jest.fn().mockResolvedValue(null),
+      saveMatchingCache: jest.fn().mockResolvedValue(undefined),
     };
 
     dedupService = {
@@ -1691,7 +1758,12 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
       };
       extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };
-      storageService = { upload: jest.fn().mockResolvedValue('key'), downloadPayload: jest.fn() };
+      storageService = {
+      upload: jest.fn().mockResolvedValue('key'),
+      downloadPayload: jest.fn(),
+      loadMatchingCache: jest.fn().mockResolvedValue(null),
+      saveMatchingCache: jest.fn().mockResolvedValue(undefined),
+    };
 
       const module: TestingModule = await Test.createTestingModule({
         providers: [
@@ -1809,7 +1881,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       expect(prisma.application.upsert).not.toHaveBeenCalled();
     });
 
-    it('15-05: includes years as false positives (filtered by DB)', async () => {
+    it('15-05: a year is never treated as a job number', async () => {
       prisma.job.findMany.mockResolvedValueOnce([]);
       const payload = mockEmailPayload({
         Subject: 'In 2024 I applied',
@@ -1820,13 +1892,9 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
       await processor.process(job);
 
-      // Both 2024 and 101 extracted, DB query filters by actual shortIds
+      // 2024 is dropped before the lookup — a job numbered 2024 must not swallow the applicant.
       expect(prisma.job.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.objectContaining({
-            shortId: { in: expect.arrayContaining(['2024', '101']) },
-          }),
-        }),
+        expect.objectContaining({ where: expect.objectContaining({ shortId: { in: ['101'] } }) }),
       );
     });
 
@@ -1868,8 +1936,8 @@ describe('extractShortIds()', () => {
     expect(extractShortIds('I am 25 years old', 'Position 50 is closed')).toEqual([]);
   });
 
-  it('should include years (false positives filtered by DB)', () => {
-    expect(extractShortIds('In 2024 I applied', 'Job 101 is open')).toEqual(expect.arrayContaining(['2024', '101']));
+  it('should drop years and keep real job numbers', () => {
+    expect(extractShortIds('In 2024 I applied', 'Job 101 is open')).toEqual(['101']);
   });
 
   it('should deduplicate repeated numbers', () => {
@@ -1945,7 +2013,12 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
       insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
       fillContactFields: jest.fn().mockResolvedValue([]),
     };
-    storageService = { upload: jest.fn().mockResolvedValue('key'), downloadPayload: jest.fn() };
+    storageService = {
+      upload: jest.fn().mockResolvedValue('key'),
+      downloadPayload: jest.fn(),
+      loadMatchingCache: jest.fn().mockResolvedValue(null),
+      saveMatchingCache: jest.fn().mockResolvedValue(undefined),
+    };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         IngestionProcessor,
@@ -2066,7 +2139,12 @@ describe('IngestionProcessor — CV Classification Gate', () => {
       fillContactFields: jest.fn().mockResolvedValue([]),
     };
     cvClassifier = { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'resume' }) };
-    storageService = { upload: jest.fn(), downloadPayload: jest.fn() };
+    storageService = {
+      upload: jest.fn(),
+      downloadPayload: jest.fn(),
+      loadMatchingCache: jest.fn().mockResolvedValue(null),
+      saveMatchingCache: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -2203,7 +2281,12 @@ describe('ingest gate (ai_ingest_enabled)', () => {
     };
     extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };
     cvClassifier = { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'resume' }) };
-    storageService = { upload: jest.fn(), downloadPayload: jest.fn() };
+    storageService = {
+      upload: jest.fn(),
+      downloadPayload: jest.fn(),
+      loadMatchingCache: jest.fn().mockResolvedValue(null),
+      saveMatchingCache: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [

@@ -279,6 +279,20 @@ describe('StorageService', () => {
     });
   });
 
+  it('matching cache round-trips and misses cleanly', async () => {
+    mockS3Send.mockResolvedValueOnce({});
+    await service.saveMatchingCache({ jobIds: ['j1'] }, 'tenant-1', 'msg-9');
+    const put = mockS3Send.mock.calls[0][0] as PutObjectCommand;
+    expect(put.input.Key).toBe('emails/tenant-1/msg-9/matching.json');
+    expect(JSON.parse(String(put.input.Body))).toEqual({ jobIds: ['j1'] });
+
+    mockS3Send.mockResolvedValueOnce({ Body: { transformToString: async () => JSON.stringify({ jobIds: ['j1'] }) } });
+    await expect(service.loadMatchingCache('tenant-1', 'msg-9')).resolves.toEqual({ jobIds: ['j1'] });
+
+    mockS3Send.mockRejectedValueOnce(Object.assign(new Error('missing'), { name: 'NoSuchKey' }));
+    await expect(service.loadMatchingCache('tenant-1', 'msg-9')).resolves.toBeNull();
+  });
+
   describe('getObject', () => {
     it('fetches raw bytes as a Buffer plus the stored ContentType', async () => {
       const raw = new Uint8Array([0x25, 0x50, 0x44, 0x46]); // "%PDF"

@@ -239,6 +239,36 @@ export class StorageService {
     }
   }
 
+  /** Phase 15 result (job ids this intake resolved to) — retries must land on the SAME jobs. */
+  async saveMatchingCache(result: { jobIds: string[] }, tenantId: string, messageId: string): Promise<void> {
+    const key = `emails/${tenantId}/${messageId}/matching.json`;
+    await this.s3Client.send(
+      new PutObjectCommand({
+        Bucket: this.config.get<string>('R2_BUCKET_NAME')!,
+        Key: key,
+        Body: JSON.stringify(result),
+        ContentType: 'application/json',
+      }),
+    );
+    this.logger.log(`Cached matching result at ${key}`);
+  }
+
+  async loadMatchingCache(tenantId: string, messageId: string): Promise<{ jobIds: string[] } | null> {
+    const key = `emails/${tenantId}/${messageId}/matching.json`;
+    try {
+      const response = await this.s3Client.send(
+        new GetObjectCommand({ Bucket: this.config.get<string>('R2_BUCKET_NAME')!, Key: key }),
+      );
+      const parsed = JSON.parse(await response.Body!.transformToString()) as { jobIds?: unknown };
+      return Array.isArray(parsed.jobIds)
+        ? { jobIds: parsed.jobIds.filter((id): id is string => typeof id === 'string') }
+        : null;
+    } catch (err: any) {
+      if (err.name === 'NoSuchKey') return null;
+      throw err;
+    }
+  }
+
   private selectLargestCvAttachment(
     attachments: EmailAttachmentDto[],
   ): { att: EmailAttachmentDto; kind: CvDocumentKind } | null {

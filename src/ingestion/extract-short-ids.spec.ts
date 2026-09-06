@@ -17,4 +17,18 @@ describe('extractShortIds', () => {
   it('de-duplicates', () => {
     expect(extractShortIds('300', '300')).toEqual(['300']);
   });
+  it('ignores years, phone numbers, money and percentages', () => {
+    expect(
+      extractShortIds('Senior dev 2020-2025', 'Salary 25,000 ILS, ₪30000, $5000, 052-1234567, +972521234567, 100% remote'),
+    ).toEqual([]);
+  });
+
+  it('still matches hash-prefixed and bare job numbers, in order of appearance', () => {
+    expect(extractShortIds('משרה 106', 'Also relevant for #300 and 1053.')).toEqual(['106', '300', '1053']);
+  });
+
+  it('caps at six digits', () => {
+    expect(extractShortIds(null, 'ref 1234567')).toEqual([]);
+    expect(extractShortIds(null, 'ref 123456')).toEqual(['123456']);
+  });
 });
