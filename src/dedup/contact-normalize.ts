@@ -13,8 +13,9 @@ export function phoneDigits(raw: string | null | undefined): string | null {
 }
 
 /**
- * Trimmed email or null. Case is preserved on purpose: idx_candidates_tenant_email_unique is a
- * plain (case-sensitive) unique index, and dedup must find exactly what the index would reject.
+ * Trimmed email or null. Case is preserved for STORAGE (mailbox case is technically
+ * significant); every lookup, lock and the unique index compare case-insensitively via
+ * emailIdentity() / lower(email).
  */
 export function normalizeEmail(raw: string | null | undefined): string | null {
   const trimmed = raw?.trim() ?? '';

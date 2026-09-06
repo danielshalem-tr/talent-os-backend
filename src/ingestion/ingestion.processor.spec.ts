@@ -1223,6 +1223,28 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     expect(lockValues).toEqual(['15550100100']);
   });
 
+  it('advisory lock on email uses the case-folded address', async () => {
+    const txExecuteRaw = jest.fn().mockResolvedValue(0);
+    const txClient = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: txExecuteRaw,
+    };
+    prisma.$transaction.mockImplementationOnce(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient));
+    extractionAgent.extract.mockResolvedValue({
+      ...(await extractionAgent.extract()),
+      email: 'Jane.Doe@Example.com',
+      phone: null,
+    });
+
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('test-email-lock', payload));
+
+    const lockValues = txExecuteRaw.mock.calls.map((call: unknown[]) => call.slice(1)).flat();
+    expect(lockValues).toEqual(['jane.doe@example.com']);
+  });
+
   it('blocked contact values are nulled before dedup and insert, and the intake is still processed', async () => {
     configService.get.mockImplementation((key: string) => {
       if (key === 'INTAKE_CONTACT_BLOCKLIST') return '@staff.example,+1 555 0100';

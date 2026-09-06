@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CandidateExtract } from '../ingestion/services/extraction-agent.service';
 import { emailIdentity, normalizeEmail, phoneDigits } from './contact-normalize';
-import { findCandidateByPhoneDigits } from './phone-lookup';
+import { findCandidatesByPhoneDigits } from './phone-lookup';
 
 /**
  * Outcome of the identity check for an incoming submission.
@@ -24,11 +24,15 @@ export class DedupService {
   async check(candidate: CandidateExtract, tenantId: string, tx?: Prisma.TransactionClient): Promise<DedupCheck> {
     const client = tx ?? this.prisma;
 
-    // Email is the strongest identity key and the DB enforces one email per tenant
-    // (idx_candidates_tenant_email_unique). Matched exact, like the index.
+    // Email is the strongest identity key. Case-insensitive: "Snir1603@" and "snir1603@" are one
+    // applicant (seen in prod). The DB index is lower(email)-based from migration 20260907000000;
+    // the processor's advisory lock on the lower-cased address serialises concurrent spellings.
     const email = normalizeEmail(candidate.email);
     if (email) {
-      const emailMatch = await client.candidate.findFirst({ where: { tenantId, email }, select: { id: true } });
+      const emailMatch = await client.candidate.findFirst({
+        where: { tenantId, email: { equals: email, mode: 'insensitive' } },
+        select: { id: true },
+      });
       if (emailMatch) return { outcome: 'match', candidateId: emailMatch.id, field: 'email' };
     }
 
@@ -36,17 +40,26 @@ export class DedupService {
     const digits = phoneDigits(candidate.phone);
     if (!digits) return { outcome: 'new', sharedPhoneWith: null };
 
-    const phoneMatch = await findCandidateByPhoneDigits(client, tenantId, digits);
-    if (!phoneMatch) return { outcome: 'new', sharedPhoneWith: null };
+    const phoneRows = await findCandidatesByPhoneDigits(client, tenantId, digits);
+    if (phoneRows.length === 0) return { outcome: 'new', sharedPhoneWith: null };
 
-    // D1 email-compatibility guard: same phone + two different non-null emails = two people.
-    // Compared case-insensitively — a capital letter is not a different applicant.
     const incomingIdentity = emailIdentity(candidate.email);
-    const existingIdentity = emailIdentity(phoneMatch.email);
-    if (incomingIdentity && existingIdentity && incomingIdentity !== existingIdentity) {
-      return { outcome: 'new', sharedPhoneWith: phoneMatch.id };
+    if (!incomingIdentity) {
+      // No email to disambiguate with. One row → it's them. Several DIFFERENT people on the
+      // number (family / agency phone) → we cannot pick; a new row is the honest outcome.
+      const distinct = new Set(phoneRows.map((row) => emailIdentity(row.email)).filter(Boolean));
+      if (distinct.size > 1) return { outcome: 'new', sharedPhoneWith: phoneRows[0].id };
+      return { outcome: 'match', candidateId: phoneRows[0].id, field: 'phone' };
     }
-    return { outcome: 'match', candidateId: phoneMatch.id, field: 'phone' };
+
+    // D1 email-compatibility guard on EVERY row sharing the phone (oldest first): same phone +
+    // a different non-null email = a different person; a null or equal email = compatible.
+    const compatible = phoneRows.find((row) => {
+      const existingIdentity = emailIdentity(row.email);
+      return !existingIdentity || existingIdentity === incomingIdentity;
+    });
+    if (!compatible) return { outcome: 'new', sharedPhoneWith: phoneRows[0].id };
+    return { outcome: 'match', candidateId: compatible.id, field: 'phone' };
   }
 
   async insertCandidate(
@@ -97,7 +110,7 @@ export class DedupService {
     const incomingEmail = normalizeEmail(candidate.email);
     if (!normalizeEmail(existing.email) && incomingEmail) {
       const taken = await client.candidate.findFirst({
-        where: { tenantId, email: incomingEmail, NOT: { id: candidateId } },
+        where: { tenantId, email: { equals: incomingEmail, mode: 'insensitive' }, NOT: { id: candidateId } },
         select: { id: true },
       });
       if (!taken) {

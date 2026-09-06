@@ -965,7 +965,7 @@ export class CandidatesService {
     // Pre-validation 2: validate email uniqueness (only if email provided)
     if (dto.email) {
       const existing = await this.prisma.candidate.findFirst({
-        where: { tenantId, email: dto.email },
+        where: { tenantId, email: { equals: dto.email, mode: 'insensitive' } },
         select: { id: true },
       });
       if (existing) {

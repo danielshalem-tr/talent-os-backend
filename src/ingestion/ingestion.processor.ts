@@ -22,7 +22,7 @@ import { parseShortIdAliases, applyShortIdAliases } from '../config/short-id-ali
 import { extractShortIds } from './extract-short-ids';
 import { hasCvDocument } from './document-detect';
 import { mergeEnrichment, EnrichmentFields } from './merge-enrichment';
-import { phoneDigits } from '../dedup/contact-normalize';
+import { emailIdentity, phoneDigits } from '../dedup/contact-normalize';
 import { applyContactBlocklist, parseContactBlocklist } from '../dedup/contact-blocklist';
 import { IntakePhaseError } from './intake-errors';
 import { isRetryableUpstreamError } from '../common/upstream-errors';
@@ -394,8 +394,11 @@ export class IngestionProcessor extends WorkerHost {
           // the dedup check below sees committed rows. The email lock prevents two same-email
           // submissions from both passing the dedup check and racing to INSERT (which would
           // violate the unique email index). Locks release automatically on commit/rollback.
-          if (extraction!.email?.trim()) {
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${extraction!.email.trim()}))`;
+          // Lock on the case-folded address: two spellings of one mailbox must take the same
+          // lock, or they race past each other and both insert.
+          const lockEmail = emailIdentity(extraction!.email);
+          if (lockEmail) {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockEmail}))`;
           }
           // Lock on the NORMALISED digits: two spellings of one number must take the same lock,
           // or they race past each other and both insert.

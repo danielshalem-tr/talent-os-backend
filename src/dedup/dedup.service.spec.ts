@@ -54,7 +54,9 @@ describe('DedupService', () => {
 
       expect(result).toEqual({ outcome: 'match', candidateId: 'existing-by-email', field: 'email' });
       expect(prisma.candidate.findFirst).toHaveBeenCalledWith(
-        expect.objectContaining({ where: { tenantId: 'tenant-abc', email: 'jane.doe@example.com' } }),
+        expect.objectContaining({
+          where: { tenantId: 'tenant-abc', email: { equals: 'jane.doe@example.com', mode: 'insensitive' } },
+        }),
       );
       expect(prisma.$queryRaw).not.toHaveBeenCalled();
     });
@@ -127,6 +129,49 @@ describe('DedupService', () => {
       expect(result).toEqual({ outcome: 'new', sharedPhoneWith: 'existing-123' });
     });
 
+    it('chooses the first phone row whose email is compatible, not blindly the oldest', async () => {
+      prisma.candidate.findFirst.mockResolvedValue(null);
+      prisma.$queryRaw.mockResolvedValue([
+        { id: 'oldest-other-person', email: 'someone.else@example.com' },
+        { id: 'same-person', email: 'JANE.DOE@example.com' },
+      ]);
+
+      const result = await service.check(mockCandidateDedupExtract({ email: 'jane.doe@example.com' }), 'tenant-1');
+
+      expect(result).toEqual({ outcome: 'match', candidateId: 'same-person', field: 'phone' });
+    });
+
+    it('is "new" when every phone row has a different email', async () => {
+      prisma.candidate.findFirst.mockResolvedValue(null);
+      prisma.$queryRaw.mockResolvedValue([
+        { id: 'p1', email: 'a@example.com' },
+        { id: 'p2', email: 'b@example.com' },
+      ]);
+
+      const result = await service.check(mockCandidateDedupExtract({ email: 'jane@example.com' }), 'tenant-1');
+
+      expect(result).toEqual({ outcome: 'new', sharedPhoneWith: 'p1' });
+    });
+
+    it('with no incoming email, a phone shared by two distinct people is ambiguous → new', async () => {
+      prisma.$queryRaw.mockResolvedValue([
+        { id: 'p1', email: 'a@example.com' },
+        { id: 'p2', email: 'b@example.com' },
+      ]);
+
+      const result = await service.check(mockCandidateDedupExtract({ email: null }), 'tenant-1');
+
+      expect(result).toEqual({ outcome: 'new', sharedPhoneWith: 'p1' });
+    });
+
+    it('with no incoming email and a single phone row, merges onto it (unchanged behaviour)', async () => {
+      prisma.$queryRaw.mockResolvedValue([{ id: 'p1', email: 'a@example.com' }]);
+
+      const result = await service.check(mockCandidateDedupExtract({ email: null }), 'tenant-1');
+
+      expect(result).toEqual({ outcome: 'match', candidateId: 'p1', field: 'phone' });
+    });
+
     it('passes the digit-only phone into the raw query', async () => {
       await service.check(mockCandidateDedupExtract({ email: null, phone: '+1 (555) 010-0100' }), 'tenant-abc');
 
@@ -163,7 +208,7 @@ describe('DedupService', () => {
       expect(prisma.candidate.update).not.toHaveBeenCalled();
     });
 
-    it('does not fill an email another row already holds (idx_candidates_tenant_email_unique)', async () => {
+    it('does not fill an email another row already holds (idx_candidates_tenant_email_ci_unique)', async () => {
       prisma.candidate.findUniqueOrThrow.mockResolvedValue({ email: null, phone: '+1', fullName: 'X' });
       prisma.candidate.findFirst.mockResolvedValue({ id: 'someone-else' });
 
@@ -171,7 +216,11 @@ describe('DedupService', () => {
 
       expect(filled).toEqual([]);
       expect(prisma.candidate.findFirst).toHaveBeenCalledWith({
-        where: { tenantId: 'tenant-abc', email: 'jane.doe@example.com', NOT: { id: 'cand-1' } },
+        where: {
+          tenantId: 'tenant-abc',
+          email: { equals: 'jane.doe@example.com', mode: 'insensitive' },
+          NOT: { id: 'cand-1' },
+        },
         select: { id: true },
       });
       expect(prisma.candidate.update).not.toHaveBeenCalled();
