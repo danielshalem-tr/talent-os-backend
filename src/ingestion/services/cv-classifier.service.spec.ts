@@ -38,6 +38,7 @@ const BASE_INPUT: CvClassifierInput = {
   fromEmail: 'test@example.com',
   suspicious: false,
   hasMeaningfulAttachment: false,
+  hasCvDocument: false,
   bodyLength: 200,
   resolvedAgency: null,
   tenantId: 'tenant-uuid',
@@ -55,6 +56,7 @@ describe('CvClassifierService', () => {
       ...BASE_INPUT,
       resolvedAgency: 'jobhunt',
       hasMeaningfulAttachment: true,
+      hasCvDocument: true,
     });
 
     expect(result.verdict).toBe('cv');
@@ -65,7 +67,7 @@ describe('CvClassifierService', () => {
     mockGenerateObject.mockResolvedValueOnce({ object: { verdict: 'uncertain', reason: 'no document' } } as any);
     const service = makeService();
 
-    await service.classify({ ...BASE_INPUT, resolvedAgency: 'jobhunt', hasMeaningfulAttachment: false });
+    await service.classify({ ...BASE_INPUT, resolvedAgency: 'jobhunt', hasMeaningfulAttachment: false, hasCvDocument: false });
 
     expect(mockGenerateObject).toHaveBeenCalledTimes(1);
   });
@@ -136,6 +138,7 @@ describe('CvClassifierService', () => {
       // (see the first test), so the AI is never called. We need the AI path here
       // to assert the clues land in the prompt — the resolved agency still appears.
       hasMeaningfulAttachment: false,
+      hasCvDocument: false,
       resolvedAgency: 'jobhunt',
     });
 
@@ -145,5 +148,19 @@ describe('CvClassifierService', () => {
     expect(callArg.prompt).toContain('Resolved recruiting agency: jobhunt');
     expect(callArg.temperature).toBe(0);
     expect(callArg.model).toBe('mocked-model');
+  });
+  it('does NOT short-circuit a known agency whose only attachment is a logo', async () => {
+    mockGenerateObject.mockResolvedValueOnce({ object: { verdict: 'not_cv', reason: 'newsletter' } } as any);
+    const service = makeService();
+
+    const result = await service.classify({
+      ...BASE_INPUT,
+      resolvedAgency: 'AllJobs',
+      hasMeaningfulAttachment: true,
+      hasCvDocument: false,
+    });
+
+    expect(result.verdict).toBe('not_cv');
+    expect(mockGenerateObject).toHaveBeenCalled();
   });
 });

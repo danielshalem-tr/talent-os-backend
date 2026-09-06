@@ -124,6 +124,28 @@ describe('StorageService', () => {
     ).rejects.toThrow('R2 temporarily unavailable');
   });
 
+  it('stores an octet-stream .pdf under a .pdf key with the real content type', async () => {
+    mockS3Send.mockResolvedValue({});
+    const key = await service.upload(
+      [{ Name: 'Dana CV.pdf', ContentType: 'application/octet-stream', ContentLength: 5000, Content: Buffer.from('%PDF-1.4 x').toString('base64') }],
+      'tenant-1',
+      'msg-1',
+    );
+    expect(key).toBe('cvs/tenant-1/msg-1.pdf');
+    const cmd = mockS3Send.mock.calls[0][0] as PutObjectCommand;
+    expect(cmd.input.ContentType).toBe('application/pdf');
+  });
+
+  it('keeps a legacy .doc CV so the recruiter can download it', async () => {
+    mockS3Send.mockResolvedValue({});
+    const key = await service.upload(
+      [{ Name: 'cv.doc', ContentType: 'application/msword', ContentLength: 5000, Content: Buffer.from('doc').toString('base64') }],
+      'tenant-1',
+      'msg-2',
+    );
+    expect(key).toBe('cvs/tenant-1/msg-2.doc');
+  });
+
   describe('uploadPayload / downloadPayload', () => {
     it('uploadPayload calls PutObjectCommand with correct key and JSON body', async () => {
       mockS3Send.mockResolvedValue({});

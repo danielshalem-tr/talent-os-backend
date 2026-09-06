@@ -20,6 +20,8 @@ export interface CvClassifierInput {
   fromEmail: string;
   suspicious: boolean; // revived spam-filter signal
   hasMeaningfulAttachment: boolean;
+  /** True only when an attachment is a PDF/DOCX/DOC (document-detect.ts) — not a logo. */
+  hasCvDocument: boolean;
   bodyLength: number;
   resolvedAgency: string | null; // from resolveAgencyFromEmail()
   tenantId: string;
@@ -66,7 +68,7 @@ export class CvClassifierService {
   async classify(input: CvClassifierInput): Promise<CvClassification> {
     // Layer 1 — deterministic short-circuit (no AI):
     // a known recruiting agency submitting a document is an unambiguous CV signal.
-    if (input.resolvedAgency !== null && input.hasMeaningfulAttachment) {
+    if (input.resolvedAgency !== null && input.hasCvDocument) {
       return { verdict: 'cv', reason: `Known agency sender (${input.resolvedAgency}) with a document attachment` };
     }
 

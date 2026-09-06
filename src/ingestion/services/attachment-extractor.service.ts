@@ -3,9 +3,7 @@ import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
 import { EmailAttachmentDto } from '../../webhooks';
 import { sanitizePgText } from '../../common/sanitize-pg-text';
-
-const DOCX_CONTENT_TYPE =
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+import { detectCvDocument } from '../document-detect';
 
 @Injectable()
 export class AttachmentExtractorService {
@@ -27,20 +25,19 @@ export class AttachmentExtractorService {
         const buffer = Buffer.from(att.Content, 'base64');
         let text = '';
 
-        if (att.ContentType === 'application/pdf') {
+        const kind = detectCvDocument(att);
+        if (kind === 'pdf') {
           // PROC-04: pdf-parse@2.x class-based API accepts Buffer as Uint8Array-compatible data
           const parser = new PDFParse({ data: buffer });
           const result = await parser.getText();
           text = result.text ?? '';
-        } else if (
-          att.ContentType === DOCX_CONTENT_TYPE ||
-          att.Name.toLowerCase().endsWith('.docx')
-        ) {
+        } else if (kind === 'docx') {
           // PROC-05: mammoth returns HTML; strip tags to plain text
           const result = await mammoth.convertToHtml({ buffer });
           text = this.htmlToPlainText(result.value);
         } else {
-          // D-04: unsupported type — log warning, skip (no error)
+          // D-04: images, calendars, legacy .doc (no parser) — log, skip, keep going. A .doc is
+          // still STORED by the webhook (storage.service.ts) so the file is downloadable.
           this.logger.warn(
             `Skipping unsupported attachment: ${att.Name} (${att.ContentType})`,
           );

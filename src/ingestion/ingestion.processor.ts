@@ -19,6 +19,7 @@ import { VoiceCallsService } from '../voice/voice-calls.service';
 import { sanitizePgText } from '../common/sanitize-pg-text';
 import { parseShortIdAliases, applyShortIdAliases } from '../config/short-id-aliases';
 import { extractShortIds } from './extract-short-ids';
+import { hasCvDocument } from './document-detect';
 import { mergeEnrichment, EnrichmentFields } from './merge-enrichment';
 import { phoneDigits } from '../dedup/contact-normalize';
 import { applyContactBlocklist, parseContactBlocklist } from '../dedup/contact-blocklist';
@@ -138,6 +139,7 @@ export class IngestionProcessor extends WorkerHost {
         fromEmail: payload.From,
         suspicious: filterResult.suspicious,
         hasMeaningfulAttachment: this.spamFilter.hasMeaningfulAttachment(payload.Attachments),
+        hasCvDocument: hasCvDocument(payload.Attachments),
         bodyLength: (payload.TextBody ?? '').trim().length,
         resolvedAgency: resolveAgencyFromEmail(payload.From),
         tenantId,

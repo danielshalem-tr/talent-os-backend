@@ -106,6 +106,17 @@ describe('AttachmentExtractorService', () => {
     expect(result.indexOf('cv.pdf')).toBeLessThan(result.indexOf('cover.docx'));
   });
 
+  it('parses a PDF delivered as application/octet-stream when the filename says .pdf', async () => {
+    const att: EmailAttachmentDto = {
+      Name: 'Resume.PDF',
+      ContentType: 'application/octet-stream',
+      Content: mockBase64Pdf(),
+      ContentLength: 100,
+    };
+    const result = await service.extract([att]);
+    expect(result).toContain('Extracted PDF text content');
+  });
+
   // BUG-CV-NULLBYTE: pdf-parse can emit NUL (U+0000) bytes that Postgres text columns
   // reject. The extractor must strip them at the source so cv_text can be persisted.
   it('strips NUL bytes from extracted PDF text', async () => {

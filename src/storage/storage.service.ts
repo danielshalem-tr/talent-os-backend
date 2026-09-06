@@ -3,11 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { EmailAttachmentDto, EmailPayloadDto } from '../webhooks';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { CvDocumentKind, detectCvDocument, extensionForKind, mimeForKind } from '../ingestion/document-detect';
 
-const CV_MIME_TYPES = [
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-] as const;
 
 @Injectable()
 export class StorageService {
@@ -27,32 +24,28 @@ export class StorageService {
 
   // D-01, D-02, D-04, D-06, D-10, D-11
   async upload(attachments: EmailAttachmentDto[], tenantId: string, messageId: string): Promise<string | null> {
-    // D-01: Select largest PDF/DOCX; filters out signature images, logos, etc.
+    // D-01: the largest CV document (PDF/DOCX/DOC by MIME, extension or magic bytes) — logos,
+    // signatures and calendar parts never qualify.
     const selected = this.selectLargestCvAttachment(attachments);
-    if (!selected) {
-      // D-02: No qualifying file — return null, job continues
-      return null;
-    }
+    if (!selected) return null; // D-02: no qualifying file — job continues
 
-    const extension = this.getExtension(selected.ContentType);
-    // D-10: Key includes correct extension based on ContentType
-    const key = `cvs/${tenantId}/${messageId}${extension}`;
-    const buffer = Buffer.from(selected.Content!, 'base64');
+    // D-10: key extension and D-11: ContentType come from the DETECTED kind, so an
+    // `application/octet-stream` PDF is stored as `.pdf` + `application/pdf` and renders in-browser.
+    const key = `cvs/${tenantId}/${messageId}${extensionForKind(selected.kind)}`;
+    const buffer = Buffer.from(selected.att.Content!, 'base64');
 
     const command = new PutObjectCommand({
       Bucket: this.config.get<string>('R2_BUCKET_NAME')!,
       Key: key,
       Body: buffer,
-      ContentType: selected.ContentType, // D-11: Explicit ContentType for browser rendering
+      ContentType: mimeForKind(selected.kind),
     });
 
-    // D-07: Transient R2 errors propagate to BullMQ for automatic retry.
-    // Do NOT catch here — retrying the full job is correct for network failures.
+    // D-07: Transient R2 errors propagate to the caller (webhook → 5xx → Mailgun retries).
     await this.s3Client.send(command);
 
     this.logger.log(`Uploaded ${key} to R2 (${buffer.length} bytes)`);
-    // D-04: Return object key only — NOT a presigned URL
-    return key;
+    return key; // D-04: object key only — NOT a presigned URL
   }
 
   getPresignedUrl(key: string, expiresIn = 3600): Promise<string> {
@@ -238,12 +231,16 @@ export class StorageService {
     }
   }
 
-  private selectLargestCvAttachment(attachments: EmailAttachmentDto[]): EmailAttachmentDto | null {
-    // D-01: Only PDF/DOCX; picks the one with the largest ContentLength
-    const cvFiles = attachments.filter((att) => (CV_MIME_TYPES as readonly string[]).includes(att.ContentType));
-    if (cvFiles.length === 0) return null;
-    return cvFiles.reduce((largest, current) =>
-      (current.ContentLength ?? 0) > (largest.ContentLength ?? 0) ? current : largest,
+  private selectLargestCvAttachment(
+    attachments: EmailAttachmentDto[],
+  ): { att: EmailAttachmentDto; kind: CvDocumentKind } | null {
+    const documents = attachments.flatMap((att) => {
+      const kind = detectCvDocument(att);
+      return kind ? [{ att, kind }] : [];
+    });
+    if (documents.length === 0) return null;
+    return documents.reduce((largest, current) =>
+      (current.att.ContentLength ?? 0) > (largest.att.ContentLength ?? 0) ? current : largest,
     );
   }
 
