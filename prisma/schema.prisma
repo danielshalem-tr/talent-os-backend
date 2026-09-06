@@ -183,7 +183,9 @@ model Candidate {
   @@index([tenantId, jobId], name: "idx_candidates_tenant_job")
   @@index([tenantId, jobId, hiringStageId], name: "idx_candidates_tenant_job_stage")
   @@index([tenantId, status], name: "idx_candidates_tenant_status")
-  // Unique email per tenant (partial — only when email is not null, enforced via raw SQL index)
+  // Raw-SQL indexes Prisma cannot express (see migration 20260907000000):
+  //   idx_candidates_tenant_email_ci_unique — UNIQUE (tenant_id, lower(email)) WHERE email IS NOT NULL
+  //   idx_candidates_phone_digits           — (tenant_id, regexp_replace(phone,'[^0-9]','','g')) WHERE phone IS NOT NULL
   @@map("candidates")
 }
 
@@ -286,6 +288,7 @@ model EmailIntakeLog {
 
   // DB-08: unique message_id per tenant — primary idempotency guard
   @@unique([tenantId, messageId], name: "idx_intake_message_id")
+  @@index([tenantId, processingStatus], name: "idx_intake_tenant_status")
   @@map("email_intake_log")
 }
 
