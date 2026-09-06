@@ -41,11 +41,11 @@ const configService = {
 const jobMatcherService = { match: jest.fn().mockResolvedValue([]) };
 
 /** Helper: build a slim job with new IngestJobData shape */
-function makeJob(id: string, payload: ReturnType<typeof mockEmailPayload>) {
+function makeJob(id: string, payload: ReturnType<typeof mockEmailPayload>, attemptsMade = 0) {
   return {
     id,
     name: 'ingest-email',
-    attemptsMade: 0,
+    attemptsMade,
     opts: { attempts: 3 },
     data: { tenantId: 'test-tenant-id', messageId: payload.MessageID },
   } as any;
@@ -54,7 +54,7 @@ function makeJob(id: string, payload: ReturnType<typeof mockEmailPayload>) {
 describe('IngestionProcessor', () => {
   let processor: IngestionProcessor;
   let prisma: {
-    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
+    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock; updateMany: jest.Mock };
     organization: { findUnique: jest.Mock };
     $transaction: jest.Mock;
     candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
@@ -75,7 +75,8 @@ describe('IngestionProcessor', () => {
     prisma = {
       emailIntakeLog: {
         update: jest.fn().mockResolvedValue({}),
-        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' }),
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
@@ -407,8 +408,8 @@ describe('IngestionProcessor', () => {
         data: { processingStatus: 'spam' },
       }),
     );
-    // Processor returned after spam — update called only once (not 'processing')
-    expect(prisma.emailIntakeLog.update).toHaveBeenCalledTimes(1);
+    // 'processing' is written first (before anything can fail), then 'spam'
+    expect(prisma.emailIntakeLog.update).toHaveBeenCalledTimes(2);
   });
 
   // 3-03-02: PROC-06 — passing email updates status to 'processing'
@@ -434,8 +435,8 @@ describe('IngestionProcessor', () => {
     );
   });
 
-  // 4-02-01: AIEX-01 — extraction failure marks log as 'failed' and returns
-  it('extraction failure marks status failed', async () => {
+  // 4-02-01: AIEX-01 — a non-final attempt records the error and leaves the row 'processing'
+  it("extraction failure on a non-final attempt keeps 'processing' and records the error", async () => {
     extractionAgent.extract.mockRejectedValueOnce(new Error('LLM timeout'));
 
     const payload = mockEmailPayload({
@@ -451,12 +452,13 @@ describe('IngestionProcessor', () => {
 
     await expect(processor.process(job)).rejects.toThrow('LLM timeout');
 
-    // First call: 'processing'; second call: 'failed'
+    // First call: 'processing'; second call: the error text only — a retry is still scheduled
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledTimes(2);
     expect(prisma.emailIntakeLog.update).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({ processingStatus: 'failed' }),
-      }),
+      expect.objectContaining({ data: { errorMessage: 'LLM timeout' } }),
+    );
+    expect(prisma.emailIntakeLog.update).not.toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ processingStatus: 'failed' }) }),
     );
   });
 
@@ -509,18 +511,106 @@ describe('IngestionProcessor', () => {
     );
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
       expect.objectContaining({
-        data: { processingStatus: 'completed' },
+        data: { processingStatus: 'completed', errorMessage: null },
       }),
     );
     // Transaction was used for the Phase 6 atomic block
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips a stale job whose intake is already terminal', async () => {
+    prisma.emailIntakeLog.findUnique.mockResolvedValue({
+      candidateId: 'c1',
+      cvFileKey: null,
+      rawPayloadKey: null,
+      processingStatus: 'completed',
+    });
+    const payload = mockEmailPayload();
+    await processor.process(makeJob('stale', payload));
+    expect(storageService.downloadPayload).not.toHaveBeenCalled();
+    expect(prisma.emailIntakeLog.update).not.toHaveBeenCalled();
+  });
+
+  it('writes processing BEFORE downloading the payload so an R2 failure is visible', async () => {
+    storageService.downloadPayload.mockRejectedValue(new Error('NoSuchKey'));
+    await expect(processor.process(makeJob('dl', mockEmailPayload(), 2))).rejects.toThrow('NoSuchKey');
+    expect(prisma.emailIntakeLog.update.mock.calls[0][0].data).toEqual({ processingStatus: 'processing' });
+    expect(prisma.emailIntakeLog.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: { processingStatus: 'failed', errorMessage: 'NoSuchKey' } }),
+    );
+  });
+
+  it('parks the intake as held (and does not throw) when the last attempt dies on a retryable upstream error', async () => {
+    const credits = Object.assign(new Error('Insufficient credits'), {
+      name: 'AI_APICallError',
+      statusCode: 402,
+      isRetryable: false,
+    });
+    extractionAgent.extract.mockRejectedValueOnce(credits);
+    const payload = mockEmailPayload({ Subject: 'CV', TextBody: 'x'.repeat(200) });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await expect(processor.process(makeJob('held-402', payload, 2))).resolves.toBeUndefined();
+    expect(prisma.emailIntakeLog.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: { processingStatus: 'held', errorMessage: 'Insufficient credits' } }),
+    );
+  });
+
+  it('a retryable error on a NON-final attempt is re-thrown so BullMQ retries', async () => {
+    const rateLimited = Object.assign(new Error('429'), { name: 'AI_APICallError', statusCode: 429, isRetryable: true });
+    extractionAgent.extract.mockRejectedValueOnce(rateLimited);
+    const payload = mockEmailPayload({ Subject: 'CV', TextBody: 'x'.repeat(200) });
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await expect(processor.process(makeJob('retry-429', payload, 0))).rejects.toThrow('429');
+    expect(prisma.emailIntakeLog.update).toHaveBeenLastCalledWith(
+      expect.objectContaining({ data: { errorMessage: '429' } }),
+    );
+  });
+
+  it('reads the payload by the stored raw_payload_key when the row has one', async () => {
+    prisma.emailIntakeLog.findUnique.mockResolvedValue({
+      candidateId: null,
+      cvFileKey: null,
+      rawPayloadKey: 'emails/t/m/payload.json',
+      processingStatus: 'pending',
+    });
+    const payload = mockEmailPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('bykey', payload));
+    expect(storageService.downloadPayload).toHaveBeenCalledWith(
+      'test-tenant-id',
+      payload.MessageID,
+      'emails/t/m/payload.json',
+    );
+  });
+
+  describe('worker events', () => {
+    it('onFailed stamps a still-pending/processing row failed once attempts are exhausted', async () => {
+      await processor.onFailed({ ...makeJob('x', mockEmailPayload()), attemptsMade: 3 }, new Error('boom'));
+      expect(prisma.emailIntakeLog.updateMany).toHaveBeenCalledWith({
+        where: {
+          tenantId: 'test-tenant-id',
+          messageId: mockEmailPayload().MessageID,
+          processingStatus: { in: ['pending', 'processing'] },
+        },
+        data: { processingStatus: 'failed', errorMessage: 'boom' },
+      });
+    });
+
+    it('onFailed is a no-op while a retry is still scheduled', async () => {
+      await processor.onFailed({ ...makeJob('x', mockEmailPayload()), attemptsMade: 1 }, new Error('boom'));
+      expect(prisma.emailIntakeLog.updateMany).not.toHaveBeenCalled();
+    });
+
+    it('onFailed tolerates a missing job', async () => {
+      await expect(processor.onFailed(undefined, new Error('boom'))).resolves.toBeUndefined();
+    });
   });
 });
 
 describe('IngestionProcessor — Phase 5 StorageService', () => {
   let processor: IngestionProcessor;
   let prisma: {
-    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
+    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock; updateMany: jest.Mock };
     organization: { findUnique: jest.Mock };
     $transaction: jest.Mock;
     candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
@@ -541,7 +631,8 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
     prisma = {
       emailIntakeLog: {
         update: jest.fn().mockResolvedValue({}),
-        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' }),
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
@@ -692,7 +783,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
       Attachments: [],
     });
     // existingIntake has null cvFileKey (webhook found no CV attachment)
-    prisma.emailIntakeLog.findUnique.mockResolvedValue({ candidateId: null, cvFileKey: null });
+    prisma.emailIntakeLog.findUnique.mockResolvedValue({ candidateId: null, cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' });
     storageService.downloadPayload.mockResolvedValue(payload);
     const job = makeJob('test-job-7', payload);
 
@@ -706,7 +797,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   let processor: IngestionProcessor;
   const pinoLogger = { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() };
   let prisma: {
-    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
+    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock; updateMany: jest.Mock };
     organization: { findUnique: jest.Mock };
     $transaction: jest.Mock;
     candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
@@ -728,7 +819,8 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     prisma = {
       emailIntakeLog: {
         update: jest.fn().mockResolvedValue({}),
-        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' }),
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       // Simulate prisma.$transaction by invoking the callback with a tx client
@@ -1046,7 +1138,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         'intake.contact_blocked',
       );
       expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
-        expect.objectContaining({ data: { processingStatus: 'completed' } }),
+        expect.objectContaining({ data: { processingStatus: 'completed', errorMessage: null } }),
       );
     } finally {
       // jest.clearAllMocks() keeps implementations — restore the file-level default explicitly.
@@ -1058,7 +1150,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
 describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => {
   let processor: IngestionProcessor;
   let prisma: {
-    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
+    emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock; updateMany: jest.Mock };
     organization: { findUnique: jest.Mock };
     $transaction: jest.Mock;
     candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
@@ -1097,7 +1189,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     prisma = {
       emailIntakeLog: {
         update: jest.fn().mockResolvedValue({}),
-        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' }),
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient)),
@@ -1260,7 +1353,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     await expect(processor.process(makeJob('test-p7-voice-fail', payload))).resolves.toBeUndefined();
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { processingStatus: 'completed' } }),
+      expect.objectContaining({ data: { processingStatus: 'completed', errorMessage: null } }),
     );
   });
 
@@ -1369,7 +1462,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     expect(scoringService.score).not.toHaveBeenCalled();
     // Status is still completed even without a matched job
     expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { processingStatus: 'completed' } }),
+      expect.objectContaining({ data: { processingStatus: 'completed', errorMessage: null } }),
     );
   });
 
@@ -1384,7 +1477,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       (call: [{ data: Record<string, unknown> }]) => call[0],
     );
     const lastUpdateCall = allUpdateCalls[allUpdateCalls.length - 1];
-    expect(lastUpdateCall?.data).toEqual({ processingStatus: 'completed' });
+    expect(lastUpdateCall?.data).toEqual({ processingStatus: 'completed', errorMessage: null });
     // Scoring happened before the final status update
     expect(prisma.candidateJobScore.upsert).toHaveBeenCalled();
   });
@@ -1395,7 +1488,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     const payload = validJobPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
-    const jobData = makeJob('test-p7-6', payload);
+    // Final attempt (3 of 3): the status writer stamps 'failed' rather than scheduling a retry.
+    const jobData = makeJob('test-p7-6', payload, 2);
 
     await expect(processor.process(jobData)).rejects.toThrow('Anthropic API timeout');
 
@@ -1450,7 +1544,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     const payload = validJobPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
-    const job = makeJob('test-p7-enrich-fail', payload);
+    // Final attempt (3 of 3): the status writer stamps 'failed' rather than scheduling a retry.
+    const job = makeJob('test-p7-enrich-fail', payload, 2);
 
     await expect(processor.process(job)).rejects.toThrow('null character not permitted');
 
@@ -1510,7 +1605,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
       prisma = {
         emailIntakeLog: {
           update: jest.fn().mockResolvedValue({}),
-          findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' }),
         },
         organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
         $transaction: jest.fn().mockImplementation(async (cb) => cb(txClient)),
@@ -1654,7 +1750,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         }),
       );
       expect(prisma.emailIntakeLog.update).toHaveBeenLastCalledWith(
-        expect.objectContaining({ data: { processingStatus: 'completed' } }),
+        expect.objectContaining({ data: { processingStatus: 'completed', errorMessage: null } }),
       );
       expect(prisma.application.upsert).not.toHaveBeenCalled();
     });
@@ -1762,7 +1858,8 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
     prisma = {
       emailIntakeLog: {
         update: jest.fn().mockResolvedValue({}),
-        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' }),
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
@@ -1819,7 +1916,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
   });
 
   it('should skip Phase 6 when intake already has candidateId (retry scenario)', async () => {
-    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: 'existing-candidate-id', cvFileKey: null });
+    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: 'existing-candidate-id', cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' });
     const payload = validPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
 
@@ -1831,7 +1928,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
   });
 
   it('should run Phase 6 normally on first attempt (no candidateId)', async () => {
-    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: null, cvFileKey: null });
+    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: null, cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' });
     const payload = validPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
 
@@ -1842,7 +1939,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
   });
 
   it('should not create duplicate candidate on retry', async () => {
-    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: 'existing-candidate-id', cvFileKey: null });
+    prisma.emailIntakeLog.findUnique.mockResolvedValueOnce({ candidateId: 'existing-candidate-id', cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' });
     const payload = validPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
 
@@ -1880,7 +1977,8 @@ describe('IngestionProcessor — CV Classification Gate', () => {
     prisma = {
       emailIntakeLog: {
         update: jest.fn().mockResolvedValue({}),
-        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' }),
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),
@@ -1956,7 +2054,7 @@ describe('IngestionProcessor — CV Classification Gate', () => {
     expect(extractionAgent.extract).toHaveBeenCalledTimes(1);
     expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
     expect(prisma.emailIntakeLog.update).toHaveBeenLastCalledWith(
-      expect.objectContaining({ data: { processingStatus: 'completed' } }),
+      expect.objectContaining({ data: { processingStatus: 'completed', errorMessage: null } }),
     );
   });
 
@@ -2021,7 +2119,8 @@ describe('ingest gate (ai_ingest_enabled)', () => {
     prisma = {
       emailIntakeLog: {
         update: jest.fn().mockResolvedValue({}),
-        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ candidateId: null, cvFileKey: null, rawPayloadKey: null, processingStatus: 'pending' }),
       },
       organization: { findUnique: jest.fn().mockResolvedValue({ aiIngestEnabled: true }) },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(txClient)),

@@ -166,12 +166,13 @@ export class StorageService {
     return key;
   }
 
-  async downloadPayload(tenantId: string, messageId: string): Promise<EmailPayloadDto> {
-    const key = `emails/${tenantId}/${messageId}/payload.json`;
+  /** `key` is the row's raw_payload_key when known — the derived path is only the fallback. */
+  async downloadPayload(tenantId: string, messageId: string, key?: string): Promise<EmailPayloadDto> {
+    const objectKey = key ?? `emails/${tenantId}/${messageId}/payload.json`;
     const response = await this.s3Client.send(
       new GetObjectCommand({
         Bucket: this.config.get<string>('R2_BUCKET_NAME')!,
-        Key: key,
+        Key: objectKey,
       }),
     );
     const body = await response.Body!.transformToString();

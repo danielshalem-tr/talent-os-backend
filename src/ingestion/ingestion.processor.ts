@@ -1,10 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Processor, WorkerHost } from '@nestjs/bullmq';
+import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Logger as PinoLogger } from 'nestjs-pino';
 import { PrismaService } from '../prisma/prisma.service';
 import { IngestJobData } from '../webhooks/webhooks.service';
+import { EmailPayloadDto } from '../webhooks';
 import { SpamFilterService } from './services/spam-filter.service';
 import { AttachmentExtractorService } from './services/attachment-extractor.service';
 import { ExtractionAgentService, CandidateExtract, resolveAgencyFromEmail } from './services/extraction-agent.service';
@@ -23,6 +24,13 @@ import { hasCvDocument } from './document-detect';
 import { mergeEnrichment, EnrichmentFields } from './merge-enrichment';
 import { phoneDigits } from '../dedup/contact-normalize';
 import { applyContactBlocklist, parseContactBlocklist } from '../dedup/contact-blocklist';
+import { IntakePhaseError } from './intake-errors';
+import { isRetryableUpstreamError } from '../common/upstream-errors';
+
+/** A job arriving for a row in one of these states is a stale duplicate (redelivery, stalled re-run) — never reprocess. */
+const TERMINAL_STATUSES = new Set(['completed', 'spam', 'not_cv', 'needs_review']);
+
+type IntakeRow = { candidateId: string | null; cvFileKey: string | null; rawPayloadKey: string | null; processingStatus: string };
 
 export interface ProcessingContext {
   fullText: string;
@@ -64,17 +72,106 @@ export class IngestionProcessor extends WorkerHost {
         `Job ${job.id} has pre-P1 format — drain queue before upgrading (job data: ${JSON.stringify(job.data).slice(0, 100)})`,
       );
     }
-    const { tenantId, messageId: jobMessageId } = job.data;
-    const payload = await this.storageService.downloadPayload(tenantId, jobMessageId);
+    const { tenantId, messageId } = job.data;
 
-    this.pinoLogger.log({ jobId: job.id, jobName: job.name, tenantId }, 'Job started');
-    this.pinoLogger.log({ jobId: job.id, messageId: payload.MessageID }, 'Job processing started');
-
-    // Fetch intake once — used for idempotency guard (Phase 6) and cvFileKey
-    const existingIntake = await this.prisma.emailIntakeLog.findUnique({
-      where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-      select: { candidateId: true, cvFileKey: true },
+    const intake = await this.prisma.emailIntakeLog.findUnique({
+      where: { idx_intake_message_id: { tenantId, messageId } },
+      select: { candidateId: true, cvFileKey: true, rawPayloadKey: true, processingStatus: true },
     });
+    if (!intake) throw new Error(`No intake row for ${messageId} — nothing to process`);
+    if (TERMINAL_STATUSES.has(intake.processingStatus)) {
+      this.pinoLogger.warn(
+        { jobId: job.id, messageId, status: intake.processingStatus },
+        'Stale job for a finished intake — skipped',
+      );
+      return;
+    }
+
+    // First write BEFORE anything can fail (R2, parsing, AI): a row that dies later is never left
+    // looking untouched at 'pending' with no error text.
+    await this.setIntake(tenantId, messageId, { processingStatus: 'processing' });
+    this.pinoLogger.log({ jobId: job.id, jobName: job.name, tenantId, attempt: job.attemptsMade + 1 }, 'Job started');
+
+    try {
+      await this.run(job, tenantId, messageId, intake);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const phase = err instanceof IntakePhaseError ? err.phase : 'unknown';
+      const finalAttempt = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+
+      if (!finalAttempt) {
+        // A retry is scheduled — keep 'processing', surface the error text.
+        await this.setIntake(tenantId, messageId, { errorMessage: message }).catch(() => undefined);
+        this.pinoLogger.warn(
+          { jobId: job.id, messageId, phase, attempt: job.attemptsMade + 1, error: message },
+          'Attempt failed — retry scheduled',
+        );
+        throw err;
+      }
+      if (isRetryableUpstreamError(err instanceof IntakePhaseError ? err.cause : err)) {
+        // The provider outage outlived every retry. The payload is durable, so park the row
+        // where the ingest-control queue can replay it once the provider is back. Not a
+        // BullMQ failure: returning completes the job; replay creates a fresh one.
+        await this.setIntake(tenantId, messageId, { processingStatus: 'held', errorMessage: message }).catch(
+          () => undefined,
+        );
+        this.pinoLogger.error(
+          { jobId: job.id, messageId, phase, error: message },
+          'Attempts exhausted on a retryable upstream error — held for replay',
+        );
+        return;
+      }
+      await this.setIntake(tenantId, messageId, { processingStatus: 'failed', errorMessage: message }).catch(
+        () => undefined,
+      );
+      this.pinoLogger.error({ jobId: job.id, jobName: job.name, tenantId, messageId, phase, error: message }, 'Job failed');
+      throw err;
+    }
+  }
+
+  private setIntake(tenantId: string, messageId: string, data: Prisma.EmailIntakeLogUpdateInput): Promise<unknown> {
+    return this.prisma.emailIntakeLog.update({ where: { idx_intake_message_id: { tenantId, messageId } }, data });
+  }
+
+  /**
+   * Backstop for anything thrown outside run()'s catch (the status write itself, a bad job
+   * payload). BullMQ has already incremented attemptsMade when 'failed' fires, so
+   * `attemptsMade < attempts` means a retry is still queued.
+   */
+  @OnWorkerEvent('failed')
+  async onFailed(job: Job<IngestJobData> | undefined, err: Error): Promise<void> {
+    if (!job?.data?.tenantId || !job.data.messageId) return;
+    if (job.attemptsMade < (job.opts?.attempts ?? 1)) return;
+    const { tenantId, messageId } = job.data;
+    try {
+      const stamped = await this.prisma.emailIntakeLog.updateMany({
+        where: { tenantId, messageId, processingStatus: { in: ['pending', 'processing'] } },
+        data: { processingStatus: 'failed', errorMessage: err?.message ?? 'unknown error' },
+      });
+      if (stamped.count > 0) {
+        this.pinoLogger.error(
+          { jobId: job.id, messageId, error: err?.message },
+          'Attempts exhausted — intake stamped failed by worker event',
+        );
+      }
+    } catch (e) {
+      this.pinoLogger.error({ messageId, error: (e as Error).message }, 'Backstop status write failed');
+    }
+  }
+
+  @OnWorkerEvent('stalled')
+  onStalled(jobId: string): void {
+    this.pinoLogger.warn({ jobId }, 'Job stalled (lock expired) — BullMQ will re-run it');
+  }
+
+  private async run(job: Job<IngestJobData>, tenantId: string, messageId: string, intake: IntakeRow): Promise<void> {
+    let payload: EmailPayloadDto;
+    try {
+      payload = await this.storageService.downloadPayload(tenantId, messageId, intake.rawPayloadKey ?? undefined);
+    } catch (err) {
+      throw new IntakePhaseError('payload', err);
+    }
+    this.pinoLogger.log({ jobId: job.id, messageId: payload.MessageID }, 'Job processing started');
 
     // Step 0: Spam filter FIRST — before any parsing (D-11)
     const filterResult = this.spamFilter.check(payload);
@@ -108,14 +205,6 @@ export class IngestionProcessor extends WorkerHost {
       return;
     }
 
-    // D-13: Passed spam filter — update status to 'processing'
-    await this.prisma.emailIntakeLog.update({
-      where: {
-        idx_intake_message_id: { tenantId, messageId: payload.MessageID },
-      },
-      data: { processingStatus: 'processing' },
-    });
-
     // Step 1: Extract text from attachments (D-02, D-03)
     const attachmentText = await this.attachmentExtractor.extract(payload.Attachments ?? []);
 
@@ -146,15 +235,11 @@ export class IngestionProcessor extends WorkerHost {
         messageId: payload.MessageID,
       });
     } catch (err) {
-      await this.prisma.emailIntakeLog.update({
-        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-        data: { processingStatus: 'failed', errorMessage: (err as Error).message },
-      });
       this.pinoLogger.error(
         { messageId: payload.MessageID, attempt: job.attemptsMade + 1, error: (err as Error).message },
         'CV classification failed',
       );
-      throw err;
+      throw new IntakePhaseError('classification', err);
     }
 
     if (classification.verdict === 'not_cv') {
@@ -190,7 +275,7 @@ export class IngestionProcessor extends WorkerHost {
     // Phase 3 output — passed to Phase 4 inline
     const context: ProcessingContext = {
       fullText,
-      fileKey: existingIntake?.cvFileKey ?? null, // set by webhook (P1)
+      fileKey: intake.cvFileKey, // set by webhook (P1)
       cvText: fullText,
       candidateId: '',
     };
@@ -205,15 +290,11 @@ export class IngestionProcessor extends WorkerHost {
         messageId: payload.MessageID,
       });
     } catch (err) {
-      await this.prisma.emailIntakeLog.update({
-        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-        data: { processingStatus: 'failed', errorMessage: (err as Error).message },
-      });
       this.pinoLogger.error(
         { messageId: payload.MessageID, attempt: job.attemptsMade + 1, error: (err as Error).message },
         'AI extraction failed',
       );
-      throw err;
+      throw new IntakePhaseError('extraction', err);
     }
 
     // D-04, D-05: empty fullName is treated the same as extraction failure (permanent — do not retry)
@@ -246,12 +327,12 @@ export class IngestionProcessor extends WorkerHost {
     // skip the entire dedup + insert transaction and reuse the existing candidateId.
     let candidateId!: string;
 
-    if (existingIntake?.candidateId) {
+    if (intake.candidateId) {
       this.pinoLogger.log(
-        { messageId: payload.MessageID, candidateId: existingIntake.candidateId },
+        { messageId: payload.MessageID, candidateId: intake.candidateId },
         'Idempotency guard: skipping Phase 6',
       );
-      candidateId = existingIntake.candidateId;
+      candidateId = intake.candidateId;
     } else {
       try {
         await this.prisma.$transaction(async (tx) => {
@@ -335,13 +416,9 @@ export class IngestionProcessor extends WorkerHost {
           },
           'Job failed',
         );
-        // Log failure in intake status — transaction errors may be transient (DB connection loss)
-        // or permanent (constraint violation). BullMQ will retry up to 3 attempts.
-        await this.prisma.emailIntakeLog.update({
-          where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-          data: { processingStatus: 'failed', errorMessage: (err as Error).message },
-        });
-        throw err; // Re-throw so BullMQ retries (attempt 1, 2, 3) for transient errors
+        // Transaction errors may be transient (DB connection loss) or permanent (constraint
+        // violation); process() decides retry vs held vs failed from the attempt count.
+        throw new IntakePhaseError('dedup', err);
       }
     } // end else (idempotency guard)
 
@@ -514,11 +591,7 @@ export class IngestionProcessor extends WorkerHost {
         { messageId: payload.MessageID, candidateId: context.candidateId, error: (err as Error).message },
         'Phase 7 enrichment failed',
       );
-      await this.prisma.emailIntakeLog.update({
-        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-        data: { processingStatus: 'failed', errorMessage: (err as Error).message },
-      });
-      throw err; // Re-throw so BullMQ records the failure (transient errors get retried)
+      throw new IntakePhaseError('enrichment', err);
     }
 
     // If no jobs were matched, skip scoring loop
@@ -526,7 +599,7 @@ export class IngestionProcessor extends WorkerHost {
       this.pinoLogger.log({ messageId: payload.MessageID }, 'No matching jobs — skipping scoring');
       await this.prisma.emailIntakeLog.update({
         where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-        data: { processingStatus: 'completed' },
+        data: { processingStatus: 'completed', errorMessage: null },
       });
       return;
     }
@@ -600,11 +673,7 @@ export class IngestionProcessor extends WorkerHost {
         { messageId: payload.MessageID, candidateId: context.candidateId, error: (err as Error).message },
         'Scoring failed for one or more jobs',
       );
-      await this.prisma.emailIntakeLog.update({
-        where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-        data: { processingStatus: 'failed', errorMessage: (err as Error).message },
-      });
-      throw err;
+      throw new IntakePhaseError('scoring', err);
     }
 
     const maxAiScore = Math.max(-1, ...jobScores.map((r) => r.score));
@@ -639,7 +708,7 @@ export class IngestionProcessor extends WorkerHost {
     // D-16: terminal status — set AFTER all Phase 7 work completes (only reached if no error thrown)
     await this.prisma.emailIntakeLog.update({
       where: { idx_intake_message_id: { tenantId, messageId: payload.MessageID } },
-      data: { processingStatus: 'completed' },
+      data: { processingStatus: 'completed', errorMessage: null },
     });
 
     this.pinoLogger.log({ jobId: job.id, jobName: job.name, tenantId }, 'Job completed');
