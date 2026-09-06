@@ -376,6 +376,9 @@ export class CandidatesService {
 
       // upsert, not create: re-assigning to the same job must overwrite rather than trip the
       // unique index — a swallowed P2002 here would look exactly like the unscored bug.
+      // scoredAt is set explicitly, not left to @default(now()): the default only fires on
+      // INSERT, so the update branch would otherwise keep the original ingestion timestamp
+      // next to a freshly computed score.
       const scoreFields = {
         score: scoreResult.score,
         reasoning: scoreResult.reasoning,
@@ -383,6 +386,7 @@ export class CandidatesService {
         gaps: scoreResult.gaps,
         breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
         modelUsed: scoreResult.modelUsed,
+        scoredAt: new Date(),
       };
       await this.prisma.candidateJobScore.upsert({
         where: { idx_scores_unique_per_app: { tenantId, applicationId: application.id } },
@@ -631,26 +635,21 @@ export class CandidatesService {
     });
 
     if (application) {
+      // scoredAt on BOTH branches: @default(now()) only applies to the INSERT, so a rescore
+      // that takes the update branch would report the original ingestion time.
+      const scoreFields = {
+        score: scoreResult.score,
+        reasoning: scoreResult.reasoning,
+        strengths: scoreResult.strengths,
+        gaps: scoreResult.gaps,
+        breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
+        modelUsed: scoreResult.modelUsed,
+        scoredAt: new Date(),
+      };
       await this.prisma.candidateJobScore.upsert({
         where: { idx_scores_unique_per_app: { tenantId, applicationId: application.id } },
-        create: {
-          tenantId,
-          applicationId: application.id,
-          score: scoreResult.score,
-          reasoning: scoreResult.reasoning,
-          strengths: scoreResult.strengths,
-          gaps: scoreResult.gaps,
-          breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
-          modelUsed: scoreResult.modelUsed,
-        },
-        update: {
-          score: scoreResult.score,
-          reasoning: scoreResult.reasoning,
-          strengths: scoreResult.strengths,
-          gaps: scoreResult.gaps,
-          breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
-          modelUsed: scoreResult.modelUsed,
-        },
+        create: { tenantId, applicationId: application.id, ...scoreFields },
+        update: scoreFields,
       });
     }
 

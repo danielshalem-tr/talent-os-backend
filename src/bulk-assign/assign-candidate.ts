@@ -116,6 +116,9 @@ export async function assignCandidateToJob(
       gaps: scoreResult.gaps,
       breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
       modelUsed: scoreResult.modelUsed,
+      // scoredAt only defaults on INSERT — a re-assign must stamp it explicitly or the row
+      // keeps the original ingestion time while showing a freshly computed score.
+      scoredAt: new Date(),
     },
   });
 

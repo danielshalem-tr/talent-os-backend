@@ -318,6 +318,18 @@ describe('CandidatesService', () => {
       });
     });
 
+    it('stamps a fresh scoredAt on both upsert branches so a re-assign refreshes the timestamp', async () => {
+      setupAssignment({ fromJobId: 'old-job', cvText: 'real cv text' });
+      const before = Date.now();
+
+      await service.updateCandidate('cand-1', { job_id: 'new-job' } as never, TENANT_ID);
+
+      const args = prismaMock.candidateJobScore.upsert.mock.calls[0][0];
+      expect(args.update.scoredAt).toBeInstanceOf(Date);
+      expect(args.update.scoredAt.getTime()).toBeGreaterThanOrEqual(before);
+      expect(args.create.scoredAt).toBeInstanceOf(Date);
+    });
+
     it('runs the scorer only after the assignment transaction has committed', async () => {
       // The scorer is a network call to an LLM. Prisma interactive transactions time out at 5s
       // by default, so scoring inside one rolls the assignment back and holds a row lock plus a
@@ -556,6 +568,46 @@ describe('CandidatesService', () => {
           data: { aiScore: 75 },
         }),
       );
+    });
+
+    it('stamps a fresh scoredAt on the update branch so the rescore timestamp is not the ingestion time', async () => {
+      prismaMock.candidate.findFirst = jest.fn().mockResolvedValue(
+        mockCandidate({
+          id: 'c1',
+          jobId: 'j1',
+          cvText: 'Real CV',
+          currentRole: 'Dev',
+          yearsExperience: 5,
+          skills: ['ts'],
+        }),
+      );
+      prismaMock.job = {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'j1',
+          title: 'Eng',
+          description: 'd',
+          mustHaveSkills: ['ts'],
+          roleSummary: null,
+          responsibilities: null,
+          niceToHaveSkills: [],
+          expYearsMin: null,
+          expYearsMax: null,
+          preferredOrgTypes: [],
+          screeningQuestions: [],
+        }),
+      };
+      prismaMock.application = { findFirst: jest.fn().mockResolvedValue({ id: 'app1' }) };
+      prismaMock.candidateJobScore = { upsert: jest.fn().mockResolvedValue({}) };
+      prismaMock.candidate.update = jest.fn().mockResolvedValue({});
+      prismaMock.candidate.updateMany = jest.fn().mockResolvedValue({ count: 1 });
+      const before = Date.now();
+
+      await service.rescoreCandidate('c1', TENANT_ID);
+
+      const args = prismaMock.candidateJobScore.upsert.mock.calls[0][0];
+      expect(args.update.scoredAt).toBeInstanceOf(Date);
+      expect(args.update.scoredAt.getTime()).toBeGreaterThanOrEqual(before);
+      expect(args.update.modelUsed).toBe('test');
     });
 
     it('returns null when the candidate has no assigned job', async () => {

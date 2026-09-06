@@ -91,6 +91,7 @@ const scoreSelect = {
   breakdown: true,
   modelUsed: true,
   matchConfidence: true,
+  scoredAt: true,
 } satisfies Prisma.CandidateJobScoreSelect;
 
 const applicationMergeSelect = {
@@ -170,6 +171,9 @@ export async function mergeCandidates(
             gaps: loserScore.gaps,
             modelUsed: loserScore.modelUsed,
             matchConfidence: loserScore.matchConfidence,
+            // Carry the source timestamp, not now(): this row now holds a score that was
+            // computed then, so scored_at must keep describing the score it sits next to.
+            scoredAt: loserScore.scoredAt,
             ...(loserScore.breakdown !== null ? { breakdown: loserScore.breakdown as Prisma.InputJsonValue } : {}),
           },
         });

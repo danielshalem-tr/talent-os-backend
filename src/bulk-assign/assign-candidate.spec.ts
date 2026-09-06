@@ -98,6 +98,17 @@ describe('assignCandidateToJob', () => {
     expect(result).toEqual({ outcome: 'scored', score: 84 });
   });
 
+  it('stamps a fresh scoredAt on the update branch so a re-assign refreshes the timestamp', async () => {
+    const prisma = makePrisma();
+    const before = Date.now();
+
+    await assignCandidateToJob(prisma, scoringAgent, params);
+
+    const args = prisma.candidateJobScore.upsert.mock.calls[0][0];
+    expect(args.update.scoredAt).toBeInstanceOf(Date);
+    expect(args.update.scoredAt.getTime()).toBeGreaterThanOrEqual(before);
+  });
+
   it('never moves a candidate who already has a stage on this job', async () => {
     const prisma = makePrisma({
       application: { upsert: jest.fn().mockResolvedValue({ id: 'app-1', jobStageId: 'stage-advanced' }) },

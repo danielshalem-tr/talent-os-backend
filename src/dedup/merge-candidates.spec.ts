@@ -152,6 +152,7 @@ describe('mergeCandidates', () => {
                       breakdown: null,
                       modelUsed: 'm',
                       matchConfidence: null,
+                      scoredAt: new Date('2026-09-01T10:00:00.000Z'),
                     },
                   ],
                 },
@@ -171,6 +172,7 @@ describe('mergeCandidates', () => {
                       breakdown: { version: 1 },
                       modelUsed: 'm2',
                       matchConfidence: null,
+                      scoredAt: new Date('2026-09-05T10:00:00.000Z'),
                     },
                   ],
                 },
@@ -216,6 +218,9 @@ describe('mergeCandidates', () => {
         gaps: [],
         modelUsed: 'm2',
         matchConfidence: null,
+        // The copied score keeps the timestamp it was actually computed at, so scored_at
+        // never describes a score the row no longer holds.
+        scoredAt: new Date('2026-09-05T10:00:00.000Z'),
         breakdown: { version: 1 },
       },
     });
