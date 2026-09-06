@@ -167,4 +167,12 @@ describe('SpamFilterService', () => {
     });
     expect(service.check(payload)).toEqual<SpamFilterResult>({ isSpam: true, suspicious: false });
   });
+  it('a logo-only agency email has no meaningful attachment once ContentID is populated', () => {
+    const payload = mockEmailPayload({
+      Attachments: [{ Name: 'logo.png', ContentType: 'image/png', ContentLength: 1200, ContentID: 'logo@sig' }],
+      TextBody: 'short',
+    });
+    expect(service.hasMeaningfulAttachment(payload.Attachments)).toBe(false);
+    expect(service.check(payload)).toEqual({ isSpam: true, suspicious: false });
+  });
 });

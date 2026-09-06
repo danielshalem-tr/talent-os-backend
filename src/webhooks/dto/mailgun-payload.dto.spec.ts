@@ -1,4 +1,4 @@
-import { MailgunRawBodySchema, parseMailgunPayload } from './mailgun-payload.dto';
+import { MailgunRawBodySchema, MailgunRawBodyDto, parseMailgunPayload } from './mailgun-payload.dto';
 
 const VALID_HEADERS = JSON.stringify([
   ['Message-Id', '<abc-123@mail.example.com>'],
@@ -76,12 +76,6 @@ describe('parseMailgunPayload', () => {
     expect(result.MessageID).toBe('abc-123@mail.example.com');
   });
 
-  it('falls back to token as MessageID when Message-Id header is absent', () => {
-    const headersWithoutMsgId = JSON.stringify([['X-Custom', 'value']]);
-    const body = { ...validBody, 'message-headers': headersWithoutMsgId };
-    const result = parseMailgunPayload(body as any, []);
-    expect(result.MessageID).toBe(validBody.token);
-  });
 
   it('uses from field as From', () => {
     const result = parseMailgunPayload(validBody as any, []);
@@ -139,5 +133,68 @@ describe('parseMailgunPayload', () => {
   it('produces empty Attachments array when no files are uploaded', () => {
     const result = parseMailgunPayload(validBody as any, []);
     expect(result.Attachments).toEqual([]);
+  });
+});
+
+describe('parseMailgunPayload — hardening', () => {
+  const file = (fieldname: string, originalname: string, mimetype: string, body = 'x'): Express.Multer.File =>
+    ({ fieldname, originalname, mimetype, size: body.length, buffer: Buffer.from(body) }) as Express.Multer.File;
+
+  it('populates ContentID for inline parts from content-id-map', () => {
+    const files = [file('attachment-1', 'cv.pdf', 'application/pdf'), file('attachment-2', 'logo.png', 'image/png')];
+    const body = { ...validBody, 'content-id-map': JSON.stringify({ '<logo@sig>': 'attachment-2' }) };
+    const out = parseMailgunPayload(body, files);
+    expect(out.Attachments[0].ContentID).toBeUndefined();
+    expect(out.Attachments[1].ContentID).toBe('logo@sig');
+  });
+
+  it('appends stripped-signature to TextBody and keeps the full plain body separately', () => {
+    const body = {
+      ...validBody,
+      'stripped-text': 'Hi, CV attached.',
+      'stripped-signature': 'Dana\n052-1234567',
+      'body-plain': 'Hi, CV attached.\nDana\n052-1234567\n> quoted ad #106',
+    };
+    const out = parseMailgunPayload(body, []);
+    expect(out.TextBody).toBe('Hi, CV attached.\n\nDana\n052-1234567');
+    expect(out.PlainBody).toContain('#106');
+  });
+
+  it('falls back to body-plain when stripped-text is blank', () => {
+    const out = parseMailgunPayload({ ...validBody, 'stripped-text': '   ', 'stripped-signature': 'sig', 'body-plain': 'full body' }, []);
+    expect(out.TextBody).toBe('full body');
+  });
+
+  it('extracts the sender display name', () => {
+    expect(parseMailgunPayload({ ...validBody, from: 'Emily Myaskovski <e@example.com>' }, []).FromName).toBe('Emily Myaskovski');
+    expect(parseMailgunPayload({ ...validBody, from: '"Cohen, Dana" <d@example.com>' }, []).FromName).toBe('Cohen, Dana');
+    expect(parseMailgunPayload({ ...validBody, from: 'bare@example.com' }, []).FromName).toBeUndefined();
+  });
+
+  it('joins a multi-part body-html', () => {
+    const parsed = MailgunRawBodySchema.safeParse({ ...validBody, 'body-html': ['<p>a</p>', '<p>b</p>'] });
+    expect(parsed.success).toBe(true);
+    expect(parseMailgunPayload((parsed as { data: MailgunRawBodyDto }).data, []).HtmlBody).toBe('<p>a</p>\n<p>b</p>');
+  });
+
+  it('ignores malformed header entries instead of throwing', () => {
+    const headers = JSON.stringify([null, ['X', 7], [7, 'id'], {}, ['Message-Id', '<ok@example.com>']]);
+    expect(parseMailgunPayload({ ...validBody, 'message-headers': headers }, []).MessageID).toBe('ok@example.com');
+  });
+
+  it('derives a stable id when Message-Id is missing or blank, independent of the delivery token', () => {
+    const noId = { ...validBody, 'message-headers': JSON.stringify([['Date', 'Mon, 1 Sep 2026 10:00:00 +0300']]) };
+    const a = parseMailgunPayload({ ...noId, token: 'a'.repeat(50) }, []).MessageID;
+    const b = parseMailgunPayload({ ...noId, token: 'b'.repeat(50) }, []).MessageID;
+    expect(a).toBe(b);
+    expect(a).toMatch(/^gen-[0-9a-f]{40}$/);
+    expect(parseMailgunPayload({ ...validBody, 'message-headers': JSON.stringify([['Message-Id', '<>']]) }, []).MessageID).toMatch(/^gen-/);
+  });
+
+  it('strips NUL from From and Subject', () => {
+    const NUL = String.fromCharCode(0);
+    const out = parseMailgunPayload({ ...validBody, from: `Dana <d${NUL}@example.com>`, subject: `CV${NUL}` }, []);
+    expect(out.From).toBe('d@example.com');
+    expect(out.Subject).toBe('CV');
   });
 });
