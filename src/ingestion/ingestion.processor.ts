@@ -47,9 +47,16 @@ export interface ProcessingContext {
 
 @Injectable()
 @Processor('ingest-email', {
-  lockDuration: 30000, // 30s lock per job (Issue Fix 1: prevents timeout on long-running scoring loops)
-  lockRenewTime: 5000, // renew lock every 5s
-  maxStalledCount: 2, // retry if stalled 2x
+  // Decorator options are evaluated at import time, before ConfigModule reads .env — this reads
+  // the PROCESS env (Coolify container env). Default 1 = today's behaviour; raise to 2–3 once
+  // the Phase 2 deadlines are live (runbook). Advisory locks + per-message caches make
+  // concurrent intakes safe.
+  concurrency: Math.max(1, Number(process.env.INGEST_CONCURRENCY ?? 1) || 1),
+  // One slow scanned-PDF parse blocks the event loop for seconds; with a 30 s lock that read as
+  // a stall and re-ran the job (double AI spend). Deadlines (Task 6) bound the real hangs.
+  lockDuration: 120_000,
+  lockRenewTime: 30_000,
+  maxStalledCount: 2,
 })
 export class IngestionProcessor extends WorkerHost {
   private readonly shortIdAliases: Map<string, string>;
