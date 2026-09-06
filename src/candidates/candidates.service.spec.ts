@@ -820,6 +820,7 @@ describe('CandidatesService.createCandidate()', () => {
     candidate: { findFirst: jest.Mock; findMany: jest.Mock };
     application: { create: jest.Mock };
     $transaction: jest.Mock;
+    $queryRaw: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -830,6 +831,7 @@ describe('CandidatesService.createCandidate()', () => {
       jobStage: { findFirst: jest.fn().mockResolvedValue({ id: 'stage-uuid' }) },
       candidate: { findFirst: jest.fn().mockResolvedValue(null), findMany: jest.fn().mockResolvedValue([]) },
       application: { create: jest.fn() },
+      $queryRaw: jest.fn().mockResolvedValue([]),
       $transaction: jest.fn().mockImplementation(async (fn: any) => {
         return fn({
           candidate: {
@@ -968,6 +970,21 @@ describe('CandidatesService.createCandidate()', () => {
   it('should reject duplicate email with ConflictException', async () => {
     mockPrisma.candidate.findFirst.mockResolvedValue({ id: 'existing-cand' });
     await expect(service.createCandidate(BASE_DTO, undefined, TENANT_ID)).rejects.toThrow(ConflictException);
+  });
+
+  it('rejects an existing phone with 409 PHONE_EXISTS (same check intake uses)', async () => {
+    mockPrisma.$queryRaw.mockResolvedValue([{ id: 'other-cand', email: null }]);
+
+    await expect(
+      service.createCandidate({ ...BASE_DTO, email: null, phone: '+972 50-123-4567' }, undefined, TENANT_ID),
+    ).rejects.toThrow(ConflictException);
+    const [, ...values] = mockPrisma.$queryRaw.mock.calls[0];
+    expect(values).toContain('972501234567');
+  });
+
+  it('skips the phone check for a phone under the digit floor', async () => {
+    await service.createCandidate({ ...BASE_DTO, email: null, phone: '-' }, undefined, TENANT_ID);
+    expect(mockPrisma.$queryRaw).not.toHaveBeenCalled();
   });
 
   // Transaction Atomicity Tests

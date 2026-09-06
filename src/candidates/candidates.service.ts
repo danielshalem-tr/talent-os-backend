@@ -22,6 +22,8 @@ import { scoringJobSelect, toScoringJob, ScoringJobRow } from '../scoring/scorin
 import { AttachmentExtractorService } from '../ingestion/services/attachment-extractor.service';
 import { sanitizePgText } from '../common/sanitize-pg-text';
 import { moveCandidateToStage } from './stage-move';
+import { phoneDigits } from '../dedup/contact-normalize';
+import { findCandidateByPhoneDigits } from '../dedup/phone-lookup';
 import type { EmailAttachmentDto } from '../webhooks';
 
 export type CandidateFilter = 'all';
@@ -973,6 +975,18 @@ export class CandidatesService {
             code: 'EMAIL_EXISTS',
             message: 'A candidate with this email already exists',
           },
+        });
+      }
+    }
+
+    // Pre-validation 3: phone uniqueness — the same digit-only match intake merges on, so a manual
+    // entry cannot create the duplicate intake would have folded into the existing row.
+    const digits = phoneDigits(dto.phone);
+    if (digits) {
+      const phoneMatch = await findCandidateByPhoneDigits(this.prisma, tenantId, digits);
+      if (phoneMatch) {
+        throw new ConflictException({
+          error: { code: 'PHONE_EXISTS', message: 'A candidate with this phone number already exists' },
         });
       }
     }
