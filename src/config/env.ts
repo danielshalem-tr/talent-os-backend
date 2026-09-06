@@ -38,6 +38,10 @@ export const envSchema = z.object({
   SHORT_ID_ALIASES: z.string().default(''),
   // Fallback role matcher — runs only for intakes with no job number in the email.
   MATCHER_MODEL: z.string().default('openai/gpt-4o-mini'),
+  // Intake contact blocklist (spec D3): comma-separated emails, `@domain` entries and phone
+  // numbers belonging to tenant staff / agencies. Matching extracted values are nulled before
+  // dedup and before insert, so they can never be attributed to a candidate or create a match.
+  INTAKE_CONTACT_BLOCKLIST: z.string().default(''),
   // PM Bridge — Jira integration.
   // Optional in this shared/base schema so the BullMQ worker (which never calls Jira) can boot
   // without these. The API process re-requires JIRA_BASE_URL/EMAIL/API_TOKEN via apiEnvSchema.
