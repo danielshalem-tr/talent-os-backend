@@ -472,6 +472,8 @@ describe('ExtractionAgentService - location prompt instruction (Issue 1)', () =>
     expect(callArg.system).toContain('HOME location');
     expect(callArg.system).toContain('Phone country prefix');
     expect(callArg.system).toContain('employer');
+    expect(callArg.maxRetries).toBe(1);
+    expect(callArg.abortSignal).toBeInstanceOf(AbortSignal);
   });
 });
 

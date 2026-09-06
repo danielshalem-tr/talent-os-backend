@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
+import { aiCallGuards } from '../../common/upstream-errors';
 
 export const JobMatchSchema = z.object({
   short_ids: z.array(z.string()),
@@ -79,6 +80,7 @@ export class JobMatcherService {
         system: INSTRUCTIONS,
         prompt,
         temperature: 0,
+        ...aiCallGuards(),
       });
 
       const openIds = new Set(input.openJobs.map((job) => job.shortId));

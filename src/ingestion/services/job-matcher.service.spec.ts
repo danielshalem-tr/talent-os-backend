@@ -39,6 +39,14 @@ describe('JobMatcherService', () => {
     await expect(service.match(baseInput)).resolves.toEqual(['106']);
   });
 
+  it('calls the model with a deadline and a single SDK retry', async () => {
+    generateObjectMock.mockResolvedValue({ object: { short_ids: ['106'] } });
+    await service.match(baseInput);
+    const callArg = generateObjectMock.mock.calls[0][0];
+    expect(callArg.maxRetries).toBe(1);
+    expect(callArg.abortSignal).toBeInstanceOf(AbortSignal);
+  });
+
   it('drops ids that are not in the open-job list', async () => {
     generateObjectMock.mockResolvedValue({ object: { short_ids: ['106', '999'] } });
     await expect(service.match(baseInput)).resolves.toEqual(['106']);

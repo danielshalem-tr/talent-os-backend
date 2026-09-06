@@ -4,6 +4,7 @@ import { generateObject } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { StorageService } from '../../storage/storage.service';
+import { aiCallGuards } from '../../common/upstream-errors';
 
 export type CvVerdict = 'cv' | 'not_cv' | 'uncertain';
 
@@ -117,6 +118,7 @@ export class CvClassifierService {
       system: INSTRUCTIONS,
       prompt,
       temperature: 0,
+      ...aiCallGuards(),
     });
 
     this.logger.log(`CV classification for ${input.messageId}: ${object.verdict}`);

@@ -5,6 +5,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { StorageService } from '../../storage/storage.service';
 import { normalizeNullishString } from '../../common/normalize-nullish';
+import { aiCallGuards } from '../../common/upstream-errors';
 
 export const CandidateExtractSchema = z.object({
   full_name: z.string(),
@@ -234,6 +235,7 @@ export class ExtractionAgentService {
       system: instructions,
       prompt,
       temperature: 0,
+      ...aiCallGuards(),
     });
 
     this.logger.log(`OpenRouter extraction successful for ${metadata.messageId}`);

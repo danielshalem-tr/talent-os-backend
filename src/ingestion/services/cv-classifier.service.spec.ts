@@ -147,6 +147,8 @@ describe('CvClassifierService', () => {
     expect(callArg.prompt).toContain('From: talent@jobhunt.co.il');
     expect(callArg.prompt).toContain('Resolved recruiting agency: jobhunt');
     expect(callArg.temperature).toBe(0);
+    expect(callArg.maxRetries).toBe(1);
+    expect(callArg.abortSignal).toBeInstanceOf(AbortSignal);
     expect(callArg.model).toBe('mocked-model');
   });
   it('does NOT short-circuit a known agency whose only attachment is a logo', async () => {
