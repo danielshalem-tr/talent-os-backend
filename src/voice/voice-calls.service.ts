@@ -146,8 +146,7 @@ export class VoiceCallsService {
       }),
     ]);
     if (!org?.voiceCallsEnabled) return; // Layer 3
-    // No row for phone-less candidates — the existing phone_missing DuplicateFlag already
-    // surfaces the condition; the candidate card explains "no phone".
+    // Phone-less candidates simply get no call; the candidate card explains "no phone".
     if (!candidate?.phone || candidate.phone.trim() === '') return;
 
     const jobs = await this.prisma.job.findMany({

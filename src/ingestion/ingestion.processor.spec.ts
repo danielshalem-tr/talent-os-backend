@@ -64,7 +64,7 @@ describe('IngestionProcessor', () => {
   };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
-  let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
+  let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; fillContactFields: jest.Mock };
 
   beforeEach(async () => {
     const txClient = {
@@ -117,10 +117,9 @@ describe('IngestionProcessor', () => {
     };
 
     dedupService = {
-      check: jest.fn().mockResolvedValue(null),
+      check: jest.fn().mockResolvedValue({ outcome: 'new', sharedPhoneWith: null }),
       insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
-      upsertCandidate: jest.fn().mockResolvedValue(undefined),
-      createFlag: jest.fn().mockResolvedValue(undefined),
+      fillContactFields: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -531,7 +530,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
   };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
-  let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
+  let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; fillContactFields: jest.Mock };
 
   beforeEach(async () => {
     const txClient = {
@@ -581,10 +580,9 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
       downloadPayload: jest.fn(),
     };
     dedupService = {
-      check: jest.fn().mockResolvedValue(null),
+      check: jest.fn().mockResolvedValue({ outcome: 'new', sharedPhoneWith: null }),
       insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
-      upsertCandidate: jest.fn().mockResolvedValue(undefined),
-      createFlag: jest.fn().mockResolvedValue(undefined),
+      fillContactFields: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -706,6 +704,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
 
 describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   let processor: IngestionProcessor;
+  const pinoLogger = { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() };
   let prisma: {
     emailIntakeLog: { update: jest.Mock; findUnique: jest.Mock };
     organization: { findUnique: jest.Mock };
@@ -717,12 +716,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
-  let dedupService: {
-    check: jest.Mock;
-    insertCandidate: jest.Mock;
-    upsertCandidate: jest.Mock;
-    createFlag: jest.Mock;
-  };
+  let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; fillContactFields: jest.Mock };
 
   beforeEach(async () => {
     const txClient = {
@@ -789,10 +783,9 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
       downloadPayload: jest.fn(),
     };
     dedupService = {
-      check: jest.fn().mockResolvedValue(null),
+      check: jest.fn().mockResolvedValue({ outcome: 'new', sharedPhoneWith: null }),
       insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
-      upsertCandidate: jest.fn().mockResolvedValue(undefined),
-      createFlag: jest.fn().mockResolvedValue(undefined),
+      fillContactFields: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -819,7 +812,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         { provide: VoiceCallsService, useValue: voiceCallsService },
         { provide: JobMatcherService, useValue: jobMatcherService },
         { provide: ConfigService, useValue: configService },
-        { provide: PinoLogger, useValue: { log: jest.fn(), error: jest.fn(), warn: jest.fn(), debug: jest.fn() } },
+        { provide: PinoLogger, useValue: pinoLogger },
       ],
     }).compile();
 
@@ -840,7 +833,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
 
   // 6-02-01: CAND-03 — no match → INSERT → email_intake_log.candidate_id set
   it('6-02-01: CAND-03 — no-match INSERT sets email_intake_log.candidate_id', async () => {
-    dedupService.check.mockResolvedValue(null);
+    dedupService.check.mockResolvedValue({ outcome: 'new', sharedPhoneWith: null });
     dedupService.insertCandidate.mockResolvedValue('new-candidate-id');
 
     const payload = validJobPayload();
@@ -850,65 +843,46 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
 
     expect(dedupService.check).toHaveBeenCalledTimes(1);
     expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
-    expect(dedupService.upsertCandidate).not.toHaveBeenCalled();
-    expect(dedupService.createFlag).not.toHaveBeenCalled();
+    expect(dedupService.fillContactFields).not.toHaveBeenCalled();
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  // 6-02-02: exact phone match → INSERT new candidate → createFlag links new→existing → email_intake_log.candidate_id = new ID
-  it('6-02-02: exact phone match — INSERT new candidate, createFlag links new→existing, intake log gets new candidateId', async () => {
-    dedupService.check.mockResolvedValue({
-      match: { id: 'existing-cand-id' },
-      confidence: 1.0,
-      fields: ['phone'],
-    });
-    dedupService.insertCandidate.mockResolvedValue('new-candidate-id');
+  it('6-02-02: phone match reuses the existing candidate, fills contact fields, inserts nothing', async () => {
+    dedupService.check.mockResolvedValue({ outcome: 'match', candidateId: 'existing-cand-id', field: 'phone' });
+    dedupService.fillContactFields.mockResolvedValue(['email']);
 
     const payload = validJobPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
-    const job = makeJob('test-dedup-2', payload);
-    await processor.process(job);
+    await processor.process(makeJob('test-dedup-2', payload));
 
-    // New candidate inserted — existing NOT overwritten
-    expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
-    expect(dedupService.upsertCandidate).not.toHaveBeenCalled();
-
-    // Flag links new row → existing row
-    expect(dedupService.createFlag).toHaveBeenCalledWith(
-      'new-candidate-id', // new candidate (incoming)
-      'existing-cand-id', // existing candidate (first submission)
-      1.0,
+    expect(dedupService.insertCandidate).not.toHaveBeenCalled();
+    expect(dedupService.fillContactFields).toHaveBeenCalledWith(
+      'existing-cand-id',
+      expect.objectContaining({ email: 'jane.doe@example.com', phone: '+1-555-0100' }),
       'test-tenant-id',
-      ['phone'],
       expect.anything(), // tx
     );
+    // Phase 7 enrichment runs against the EXISTING row
+    expect(prisma.candidate.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'existing-cand-id' } }));
+    expect(pinoLogger.log).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateId: 'existing-cand-id', matchedOn: 'phone', filled: ['email'] }),
+      'intake.dedup_merged',
+    );
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
-  // 6-02-03: phone_missing sentinel → INSERT new candidate + phone_missing flag created
-  it('6-02-03: phone_missing — new candidate inserted, phone_missing flag created, candidateId set on intake log', async () => {
-    dedupService.check.mockResolvedValue({
-      match: null,
-      confidence: 0,
-      fields: ['phone_missing'],
-    });
-    dedupService.insertCandidate.mockResolvedValue('phone-missing-candidate-id');
+  it('6-02-03: no phone → new candidate inserted, nothing flagged, candidateId set on intake log', async () => {
+    extractionAgent.extract.mockResolvedValue({ ...(await extractionAgent.extract()), phone: null });
+    dedupService.check.mockResolvedValue({ outcome: 'new', sharedPhoneWith: null });
+    dedupService.insertCandidate.mockResolvedValue('phone-less-candidate-id');
 
     const payload = validJobPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
-    const job = makeJob('test-dedup-3', payload);
-    await processor.process(job);
+    await processor.process(makeJob('test-dedup-3', payload));
 
     expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
-    expect(dedupService.createFlag).toHaveBeenCalledWith(
-      'phone-missing-candidate-id',
-      null,
-      0,
-      'test-tenant-id',
-      ['phone_missing'],
-      expect.anything(),
-    );
-    expect(dedupService.upsertCandidate).not.toHaveBeenCalled();
+    expect(dedupService.fillContactFields).not.toHaveBeenCalled();
+    expect(pinoLogger.warn).not.toHaveBeenCalledWith(expect.anything(), 'intake.phone_shared');
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
@@ -916,11 +890,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   // "candidate not saved" bug: the email already exists in the tenant, so we reuse that row
   // instead of inserting (which violated idx_candidates_tenant_email_unique and dropped it).
   it('6-02-04: email match — reuses existing candidate, no insertCandidate, enriches existing row', async () => {
-    dedupService.check.mockResolvedValue({
-      match: { id: 'existing-by-email' },
-      confidence: 1.0,
-      fields: ['email'],
-    });
+    dedupService.check.mockResolvedValue({ outcome: 'match', candidateId: 'existing-by-email', field: 'email' });
 
     const payload = validJobPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
@@ -929,7 +899,12 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
 
     // No new row — the existing candidate is reused (honors the unique email index)
     expect(dedupService.insertCandidate).not.toHaveBeenCalled();
-    expect(dedupService.upsertCandidate).not.toHaveBeenCalled();
+    expect(dedupService.fillContactFields).toHaveBeenCalledWith(
+      'existing-by-email',
+      expect.anything(),
+      'test-tenant-id',
+      expect.anything(),
+    );
     // Phase 7 enrichment runs against the EXISTING candidate id
     expect(prisma.candidate.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'existing-by-email' } }),
@@ -961,7 +936,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
       source_hint: null,
       source_agency: null,
     });
-    dedupService.check.mockResolvedValue({ match: { id: 'existing-by-email' }, confidence: 1.0, fields: ['email'] });
+    dedupService.check.mockResolvedValue({ outcome: 'match', candidateId: 'existing-by-email', field: 'email' });
 
     const payload = validJobPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
@@ -974,7 +949,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
 
   // Phase 6 atomicity: if emailIntakeLog.update throws inside transaction, insertCandidate is rolled back
   it('Phase 6 atomicity: if emailIntakeLog.update throws inside transaction, candidate INSERT is rolled back', async () => {
-    dedupService.check.mockResolvedValue(null);
+    dedupService.check.mockResolvedValue({ outcome: 'new', sharedPhoneWith: null });
     dedupService.insertCandidate.mockResolvedValue('new-candidate-id');
 
     // Override $transaction to simulate failure: invoke the callback but make emailIntakeLog.update throw
@@ -1002,38 +977,81 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     expect(txClient.emailIntakeLog.update).toHaveBeenCalledTimes(1);
   });
 
-  // 260407-iff: Exact phone match with flag creation — validates phone normalization and duplicate flag recording
-  it('260407-iff: exact phone match inserts new candidate and links via createFlag for HR duplicate review', async () => {
-    // Simulate exact phone match (confidence 1.0 = exact match via phone normalization)
-    // This covers scenarios like +972 50 1234567 matching 050 1234567 (same number, different format)
-    dedupService.check.mockResolvedValue({
-      match: { id: 'existing-phone-cand' },
-      confidence: 1.0,
-      fields: ['phone'],
-    });
+  it('shared phone with a different email → new candidate, intake.phone_shared logged, no flag', async () => {
+    dedupService.check.mockResolvedValue({ outcome: 'new', sharedPhoneWith: 'existing-phone-cand' });
     dedupService.insertCandidate.mockResolvedValue('new-phone-cand-id');
 
     const payload = validJobPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
-    const job = makeJob('test-phone-match', payload);
-    await processor.process(job);
+    await processor.process(makeJob('test-phone-shared', payload));
 
-    // INSERT new candidate — existing untouched
     expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
-    expect(dedupService.upsertCandidate).not.toHaveBeenCalled();
-
-    // createFlag cross-links new → existing
-    expect(dedupService.createFlag).toHaveBeenCalledWith(
-      'new-phone-cand-id', // new candidate (incoming submission)
-      'existing-phone-cand', // existing candidate (first submission)
-      1.0, // exact match confidence
-      'test-tenant-id',
-      ['phone'], // matchFields — indicates phone-based deduplication
-      expect.any(Object), // tx (transaction client)
+    expect(dedupService.fillContactFields).not.toHaveBeenCalled();
+    expect(pinoLogger.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateId: 'new-phone-cand-id', existingId: 'existing-phone-cand', phone: '15550100' }),
+      'intake.phone_shared',
     );
+  });
 
-    // candidateId should be set on the intake log
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+  it('advisory lock on phone uses the normalised digits, not the raw string', async () => {
+    const txExecuteRaw = jest.fn().mockResolvedValue(0);
+    const txClient = {
+      emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
+      $queryRaw: jest.fn().mockResolvedValue([]),
+      $executeRaw: txExecuteRaw,
+    };
+    prisma.$transaction.mockImplementationOnce(async (cb: (tx: typeof txClient) => Promise<void>) => cb(txClient));
+    extractionAgent.extract.mockResolvedValue({ ...(await extractionAgent.extract()), email: null, phone: '+1 (555) 010-0100' });
+
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('test-phone-lock', payload));
+
+    // $executeRaw is a tagged template: values follow the strings array.
+    const lockValues = txExecuteRaw.mock.calls.map((call: unknown[]) => call.slice(1)).flat();
+    expect(lockValues).toEqual(['15550100100']);
+  });
+
+  it('blocked contact values are nulled before dedup and insert, and the intake is still processed', async () => {
+    configService.get.mockImplementation((key: string) => {
+      if (key === 'INTAKE_CONTACT_BLOCKLIST') return '@staff.example,+1 555 0100';
+      if (key === 'SHORT_ID_ALIASES') return '300:106';
+      return undefined;
+    });
+    try {
+      extractionAgent.extract.mockResolvedValue({
+        ...(await extractionAgent.extract()),
+        email: 'hr@staff.example',
+        phone: '+1-555-0100',
+      });
+
+      const payload = validJobPayload();
+      storageService.downloadPayload.mockResolvedValue(payload);
+      await processor.process(makeJob('test-blocklist', payload));
+
+      expect(dedupService.check).toHaveBeenCalledWith(
+        expect.objectContaining({ email: null, phone: null }),
+        'test-tenant-id',
+        expect.anything(),
+      );
+      expect(dedupService.insertCandidate).toHaveBeenCalledWith(
+        expect.objectContaining({ email: null, phone: null }),
+        'test-tenant-id',
+        'sender@example.com',
+        expect.anything(),
+        'direct',
+      );
+      expect(pinoLogger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ blocked: ['email', 'phone'] }),
+        'intake.contact_blocked',
+      );
+      expect(prisma.emailIntakeLog.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: { processingStatus: 'completed' } }),
+      );
+    } finally {
+      // jest.clearAllMocks() keeps implementations — restore the file-level default explicitly.
+      configService.get.mockImplementation((key: string) => (key === 'SHORT_ID_ALIASES' ? '300:106' : undefined));
+    }
   });
 });
 
@@ -1050,7 +1068,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
   };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
-  let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; upsertCandidate: jest.Mock; createFlag: jest.Mock };
+  let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; fillContactFields: jest.Mock };
   let scoringService: { score: jest.Mock };
 
   const activeJob = {
@@ -1133,10 +1151,9 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     };
 
     dedupService = {
-      check: jest.fn().mockResolvedValue(null),
+      check: jest.fn().mockResolvedValue({ outcome: 'new', sharedPhoneWith: null }),
       insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
-      upsertCandidate: jest.fn().mockResolvedValue(undefined),
-      createFlag: jest.fn().mockResolvedValue(undefined),
+      fillContactFields: jest.fn().mockResolvedValue([]),
     };
 
     scoringService = {
@@ -1537,8 +1554,9 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           {
             provide: DedupService,
             useValue: {
-              check: jest.fn().mockResolvedValue(null),
+              check: jest.fn().mockResolvedValue({ outcome: 'new', sharedPhoneWith: null }),
               insertCandidate: jest.fn().mockResolvedValue('cand-1'),
+              fillContactFields: jest.fn().mockResolvedValue([]),
             },
           },
           {
@@ -1772,10 +1790,9 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
     };
     dedupService = {
-      check: jest.fn().mockResolvedValue(null),
+      check: jest.fn().mockResolvedValue({ outcome: 'new', sharedPhoneWith: null }),
       insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
-      upsertCandidate: jest.fn().mockResolvedValue(undefined),
-      createFlag: jest.fn().mockResolvedValue(undefined),
+      fillContactFields: jest.fn().mockResolvedValue([]),
     };
     storageService = { upload: jest.fn().mockResolvedValue('key'), downloadPayload: jest.fn() };
     const module: TestingModule = await Test.createTestingModule({
@@ -1892,10 +1909,9 @@ describe('IngestionProcessor — CV Classification Gate', () => {
     };
     extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };
     dedupService = {
-      check: jest.fn().mockResolvedValue(null),
+      check: jest.fn().mockResolvedValue({ outcome: 'new', sharedPhoneWith: null }),
       insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
-      upsertCandidate: jest.fn().mockResolvedValue(undefined),
-      createFlag: jest.fn().mockResolvedValue(undefined),
+      fillContactFields: jest.fn().mockResolvedValue([]),
     };
     cvClassifier = { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'resume' }) };
     storageService = { upload: jest.fn(), downloadPayload: jest.fn() };
@@ -2047,10 +2063,9 @@ describe('ingest gate (ai_ingest_enabled)', () => {
         {
           provide: DedupService,
           useValue: {
-            check: jest.fn().mockResolvedValue(null),
+            check: jest.fn().mockResolvedValue({ outcome: 'new', sharedPhoneWith: null }),
             insertCandidate: jest.fn().mockResolvedValue('new-candidate-id'),
-            upsertCandidate: jest.fn().mockResolvedValue(undefined),
-            createFlag: jest.fn().mockResolvedValue(undefined),
+            fillContactFields: jest.fn().mockResolvedValue([]),
           },
         },
         {

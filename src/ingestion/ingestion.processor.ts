@@ -11,7 +11,7 @@ import { ExtractionAgentService, CandidateExtract, resolveAgencyFromEmail } from
 import { CvClassifierService, CvClassification } from './services/cv-classifier.service';
 import { JobMatcherService } from './services/job-matcher.service';
 import { StorageService } from '../storage/storage.service';
-import { DedupService, DedupResult } from '../dedup/dedup.service';
+import { DedupService, DedupCheck } from '../dedup/dedup.service';
 import { Prisma } from '@prisma/client';
 import { ScoringAgentService, ScoringInput } from '../scoring/scoring.service';
 import { scoringJobSelect, toScoringJob, ScoringJobRow } from '../scoring/scoring-job-context';
@@ -20,6 +20,8 @@ import { sanitizePgText } from '../common/sanitize-pg-text';
 import { parseShortIdAliases, applyShortIdAliases } from '../config/short-id-aliases';
 import { extractShortIds } from './extract-short-ids';
 import { mergeEnrichment, EnrichmentFields } from './merge-enrichment';
+import { phoneDigits } from '../dedup/contact-normalize';
+import { applyContactBlocklist, parseContactBlocklist } from '../dedup/contact-blocklist';
 
 export interface ProcessingContext {
   fullText: string;
@@ -226,6 +228,16 @@ export class IngestionProcessor extends WorkerHost {
 
     this.pinoLogger.log({ messageId: payload.MessageID, fullName: extraction!.full_name }, 'Phase 4 complete');
 
+    // D3: tenant staff / agency contact details must never be attributed to a candidate or
+    // take part in dedup. Applied to the EXTRACTED values, before the identity check and
+    // before any insert. Parsed per job (trivial cost) so a config change needs no restart.
+    const blocklist = parseContactBlocklist(this.config.get<string>('INTAKE_CONTACT_BLOCKLIST'));
+    const blocklisted = applyContactBlocklist(extraction!, blocklist);
+    if (blocklisted.blocked.length > 0) {
+      this.pinoLogger.warn({ messageId: payload.MessageID, blocked: blocklisted.blocked }, 'intake.contact_blocked');
+      extraction = blocklisted.extract;
+    }
+
     // Phase 6: Duplicate detection + minimal candidate shell INSERT/UPSERT (atomic)
     // === IDEMPOTENCY GUARD ===
     // If this is a BullMQ retry and Phase 6 already completed (candidateId is set),
@@ -248,14 +260,17 @@ export class IngestionProcessor extends WorkerHost {
           if (extraction!.email?.trim()) {
             await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${extraction!.email.trim()}))`;
           }
-          if (extraction!.phone?.trim()) {
-            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${extraction!.phone}))`;
+          // Lock on the NORMALISED digits: two spellings of one number must take the same lock,
+          // or they race past each other and both insert.
+          const lockDigits = phoneDigits(extraction!.phone);
+          if (lockDigits) {
+            await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${lockDigits}))`;
           }
 
-          // Dedup check — now INSIDE the transaction, protected by advisory lock
-          let dedupResult: DedupResult | null = null;
+          // Dedup check — INSIDE the transaction, protected by the advisory locks above.
+          let dedup: DedupCheck;
           try {
-            dedupResult = await this.dedupService.check(extraction!, tenantId, tx);
+            dedup = await this.dedupService.check(extraction!, tenantId, tx);
           } catch (err) {
             this.pinoLogger.error(
               { messageId: payload.MessageID, error: (err as Error).message },
@@ -264,15 +279,18 @@ export class IngestionProcessor extends WorkerHost {
             throw err; // Transaction will rollback
           }
 
-          if (dedupResult?.fields.includes('email')) {
-            // Email match — this person already exists in the tenant (one email per tenant is
-            // enforced by the DB). Reuse the existing candidate instead of inserting a duplicate
-            // row (which would violate the unique index and drop the candidate). Phase 7 then
-            // enriches/refreshes that row with the latest CV data. Must come BEFORE the
-            // confidence === 1.0 branch, since an email match also has confidence 1.0.
-            candidateId = dedupResult.match!.id;
-          } else if (dedupResult === null) {
-            // No phone match — new candidate, proceed normally
+          if (dedup.outcome === 'match') {
+            // Same person (email, or phone with a compatible email). Reuse the row — no second
+            // row, no flag, nothing to review. D14: fill any contact field the existing row
+            // lacks, so a phone-matched submission cannot lose its email. Phase 7 then
+            // refreshes enrichment and adds the Application for the matched job.
+            candidateId = dedup.candidateId;
+            const filled = await this.dedupService.fillContactFields(candidateId, extraction!, tenantId, tx);
+            this.pinoLogger.log(
+              { messageId: payload.MessageID, candidateId, matchedOn: dedup.field, filled },
+              'intake.dedup_merged',
+            );
+          } else {
             candidateId = await this.dedupService.insertCandidate(
               extraction!,
               tenantId,
@@ -280,43 +298,19 @@ export class IngestionProcessor extends WorkerHost {
               tx,
               extraction!.source_hint,
             );
-          } else if (dedupResult.fields.includes('phone_missing')) {
-            // Phone not extracted from CV — insert as new candidate + flag for HR review
-            candidateId = await this.dedupService.insertCandidate(
-              extraction!,
-              tenantId,
-              payload.From,
-              tx,
-              extraction!.source_hint,
-            );
-            await this.dedupService.createFlag(
-              candidateId,
-              null, // no match target — self-referencing flag
-              0, // confidence 0 — not a real duplicate signal
-              tenantId,
-              ['phone_missing'],
-              tx,
-            );
-          } else if (dedupResult.confidence === 1.0) {
-            // Exact phone match — insert a NEW candidate row so both submissions appear in the UI
-            // The existing candidate is untouched (first-submission attribution preserved, D-07)
-            candidateId = await this.dedupService.insertCandidate(
-              extraction!,
-              tenantId,
-              payload.From,
-              tx,
-              extraction!.source_hint,
-            );
-
-            // Link new row → existing row so HR can see both are the same person
-            await this.dedupService.createFlag(
-              candidateId, // new candidate (incoming submission)
-              dedupResult.match!.id, // existing candidate (first submission)
-              dedupResult.confidence, // 1.0 — exact phone match
-              tenantId,
-              dedupResult.fields, // ['phone']
-              tx,
-            );
+            if (dedup.sharedPhoneWith) {
+              // D1: same phone, two different emails → two people (shared family/agency
+              // phone). Recorded for later review; no flag, no merge.
+              this.pinoLogger.warn(
+                {
+                  messageId: payload.MessageID,
+                  candidateId,
+                  existingId: dedup.sharedPhoneWith,
+                  phone: phoneDigits(extraction!.phone),
+                },
+                'intake.phone_shared',
+              );
+            }
           }
 
           // D-10: Set email_intake_log.candidate_id atomically — if this fails, candidate INSERT rolls back too
