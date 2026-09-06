@@ -23,7 +23,12 @@ export class StorageService {
   }
 
   // D-01, D-02, D-04, D-06, D-10, D-11
-  async upload(attachments: EmailAttachmentDto[], tenantId: string, messageId: string): Promise<string | null> {
+  async upload(
+    attachments: EmailAttachmentDto[],
+    tenantId: string,
+    messageId: string,
+    rawBuffers?: Buffer[],
+  ): Promise<string | null> {
     // D-01: the largest CV document (PDF/DOCX/DOC by MIME, extension or magic bytes) — logos,
     // signatures and calendar parts never qualify.
     const selected = this.selectLargestCvAttachment(attachments);
@@ -32,7 +37,9 @@ export class StorageService {
     // D-10: key extension and D-11: ContentType come from the DETECTED kind, so an
     // `application/octet-stream` PDF is stored as `.pdf` + `application/pdf` and renders in-browser.
     const key = `cvs/${tenantId}/${messageId}${extensionForKind(selected.kind)}`;
-    const buffer = Buffer.from(selected.att.Content!, 'base64');
+    // rawBuffers[i] is the multer buffer for attachments[i] — skip the base64 round-trip when given.
+    const index = attachments.indexOf(selected.att);
+    const buffer = rawBuffers?.[index] ?? Buffer.from(selected.att.Content!, 'base64');
 
     const command = new PutObjectCommand({
       Bucket: this.config.get<string>('R2_BUCKET_NAME')!,

@@ -4,6 +4,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from '../auth/jwt.service';
 import { IngestJobData } from '../webhooks/webhooks.service';
+import { INGEST_JOB_NAME, INGEST_JOB_OPTS, ingestReplayJobId } from '../ingestion/ingest-queue';
 
 export interface IngestControlStatus {
   ai_ingest_enabled: boolean;
@@ -93,19 +94,12 @@ export class IngestControlService {
       if (claimed.count === 0) continue;
 
       try {
-        // Fresh jobId — BullMQ silently ignores an add() whose jobId matches a completed
-        // job still retained in Redis (removeOnComplete keeps 1000), and the original
-        // held run completed under jobId === messageId.
         await this.ingestQueue.add(
-          'ingest-email',
+          INGEST_JOB_NAME,
           { tenantId: session.org, messageId: row.messageId } satisfies IngestJobData,
-          {
-            jobId: `${row.messageId}:replay:${Date.now()}`,
-            attempts: 3,
-            backoff: { type: 'exponential', delay: 5000 },
-            removeOnComplete: { count: 1000 },
-            removeOnFail: { count: 500 },
-          },
+          // Fresh id — BullMQ ignores add() for an id retained in ANY set, and the held run
+          // completed under the deterministic id.
+          { ...INGEST_JOB_OPTS, jobId: ingestReplayJobId(session.org, row.messageId) },
         );
       } catch (err) {
         // Enqueue failed — put the row back in 'held' so it stays visible in the queue UI

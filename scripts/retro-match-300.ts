@@ -1,3 +1,5 @@
+// NOTE: raw_payload holds metadata only for rows created after 2026-09-07; this script only
+// applies to older rows. Read from R2 via raw_payload_key for anything newer.
 /**
  * One-off retro: job #106 was advertised as "#300", so every applicant since the ad went
  * live landed unassigned and unscored. This finds those intakes, and enqueues the SAME

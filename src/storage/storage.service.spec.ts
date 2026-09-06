@@ -146,6 +146,14 @@ describe('StorageService', () => {
     expect(key).toBe('cvs/tenant-1/msg-2.doc');
   });
 
+  it('uses the raw buffer for the selected attachment when provided', async () => {
+    mockS3Send.mockResolvedValue({});
+    const raw = Buffer.from('%PDF-raw');
+    await service.upload([pngAttachment(), pdfAttachment()], 'tenant-1', 'msg-3', [Buffer.from('png'), raw]);
+    const cmd = mockS3Send.mock.calls[0][0] as PutObjectCommand;
+    expect(cmd.input.Body).toBe(raw);
+  });
+
   describe('uploadPayload / downloadPayload', () => {
     it('uploadPayload calls PutObjectCommand with correct key and JSON body', async () => {
       mockS3Send.mockResolvedValue({});

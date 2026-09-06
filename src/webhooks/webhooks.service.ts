@@ -2,14 +2,37 @@ import { Injectable, InternalServerErrorException, HttpException, HttpStatus, Lo
 import { ConfigService } from '@nestjs/config';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailPayloadDto, fallbackMessageId, parseMessageHeaders } from './dto/mailgun-payload.dto';
 import { sanitizePgText } from '../common/sanitize-pg-text';
 import { StorageService } from '../storage/storage.service';
+import { INGEST_JOB_NAME, INGEST_JOB_OPTS, ingestJobId, ingestReplayJobId } from '../ingestion/ingest-queue';
 
 export interface IngestJobData {
   tenantId: string;
   messageId: string;
+}
+
+/**
+ * What `email_intake_log.raw_payload` keeps: routing metadata only. The complete payload
+ * (bodies, base64 attachments) lives once, in R2 at `raw_payload_key`. Bodies used to be
+ * duplicated here as JSONB on the hottest table for no reader that could not use R2.
+ */
+export function intakeMetadata(payload: EmailPayloadDto): Prisma.InputJsonObject {
+  return {
+    MessageID: payload.MessageID,
+    From: payload.From,
+    FromName: payload.FromName ?? null,
+    Subject: payload.Subject ?? '',
+    Date: payload.Date,
+    Attachments: (payload.Attachments ?? []).map(({ Name, ContentType, ContentLength, ContentID }) => ({
+      Name,
+      ContentType,
+      ContentLength,
+      ContentID: ContentID ?? null,
+    })),
+  };
 }
 
 @Injectable()
@@ -23,7 +46,7 @@ export class WebhooksService {
     private readonly storageService: StorageService,
   ) {}
 
-  async enqueue(payload: EmailPayloadDto, _files: Express.Multer.File[] = []): Promise<{ status: string }> {
+  async enqueue(payload: EmailPayloadDto, files: Express.Multer.File[] = []): Promise<{ status: string }> {
     const tenantId = this.configService.get<string>('TENANT_ID')!;
     const messageId = payload.MessageID;
 
@@ -34,15 +57,9 @@ export class WebhooksService {
 
     if (existing) {
       if (existing.processingStatus === 'pending') {
-        // Payload already in R2 from first attempt — re-enqueue reference only
-        await this.ingestQueue.add('ingest-email', { tenantId, messageId } satisfies IngestJobData, {
-          jobId: messageId,
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 5000 },
-          removeOnComplete: { count: 1000 },
-          removeOnFail: { count: 500 },
-        });
-        this.logger.log(`Re-enqueued job for MessageID: ${messageId}`);
+        // Payload already in R2 from the first attempt — make sure exactly one job is live.
+        const outcome = await this.ensureEnqueued(tenantId, messageId);
+        this.logger.log(`Redelivery for MessageID ${messageId}: ${outcome}`);
       } else {
         this.logger.log(`Skipping duplicate MessageID: ${messageId} (status: ${existing.processingStatus})`);
       }
@@ -53,10 +70,14 @@ export class WebhooksService {
     // If R2 upload fails → return 5xx → Mailgun retries → no orphaned DB row created.
     const rawPayloadKey = await this.storageService.uploadPayload(payload, tenantId, messageId);
 
-    // Upload CV attachment to R2 (moved from worker Phase 5 — fixes M3 orphan risk).
-    const cvFileKey = await this.storageService.upload(payload.Attachments ?? [], tenantId, messageId);
+    // CV to R2 from the ORIGINAL multer buffers — no base64 → Buffer re-decode of a 10 MB file.
+    const cvFileKey = await this.storageService.upload(
+      payload.Attachments ?? [],
+      tenantId,
+      messageId,
+      files.map((file) => file.buffer),
+    );
 
-    const sanitizedPayload = this.stripAttachmentBlobs(payload);
     try {
       await this.prisma.emailIntakeLog.create({
         data: {
@@ -66,27 +87,24 @@ export class WebhooksService {
           subject: payload.Subject ?? '',
           receivedAt: new Date(payload.Date),
           processingStatus: 'pending',
-          rawPayload: sanitizedPayload as object,
+          rawPayload: intakeMetadata(payload),
           rawPayloadKey,
           cvFileKey: cvFileKey ?? null,
         },
       });
     } catch (err) {
-      if ((err as any)?.code === 'P2002') {
-        this.logger.log(`Concurrent duplicate for MessageID: ${messageId} — skipping`);
+      if ((err as { code?: string })?.code === 'P2002') {
+        // Lost a race with a concurrent delivery of the same message. The winner owns the row;
+        // converge on the same job id so the message is processed exactly once either way.
+        this.logger.log(`Concurrent duplicate for MessageID: ${messageId} — converging on the existing row`);
+        await this.ensureEnqueued(tenantId, messageId);
         return { status: 'queued' };
       }
       throw err;
     }
 
     try {
-      await this.ingestQueue.add('ingest-email', { tenantId, messageId } satisfies IngestJobData, {
-        jobId: messageId,
-        attempts: 3,
-        backoff: { type: 'exponential', delay: 5000 },
-        removeOnComplete: { count: 1000 },
-        removeOnFail: { count: 500 },
-      });
+      await this.ensureEnqueued(tenantId, messageId);
     } catch (error) {
       this.logger.error(`Failed to enqueue job for MessageID: ${messageId}`, error);
       throw new InternalServerErrorException('Failed to enqueue job');
@@ -94,6 +112,33 @@ export class WebhooksService {
 
     this.logger.log(`Enqueued job for MessageID: ${messageId}`);
     return { status: 'queued' };
+  }
+
+  /**
+   * Exactly one live job per message. BullMQ silently ignores add() for an id that exists in ANY
+   * retained set — including failed (removeOnFail keeps 500) — which is precisely the state a
+   * `pending` row is in when its job burned every attempt before the first status write.
+   */
+  private async ensureEnqueued(tenantId: string, messageId: string): Promise<'added' | 'retried' | 'already-queued'> {
+    const data = { tenantId, messageId } satisfies IngestJobData;
+    const jobId = ingestJobId(tenantId, messageId);
+    const existingJob = await this.ingestQueue.getJob(jobId);
+    if (!existingJob) {
+      await this.ingestQueue.add(INGEST_JOB_NAME, data, { ...INGEST_JOB_OPTS, jobId });
+      return 'added';
+    }
+    if (await existingJob.isFailed()) {
+      await existingJob.retry();
+      return 'retried';
+    }
+    if (await existingJob.isCompleted()) {
+      await this.ingestQueue.add(INGEST_JOB_NAME, data, {
+        ...INGEST_JOB_OPTS,
+        jobId: ingestReplayJobId(tenantId, messageId),
+      });
+      return 'added';
+    }
+    return 'already-queued';
   }
 
   /**
@@ -161,14 +206,5 @@ export class WebhooksService {
     }
 
     return { status: overallStatus, db: dbStatus, redis: redisStatus };
-  }
-
-  private stripAttachmentBlobs(payload: EmailPayloadDto): Omit<EmailPayloadDto, 'Attachments'> & {
-    Attachments: Omit<NonNullable<EmailPayloadDto['Attachments']>[number], 'Content'>[];
-  } {
-    return {
-      ...payload,
-      Attachments: (payload.Attachments ?? []).map(({ Content: _content, ...meta }) => meta),
-    };
   }
 }

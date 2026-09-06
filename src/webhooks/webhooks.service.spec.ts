@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 import { WebhooksService } from './webhooks.service';
 import { EmailPayloadDto } from './dto/mailgun-payload.dto';
+import { INGEST_JOB_OPTS, ingestJobId } from '../ingestion/ingest-queue';
 
 describe('WebhooksService', () => {
   let service: WebhooksService;
@@ -30,6 +31,7 @@ describe('WebhooksService', () => {
 
     mockQueue = {
       add: jest.fn().mockResolvedValue({}),
+      getJob: jest.fn().mockResolvedValue(null),
     };
 
     mockConfigService = {
@@ -132,7 +134,7 @@ describe('WebhooksService', () => {
   });
 
   describe('enqueues with correct retry config', () => {
-    it('calls queue.add with attempts=3, backoff type=exponential, delay=5000', async () => {
+    it('calls queue.add with the shared INGEST_JOB_OPTS', async () => {
       mockPrisma.emailIntakeLog.findUnique.mockResolvedValue(null);
       mockPrisma.emailIntakeLog.create.mockResolvedValue({ id: 'log-1' });
 
@@ -141,19 +143,13 @@ describe('WebhooksService', () => {
       expect(mockQueue.add).toHaveBeenCalledWith(
         'ingest-email',
         expect.anything(),
-        expect.objectContaining({
-          jobId: 'msg-abc-123',
-          attempts: 3,
-          backoff: { type: 'exponential', delay: 5000 },
-          removeOnFail: { count: 500 },
-          removeOnComplete: { count: 1000 },
-        }),
+        { ...INGEST_JOB_OPTS, jobId: ingestJobId(tenantId, 'msg-abc-123') },
       );
     });
   });
 
-  describe('uses messageId as jobId to prevent duplicate enqueue', () => {
-    it('uses messageId as jobId on fresh enqueue', async () => {
+  describe('uses a deterministic hashed jobId to prevent duplicate enqueue', () => {
+    it('uses the hashed jobId on fresh enqueue', async () => {
       mockPrisma.emailIntakeLog.findUnique.mockResolvedValue(null);
       mockPrisma.emailIntakeLog.create.mockResolvedValue({ id: 'log-1' });
 
@@ -162,11 +158,11 @@ describe('WebhooksService', () => {
       expect(mockQueue.add).toHaveBeenCalledWith(
         'ingest-email',
         expect.anything(),
-        expect.objectContaining({ jobId: basePayload.MessageID }),
+        expect.objectContaining({ jobId: ingestJobId(tenantId, basePayload.MessageID) }),
       );
     });
 
-    it('uses messageId as jobId on re-enqueue (pending status)', async () => {
+    it('uses the hashed jobId on re-enqueue (pending status)', async () => {
       mockPrisma.emailIntakeLog.findUnique.mockResolvedValue({
         id: 'log-1',
         processingStatus: 'pending',
@@ -177,7 +173,7 @@ describe('WebhooksService', () => {
       expect(mockQueue.add).toHaveBeenCalledWith(
         'ingest-email',
         expect.anything(),
-        expect.objectContaining({ jobId: basePayload.MessageID }),
+        expect.objectContaining({ jobId: ingestJobId(tenantId, basePayload.MessageID) }),
       );
     });
   });
@@ -271,5 +267,80 @@ describe('WebhooksService', () => {
       expect(call.where.idx_intake_message_id.messageId).toMatch(/^gen-[0-9a-f]{40}$/);
       expect(call.create.fromEmail).toBe('a@example.com');
     });
+  });
+  describe('redelivery while the row is pending', () => {
+    beforeEach(() => mockPrisma.emailIntakeLog.findUnique.mockResolvedValue({ processingStatus: 'pending' }));
+
+    it('adds the job when none exists under the deterministic id', async () => {
+      await service.enqueue(basePayload);
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'ingest-email',
+        { tenantId, messageId: 'msg-abc-123' },
+        { ...INGEST_JOB_OPTS, jobId: ingestJobId(tenantId, 'msg-abc-123') },
+      );
+    });
+
+    it('retries a job that exhausted its attempts instead of adding a no-op duplicate', async () => {
+      const failedJob = {
+        isFailed: jest.fn().mockResolvedValue(true),
+        isCompleted: jest.fn().mockResolvedValue(false),
+        retry: jest.fn().mockResolvedValue(undefined),
+      };
+      mockQueue.getJob.mockResolvedValue(failedJob);
+      await service.enqueue(basePayload);
+      expect(failedJob.retry).toHaveBeenCalledTimes(1);
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('re-adds under a replay id when the retained job completed', async () => {
+      mockQueue.getJob.mockResolvedValue({
+        isFailed: jest.fn().mockResolvedValue(false),
+        isCompleted: jest.fn().mockResolvedValue(true),
+      });
+      await service.enqueue(basePayload);
+      const opts = mockQueue.add.mock.calls[0][2];
+      expect(opts.jobId).toMatch(new RegExp(`^${ingestJobId(tenantId, 'msg-abc-123')}-replay-\\d+$`));
+    });
+
+    it('does nothing when the job is still waiting or active', async () => {
+      mockQueue.getJob.mockResolvedValue({
+        isFailed: jest.fn().mockResolvedValue(false),
+        isCompleted: jest.fn().mockResolvedValue(false),
+      });
+      await service.enqueue(basePayload);
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+  });
+
+  it('a concurrent-duplicate insert (P2002) still ensures the job is enqueued', async () => {
+    mockPrisma.emailIntakeLog.findUnique.mockResolvedValue(null);
+    mockPrisma.emailIntakeLog.create.mockRejectedValue({ code: 'P2002' });
+    await expect(service.enqueue(basePayload)).resolves.toEqual({ status: 'queued' });
+    expect(mockQueue.getJob).toHaveBeenCalledWith(ingestJobId(tenantId, 'msg-abc-123'));
+    expect(mockQueue.add).toHaveBeenCalledTimes(1);
+  });
+
+  it('stores only metadata in raw_payload and hands multer buffers to storage', async () => {
+    mockPrisma.emailIntakeLog.findUnique.mockResolvedValue(null);
+    mockPrisma.emailIntakeLog.create.mockResolvedValue({ id: 'log-1' });
+    const buffer = Buffer.from('pdf');
+    const payload: EmailPayloadDto = {
+      ...basePayload,
+      TextBody: 'body text',
+      HtmlBody: '<p>body</p>',
+      PlainBody: 'body text',
+      Attachments: [{ Name: 'cv.pdf', ContentType: 'application/pdf', ContentLength: 3, Content: buffer.toString('base64') }],
+    };
+    await service.enqueue(payload, [{ buffer } as Express.Multer.File]);
+    const created = mockPrisma.emailIntakeLog.create.mock.calls[0][0].data;
+    expect(created.rawPayload).toEqual({
+      MessageID: 'msg-abc-123',
+      From: 'candidate@example.com',
+      FromName: null,
+      Subject: 'My Application',
+      Date: '2026-03-22T12:00:00Z',
+      Attachments: [{ Name: 'cv.pdf', ContentType: 'application/pdf', ContentLength: 3, ContentID: null }],
+    });
+    expect(mockStorageService.upload).toHaveBeenCalledWith(payload.Attachments, tenantId, 'msg-abc-123', [buffer]);
   });
 });

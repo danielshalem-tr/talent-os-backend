@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException } from '@nestjs/common';
 import { IngestControlService } from './ingest-control.service';
 import { IngestControlController } from './ingest-control.controller';
 import { JwtPayload } from '../auth/jwt.service';
+import { ingestJobId } from '../ingestion/ingest-queue';
 
 const admin: JwtPayload = { sub: 'u1', org: 'org-1', role: 'admin' };
 const viewer: JwtPayload = { sub: 'u2', org: 'org-1', role: 'viewer' };
@@ -77,8 +78,8 @@ describe('IngestControlService', () => {
     const [name, data, opts] = queue.add.mock.calls[0];
     expect(name).toBe('ingest-email');
     expect(data).toEqual({ tenantId: 'org-1', messageId: 'm1' });
-    expect(opts.jobId).toMatch(/^m1:replay:\d+$/);
-    expect(opts.attempts).toBe(3);
+    expect(opts.jobId).toMatch(new RegExp(`^${ingestJobId('org-1', 'm1')}-replay-\\d+$`));
+    expect(opts.attempts).toBe(5);
   });
 
   it('replay skips rows another concurrent replay already claimed (count 0 → no enqueue)', async () => {
