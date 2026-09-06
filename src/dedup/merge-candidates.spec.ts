@@ -51,6 +51,18 @@ describe('planPhoneMerges', () => {
     expect(plan.shared).toEqual([{ survivorId: 'a', otherId: 'c', digits: '0501234567' }]);
   });
 
+  it('treats emails that differ only in case as one person', () => {
+    const plan = planPhoneMerges(
+      [
+        { id: 'a', email: 'Snir1603@gmail.com', phone: '0508513558', createdAt: d('2026-01-01') },
+        { id: 'b', email: 'snir1603@gmail.com', phone: '0508513558', createdAt: d('2026-02-01') },
+      ],
+      none,
+    );
+    expect(plan.merges).toEqual([{ survivorId: 'a', removedId: 'b', digits: '0508513558' }]);
+    expect(plan.shared).toEqual([]);
+  });
+
   it('ignores blocklisted phones, null phones and junk phones', () => {
     const plan = planPhoneMerges(
       [

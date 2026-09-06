@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CandidateExtract } from '../ingestion/services/extraction-agent.service';
-import { normalizeEmail, phoneDigits } from './contact-normalize';
+import { emailIdentity, normalizeEmail, phoneDigits } from './contact-normalize';
 import { findCandidateByPhoneDigits } from './phone-lookup';
 
 /**
@@ -40,8 +40,10 @@ export class DedupService {
     if (!phoneMatch) return { outcome: 'new', sharedPhoneWith: null };
 
     // D1 email-compatibility guard: same phone + two different non-null emails = two people.
-    const existingEmail = normalizeEmail(phoneMatch.email);
-    if (email && existingEmail && email !== existingEmail) {
+    // Compared case-insensitively — a capital letter is not a different applicant.
+    const incomingIdentity = emailIdentity(candidate.email);
+    const existingIdentity = emailIdentity(phoneMatch.email);
+    if (incomingIdentity && existingIdentity && incomingIdentity !== existingIdentity) {
       return { outcome: 'new', sharedPhoneWith: phoneMatch.id };
     }
     return { outcome: 'match', candidateId: phoneMatch.id, field: 'phone' };

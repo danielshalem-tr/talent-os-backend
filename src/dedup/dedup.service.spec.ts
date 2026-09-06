@@ -109,6 +109,16 @@ describe('DedupService', () => {
       expect(result).toEqual({ outcome: 'match', candidateId: 'existing-123', field: 'phone' });
     });
 
+    it('phone match whose emails differ only in case → same person, match on phone', async () => {
+      // Production had "Snir1603@" and "snir1603@" on one phone as two rows.
+      prisma.candidate.findFirst.mockResolvedValue(null); // exact-case email lookup misses
+      prisma.$queryRaw.mockResolvedValue([{ id: 'existing-123', email: 'JANE.DOE@example.com' }]);
+
+      const result = await service.check(mockCandidateDedupExtract(), 'tenant-abc');
+
+      expect(result).toEqual({ outcome: 'match', candidateId: 'existing-123', field: 'phone' });
+    });
+
     it('phone match with two different non-null emails → new candidate that shares a phone (D1)', async () => {
       prisma.$queryRaw.mockResolvedValue([{ id: 'existing-123', email: 'other.person@example.com' }]);
 

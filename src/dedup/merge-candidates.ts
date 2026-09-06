@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { mergeEnrichment, EnrichmentFields } from '../ingestion/merge-enrichment';
 import { ContactBlocklist, isBlockedPhone } from './contact-blocklist';
-import { normalizeEmail, phoneDigits } from './contact-normalize';
+import { emailIdentity, normalizeEmail, phoneDigits } from './contact-normalize';
 
 // ─── Planning (pure) ──────────────────────────────────────────────────────────
 
@@ -39,9 +39,9 @@ export function planPhoneMerges(rows: MergeCandidateRow[], blocklist: ContactBlo
     if (group.length < 2) continue;
     const ordered = [...group].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
     const survivor = ordered[0];
-    let survivorEmail = normalizeEmail(survivor.email);
+    let survivorEmail = emailIdentity(survivor.email);
     for (const row of ordered.slice(1)) {
-      const email = normalizeEmail(row.email);
+      const email = emailIdentity(row.email);
       if (email && survivorEmail && email !== survivorEmail) {
         plan.shared.push({ survivorId: survivor.id, otherId: row.id, digits });
         continue;

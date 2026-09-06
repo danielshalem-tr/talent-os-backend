@@ -1,4 +1,4 @@
-import { MIN_PHONE_DIGITS, normalizeEmail, phoneDigits } from './contact-normalize';
+import { MIN_PHONE_DIGITS, emailIdentity, normalizeEmail, phoneDigits } from './contact-normalize';
 
 describe('phoneDigits', () => {
   it('strips every non-digit character', () => {
@@ -31,6 +31,23 @@ describe('normalizeEmail', () => {
   });
 
   it('does NOT change case — the DB unique index on email is case-sensitive and dedup must match it', () => {
+    expect(normalizeEmail('Jane@Example.com')).toBe('Jane@Example.com');
+  });
+});
+
+describe('emailIdentity', () => {
+  it('case-folds, so one mailbox is one person however it was typed', () => {
+    expect(emailIdentity('Snir1603@gmail.com')).toBe('snir1603@gmail.com');
+    expect(emailIdentity('snir1603@gmail.com')).toBe('snir1603@gmail.com');
+    expect(emailIdentity('  Lotembarazany1@Gmail.com ')).toBe('lotembarazany1@gmail.com');
+  });
+
+  it('is null for blank input, like normalizeEmail', () => {
+    expect(emailIdentity(null)).toBeNull();
+    expect(emailIdentity('   ')).toBeNull();
+  });
+
+  it('does not change what normalizeEmail writes — the unique index stays case-sensitive', () => {
     expect(normalizeEmail('Jane@Example.com')).toBe('Jane@Example.com');
   });
 });

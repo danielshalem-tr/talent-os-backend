@@ -20,3 +20,15 @@ export function normalizeEmail(raw: string | null | undefined): string | null {
   const trimmed = raw?.trim() ?? '';
   return trimmed === '' ? null : trimmed;
 }
+
+/**
+ * Case-folded email, used ONLY to decide whether two rows are the same human.
+ *
+ * Writes and the DB unique index keep the original case (see normalizeEmail) — mailbox case
+ * is technically significant. But identity is a different question: nobody is two applicants
+ * because they capitalised their address. Comparing case-sensitively here left real duplicates
+ * unmerged in production ("Snir1603@" vs "snir1603@" on one phone).
+ */
+export function emailIdentity(raw: string | null | undefined): string | null {
+  return normalizeEmail(raw)?.toLowerCase() ?? null;
+}
