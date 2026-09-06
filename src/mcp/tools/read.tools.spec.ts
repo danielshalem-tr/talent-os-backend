@@ -37,8 +37,8 @@ describe('read tools + gate helpers', () => {
 
   it('search_candidates schema only accepts the filters the service supports', () => {
     const tool = regSearch({ findAll: jest.fn() })('search_candidates');
-    expect(tool.inputSchema.safeParse({ filter: 'duplicates' }).success).toBe(true);
     expect(tool.inputSchema.safeParse({ filter: 'all' }).success).toBe(true);
+    expect(tool.inputSchema.safeParse({ filter: 'duplicates' }).success).toBe(false);
     expect(tool.inputSchema.safeParse({ filter: 'unassigned' }).success).toBe(false);
   });
 
@@ -79,6 +79,7 @@ describe('read tools + gate helpers', () => {
       stage_summaries: { s1: 'notes' },
       salary_expectation_min: 1,
       job_title: 'BE Eng',
+      is_duplicate: false,
     };
     const findAll = jest.fn().mockResolvedValue({ candidates: [fat], total: 1 });
     const res = await regSearch({ findAll })('search_candidates').handler({}, org);
@@ -87,6 +88,7 @@ describe('read tools + gate helpers', () => {
     expect(c.ai_summary).toBeUndefined();
     expect(c.stage_summaries).toBeUndefined();
     expect(c.salary_expectation_min).toBeUndefined();
+    expect(c.is_duplicate).toBeUndefined();
   });
 
   it('get_pipeline uses the same compact pagination', async () => {

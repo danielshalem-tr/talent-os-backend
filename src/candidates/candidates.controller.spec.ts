@@ -398,29 +398,6 @@ describe('CandidatesController (Integration Tests)', () => {
         );
       });
 
-      it('combines unassigned filter with filter=duplicates', async () => {
-        jest.spyOn(candidatesService, 'findAll').mockResolvedValue({
-          candidates: [
-            { ...mockCandidateResponse, id: 'cand-1', is_duplicate: true, job_id: null },
-          ],
-          total: 1,
-        });
-
-        const response = await request(app.getHttpServer())
-          .get('/candidates?unassigned=true&filter=duplicates')
-          .expect(200);
-
-        expect(response.body.candidates).toHaveLength(1);
-        expect(candidatesService.findAll).toHaveBeenCalledWith(
-          TENANT_ID,
-          undefined,
-          'duplicates',
-          undefined,
-          true,
-          undefined // created_within_days
-        );
-      });
-
       it('takes unassigned=true over jobId param', async () => {
         jest.spyOn(candidatesService, 'findAll').mockResolvedValue({
           candidates: [

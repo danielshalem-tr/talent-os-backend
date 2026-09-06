@@ -721,20 +721,10 @@ describe('CandidatesService', () => {
     );
   });
 
-  // Test 6: filter='duplicates' → WHERE duplicateFlags.some reviewed=false
-  it('filter=duplicates adds duplicateFlags.some condition to where clause', async () => {
-    prismaMock.candidate.findMany.mockResolvedValue([]);
-
-    await service.findAll(TENANT_ID, undefined, 'duplicates');
-
-    expect(prismaMock.candidate.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          tenantId: TENANT_ID,
-          duplicateFlags: { some: { reviewed: false } },
-        }),
-      }),
-    );
+  // Test 6: filter='duplicates' is gone with the duplicate-flag pipeline
+  it('filter=duplicates is no longer supported → INVALID_FILTER', async () => {
+    await expect(service.findAll(TENANT_ID, undefined, 'duplicates' as never)).rejects.toThrow(BadRequestException);
+    expect(prismaMock.candidate.findMany).not.toHaveBeenCalled();
   });
 
   // Test 7: no scores → ai_score is null
@@ -755,6 +745,15 @@ describe('CandidatesService', () => {
     const result = await service.findAll(TENANT_ID);
 
     expect(result.candidates[0].is_duplicate).toBe(false);
+  });
+
+  it('never joins duplicate_flags any more', async () => {
+    prismaMock.candidate.findMany.mockResolvedValue([mockCandidate()]);
+
+    await service.findAll(TENANT_ID);
+
+    const select = prismaMock.candidate.findMany.mock.calls[0][0].select;
+    expect(select.duplicateFlags).toBeUndefined();
   });
 
   // Test 9: created_within_days → WHERE createdAt.gte is N days ago
@@ -1360,29 +1359,6 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
         where: expect.objectContaining({
           jobId: null,
           OR: expect.any(Array),
-        }),
-      }),
-    );
-  });
-
-  it('combines unassigned filter with duplicates filter', async () => {
-    mockPrisma.candidate.findMany.mockResolvedValue([
-      {
-        id: 'cand-1',
-        jobId: null,
-        duplicateFlags: [{ id: 'dup-1', reviewed: false }],
-        applications: [],
-        candidateStageSummaries: [],
-      },
-    ]);
-
-    await service.findAll(TENANT_ID, undefined, 'duplicates', undefined, true);
-
-    expect(mockPrisma.candidate.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expect.objectContaining({
-          jobId: null,
-          duplicateFlags: { some: { reviewed: false } },
         }),
       }),
     );

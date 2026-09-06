@@ -23,7 +23,6 @@ const COMPACT_CANDIDATE_FIELDS = [
   'ai_score',
   'status',
   'is_rejected',
-  'is_duplicate',
   'job_id',
   'job_title',
   'hiring_stage_id',
@@ -52,15 +51,10 @@ export function registerReadTools(server: McpServer, s: McpServices): void {
     {
       title: 'Search candidates',
       description:
-        "Search candidates in the caller's organization, newest first. Optional keyword `q`, `filter`, `job_id`, `unassigned`, and `limit`/`offset` paging (default 25 per page). Returns compact records plus the total match count — use get_candidate for the full record (AI summary, salary, stage notes). Does NOT return CV text — use get_candidate_cv for a CV link.",
+        "Search candidates in the caller's organization, newest first. Optional keyword `q`, `job_id`, `unassigned`, and `limit`/`offset` paging (default 25 per page). Returns compact records plus the total match count — use get_candidate for the full record (AI summary, salary, stage notes). Does NOT return CV text — use get_candidate_cv for a CV link.",
       inputSchema: {
         q: z.string().optional().describe('Keyword across name/role/email.'),
-        filter: z
-          .enum(['all', 'duplicates'])
-          .optional()
-          .describe(
-            '"duplicates" = candidates with unreviewed duplicate flags. For unassigned candidates use the `unassigned` flag instead.',
-          ),
+        filter: z.enum(['all']).optional().describe('Only "all" is supported. For unassigned candidates use the `unassigned` flag.'),
         job_id: z.string().uuid().optional().describe('Restrict to one job (its pipeline).'),
         unassigned: z.boolean().optional().describe('Only candidates with no assigned job.'),
         ...paging,
@@ -180,7 +174,8 @@ export function registerReadTools(server: McpServer, s: McpServices): void {
     'dashboard_counts',
     {
       title: 'Dashboard counts',
-      description: 'Return summary counts for the organization: total, duplicates, unassigned.',
+      description:
+        'Return summary counts for the organization: total, duplicates (always 0 — duplicate flags are no longer produced), unassigned.',
       inputSchema: {},
       annotations: readOnly,
     },

@@ -24,7 +24,7 @@ import { sanitizePgText } from '../common/sanitize-pg-text';
 import { moveCandidateToStage } from './stage-move';
 import type { EmailAttachmentDto } from '../webhooks';
 
-export type CandidateFilter = 'all' | 'duplicates';
+export type CandidateFilter = 'all';
 
 @Injectable()
 export class CandidatesService {
@@ -39,23 +39,13 @@ export class CandidatesService {
   ) {}
 
   async getCounts(tenantId: string): Promise<{ total: number; duplicates: number; unassigned: number }> {
-    const [total, duplicates, unassigned] = await Promise.all([
-      this.prisma.candidate.count({
-        where: { tenantId, status: 'active' },
-      }),
-      this.prisma.candidate.count({
-        where: {
-          tenantId,
-          status: 'active',
-          duplicateFlags: { some: { reviewed: false } },
-        },
-      }),
-      this.prisma.candidate.count({
-        where: { tenantId, status: 'active', jobId: null },
-      }),
+    const [total, unassigned] = await Promise.all([
+      this.prisma.candidate.count({ where: { tenantId, status: 'active' } }),
+      this.prisma.candidate.count({ where: { tenantId, status: 'active', jobId: null } }),
     ]);
-
-    return { total, duplicates, unassigned };
+    // Duplicate flags are no longer produced or read (dedup auto-merges). Kept at 0 until the
+    // client stops reading it; the counts shape changes in the Pool/Archive round.
+    return { total, duplicates: 0, unassigned };
   }
 
   async findAll(
@@ -66,14 +56,11 @@ export class CandidatesService {
     unassigned?: boolean,
     createdWithinDays?: string,
   ): Promise<{ candidates: CandidateResponse[]; total: number }> {
-    // Validate filter parameter — only 'all' and 'duplicates' are supported
-    // (C-4 fix: prevents silent failures from removed filters like 'high-score', 'available', 'referred')
-    if (filter && !['all', 'duplicates'].includes(filter)) {
+    // Only 'all' remains. 'duplicates' was removed with the duplicate-flag pipeline; reject it
+    // loudly rather than silently returning everything.
+    if (filter && filter !== 'all') {
       throw new BadRequestException({
-        error: {
-          code: 'INVALID_FILTER',
-          message: `Filter '${filter}' is not supported. Use 'all' or 'duplicates'.`,
-        },
+        error: { code: 'INVALID_FILTER', message: `Filter '${filter}' is not supported. Use 'all'.` },
       });
     }
 
@@ -113,13 +100,6 @@ export class CandidatesService {
       ];
     }
 
-    // filter='duplicates': has unreviewed duplicate_flag
-    if (filter === 'duplicates') {
-      where.duplicateFlags = {
-        some: { reviewed: false },
-      };
-    }
-
     const candidates = await this.prisma.candidate.findMany({
       where,
       select: {
@@ -148,10 +128,6 @@ export class CandidatesService {
         },
         job: {
           select: { title: true },
-        },
-        duplicateFlags: {
-          where: { reviewed: false },
-          select: { id: true },
         },
         status: true,
         rejectionReason: true,
@@ -185,7 +161,7 @@ export class CandidatesService {
         ai_score: aiScore,
         cv_readable: computeCvReadable(c.cvText),
         is_score_overridden: c.isScoreOverridden,
-        is_duplicate: c.duplicateFlags.length > 0,
+        is_duplicate: false, // deprecated — always false since Round 1 dedup; removed in Round 2
         skills: c.skills,
 
         // Profile data
@@ -262,10 +238,6 @@ export class CandidatesService {
             },
           },
         },
-        duplicateFlags: {
-          where: { reviewed: false },
-          select: { id: true },
-        },
         status: true,
         rejectionReason: true,
         rejectionNote: true,
@@ -306,7 +278,7 @@ export class CandidatesService {
       cv_readable: computeCvReadable(c.cvText),
       is_score_overridden: c.isScoreOverridden,
       ai_summary: c.aiSummary,
-      is_duplicate: c.duplicateFlags.length > 0,
+      is_duplicate: false, // deprecated — always false since Round 1 dedup; removed in Round 2
       years_experience: c.yearsExperience,
       salary_expectation_min: c.salaryExpectationMin,
       salary_expectation_max: c.salaryExpectationMax,
