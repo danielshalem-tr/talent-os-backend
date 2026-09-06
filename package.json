@@ -31,7 +31,8 @@
     "db:studio": "npx prisma studio",
     "ngrok": "bash scripts/ngrok-webhook.sh",
     "retro:match": "ts-node -r tsconfig-paths/register scripts/retro-match-300.ts",
-    "scoring:eval": "ts-node -r tsconfig-paths/register scripts/scoring-eval.ts"
+    "scoring:eval": "ts-node -r tsconfig-paths/register scripts/scoring-eval.ts",
+    "dedup:cleanup": "ts-node -r tsconfig-paths/register scripts/dedup-cleanup.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^3.0.63",
