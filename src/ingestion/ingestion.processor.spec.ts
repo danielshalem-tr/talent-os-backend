@@ -23,7 +23,7 @@ jest.mock('@openrouter/ai-sdk-provider', () => ({ createOpenRouter: jest.fn().mo
 // Mock pdf-parse and mammoth so AttachmentExtractorService doesn't crash on fake content
 jest.mock('pdf-parse', () => jest.fn().mockResolvedValue({ text: 'pdf text' }));
 jest.mock('mammoth', () => ({
-  convertToHtml: jest.fn().mockResolvedValue({ value: 'docx text' }),
+  extractRawText: jest.fn().mockResolvedValue({ value: 'docx text' }),
 }));
 
 // Voice screening seam. One shared mock: jest.clearAllMocks() (used throughout this file)

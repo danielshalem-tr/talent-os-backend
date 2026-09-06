@@ -1,20 +1,26 @@
-// Mock pdf-parse PDFParse class to return controlled text
-jest.mock('pdf-parse', () => ({
-  PDFParse: jest.fn().mockImplementation(() => ({
-    getText: jest.fn().mockResolvedValue({ text: 'Extracted PDF text content' }),
-  })),
-}));
+// Mock pdf-parse PDFParse class to return controlled text. The destroy spy is created inside
+// the factory (and re-exported as __destroy) because jest.mock is hoisted above the imports.
+jest.mock('pdf-parse', () => {
+  const destroy = jest.fn().mockResolvedValue(undefined);
+  return {
+    __destroy: destroy,
+    PDFParse: jest.fn().mockImplementation(() => ({
+      getText: jest.fn().mockResolvedValue({ text: 'Extracted PDF text content' }),
+      destroy,
+    })),
+  };
+});
 
-// Mock mammoth to return controlled HTML
+// Mock mammoth to return controlled raw text
 jest.mock('mammoth', () => ({
-  convertToHtml: jest
-    .fn()
-    .mockResolvedValue({ value: '<p>Extracted DOCX text content</p>' }),
+  extractRawText: jest.fn().mockResolvedValue({ value: 'Extracted DOCX text content' }),
 }));
 
 import { AttachmentExtractorService } from './attachment-extractor.service';
 import { EmailAttachmentDto } from '../../webhooks/dto/mailgun-payload.dto';
 import { mockBase64Pdf, mockBase64Docx } from './spam-filter.service.spec';
+
+const { __destroy: destroyMock } = jest.requireMock('pdf-parse') as { __destroy: jest.Mock };
 
 describe('AttachmentExtractorService', () => {
   let service: AttachmentExtractorService;
@@ -115,6 +121,22 @@ describe('AttachmentExtractorService', () => {
     };
     const result = await service.extract([att]);
     expect(result).toContain('Extracted PDF text content');
+  });
+
+  it('destroys the PDF parser after a successful parse', async () => {
+    await service.extract([{ Name: 'cv.pdf', ContentType: 'application/pdf', Content: mockBase64Pdf(), ContentLength: 100 }]);
+    expect(destroyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('destroys the PDF parser even when getText throws', async () => {
+    const { PDFParse } = jest.requireMock('pdf-parse') as { PDFParse: jest.Mock };
+    PDFParse.mockImplementationOnce(() => ({
+      getText: jest.fn().mockRejectedValue(new Error('corrupt')),
+      destroy: destroyMock,
+    }));
+    const result = await service.extract([{ Name: 'bad.pdf', ContentType: 'application/pdf', Content: mockBase64Pdf(), ContentLength: 100 }]);
+    expect(result).toBe('');
+    expect(destroyMock).toHaveBeenCalledTimes(1);
   });
 
   // BUG-CV-NULLBYTE: pdf-parse can emit NUL (U+0000) bytes that Postgres text columns

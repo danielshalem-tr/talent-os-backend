@@ -27,14 +27,19 @@ export class AttachmentExtractorService {
 
         const kind = detectCvDocument(att);
         if (kind === 'pdf') {
-          // PROC-04: pdf-parse@2.x class-based API accepts Buffer as Uint8Array-compatible data
+          // PROC-04: pdf-parse@2.x class API. destroy() is part of its contract — without it
+          // pdf.js document structures stay alive in a worker that runs for weeks.
           const parser = new PDFParse({ data: buffer });
-          const result = await parser.getText();
-          text = result.text ?? '';
+          try {
+            const result = await parser.getText();
+            text = result.text ?? '';
+          } finally {
+            await parser.destroy?.().catch(() => undefined);
+          }
         } else if (kind === 'docx') {
-          // PROC-05: mammoth returns HTML; strip tags to plain text
-          const result = await mammoth.convertToHtml({ buffer });
-          text = this.htmlToPlainText(result.value);
+          // PROC-05: raw text — no HTML round-trip, no image conversion, no entity decoding.
+          const result = await mammoth.extractRawText({ buffer });
+          text = result.value ?? '';
         } else {
           // D-04: images, calendars, legacy .doc (no parser) — log, skip, keep going. A .doc is
           // still STORED by the webhook (storage.service.ts) so the file is downloadable.
@@ -61,17 +66,5 @@ export class AttachmentExtractorService {
     }
 
     return sections.join('\n\n');
-  }
-
-  private htmlToPlainText(html: string): string {
-    return html
-      .replace(/<[^>]*>/g, ' ') // Replace tags with space (not empty) to preserve word boundaries
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&amp;/g, '&')
-      .replace(/&quot;/g, '"')
-      .replace(/\s+/g, ' ') // Collapse multiple spaces
-      .trim();
   }
 }
