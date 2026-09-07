@@ -36,7 +36,6 @@
     "dedup:merge-case-emails": "ts-node -r tsconfig-paths/register scripts/merge-case-duplicate-emails.ts"
   },
   "dependencies": {
-    "@ai-sdk/anthropic": "^3.0.63",
     "@aws-sdk/client-s3": "^3.1014.0",
     "@aws-sdk/s3-request-presigner": "^3.1018.0",
     "@elevenlabs/elevenlabs-js": "^2.65.0",
@@ -46,7 +45,6 @@
     "@nestjs/config": "^4.0.3",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
-    "@nestjs/terminus": "^11.1.1",
     "@nestjs/throttler": "^6.5.0",
     "@openrouter/ai-sdk-provider": "^2.8.1",
     "@openrouter/sdk": "^0.9.11",
@@ -61,6 +59,7 @@
     "ioredis": "^5.10.1",
     "jose": "^6.2.2",
     "mammoth": "^1.12.0",
+    "multer": "^2.1.1",
     "nestjs-pino": "^4.6.1",
     "nodemailer": "^6.10.1",
     "pdf-parse": "^2.4.5",
@@ -73,7 +72,6 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.2.0",
     "@eslint/js": "^9.18.0",
     "@nestjs/cli": "^11.0.0",
     "@nestjs/schematics": "^11.0.0",
@@ -84,7 +82,6 @@
     "@types/multer": "^2.1.0",
     "@types/node": "^22.10.7",
     "@types/nodemailer": "^6.4.17",
-    "@types/pdf-parse": "^1.1.5",
     "@types/supertest": "^6.0.2",
     "eslint": "^9.18.0",
     "eslint-config-prettier": "^10.0.1",
@@ -92,10 +89,8 @@
     "globals": "^16.0.0",
     "jest": "^30.0.0",
     "prettier": "^3.4.2",
-    "source-map-support": "^0.5.21",
     "supertest": "^7.0.0",
     "ts-jest": "^29.2.5",
-    "ts-loader": "^9.5.2",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^5.7.3",
