@@ -83,6 +83,10 @@ services:
 
   redis:
     image: redis:7-alpine
+    # Queue jobs are the only copy of "this email still needs processing" between the webhook's
+    # 200 and the worker: AOF every second + never evict keys. 96 MB ceiling leaves headroom
+    # under the 128 MB container limit so Redis returns OOM errors instead of being killed.
+    command: ['redis-server', '--appendonly', 'yes', '--appendfsync', 'everysec', '--maxmemory', '96mb', '--maxmemory-policy', 'noeviction']
     ports:
       - '6379:6379'
     volumes:
