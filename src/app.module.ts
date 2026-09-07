@@ -12,7 +12,6 @@ import { ApplicationsModule } from './applications/applications.module';
 import { AppConfigModule } from './config/app-config/app-config.module';
 import { HealthModule } from './health/health.module';
 import { AuthModule } from './auth/auth.module';
-import { PmBridgeModule } from './pm-bridge/pm-bridge.module';
 import { PmbTokenModule } from './pmb-token/pmb-token.module';
 import { IngestControlModule } from './ingest-control/ingest-control.module';
 import { VoiceModule } from './voice/voice.module';
@@ -56,7 +55,6 @@ import { VoiceModule } from './voice/voice.module';
     AppConfigModule,
     HealthModule,
     AuthModule,
-    PmBridgeModule,
     PmbTokenModule,
     IngestControlModule,
     VoiceModule,

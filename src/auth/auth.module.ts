@@ -28,10 +28,9 @@ import { StorageModule } from '../storage/storage.module';
     { provide: APP_GUARD, useExisting: SessionGuard },
   ],
   // SessionGuard AND JwtService must both be exported: modules that apply
-  // @UseGuards(SessionGuard) (candidates, jobs, applications, pm-bridge, config) construct
+  // @UseGuards(SessionGuard) (candidates, jobs, applications, config, pmb-token) construct
   // the guard in their own injector context, so JwtService — the guard's dependency — must
   // be resolvable there too. Exporting SessionGuard alone makes the API fail to boot.
-  // EmailService is exported so PM Bridge's PmNotifyService can send held-item emails.
-  exports: [SessionGuard, JwtService, EmailService, AuthService],
+  exports: [SessionGuard, JwtService, AuthService],
 })
 export class AuthModule {}

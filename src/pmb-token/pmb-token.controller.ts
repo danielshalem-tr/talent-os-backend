@@ -5,8 +5,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { PmbTokenService } from './pmb-token.service';
 
 // Identity vouch only: any active logged-in user can mint. Authorization (the PM
-// allowlist) is enforced server-side by the Box per tenant — mirroring how the
-// embedded PmBridgeGuard treated its client-side gate as cosmetic.
+// allowlist) is enforced server-side by the Box per tenant; the client-side allowlist
+// in the SPA launcher is cosmetic.
 @UseGuards(SessionGuard)
 @Controller('pmb-token')
 export class PmbTokenController {
