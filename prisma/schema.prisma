@@ -9,17 +9,17 @@ datasource db {
 // ─── organizations (Prisma model renamed from Tenant; DB table stays "tenants") ──
 // tenantId fields intentionally kept in v1.0 tables — they reference organizations.id (@@map("tenants"))
 model Organization {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  name             String    @db.Text
-  shortId          String?   @unique @map("short_id") @db.VarChar(20)
-  logoUrl          String?   @map("logo_url") @db.Text
-  isActive         Boolean   @default(true) @map("is_active")
-  createdByUserId  String?   @unique @map("created_by_user_id") @db.Uuid
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  id                    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                  String    @db.Text
+  shortId               String?   @unique @map("short_id") @db.VarChar(20)
+  logoUrl               String?   @map("logo_url") @db.Text
+  isActive              Boolean   @default(true) @map("is_active")
+  createdByUserId       String?   @unique @map("created_by_user_id") @db.Uuid
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt             DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   onboardingCompletedAt DateTime? @map("onboarding_completed_at") @db.Timestamptz
-  aiIngestEnabled  Boolean   @default(true) @map("ai_ingest_enabled")
-  voiceCallsEnabled Boolean  @default(false) @map("voice_calls_enabled")
+  aiIngestEnabled       Boolean   @default(true) @map("ai_ingest_enabled")
+  voiceCallsEnabled     Boolean   @default(false) @map("voice_calls_enabled")
 
   // Relations — v1.0 relations
   jobs                    Job[]
@@ -37,11 +37,6 @@ model Organization {
   users       User[]
   invitations Invitation[]
   createdBy   User?        @relation("OrgCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
-
-  // Relations — pm-bridge
-  pmProductDecisions PmProductDecision[]
-  pmHeldRequests     PmHeldRequest[]
-  pmTicketReviews    PmTicketReview[]
 
   @@map("tenants")
 }
@@ -72,16 +67,16 @@ model User {
 
 // ─── invitations ──────────────────────────────────────────────────────────────
 model Invitation {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  organizationId   String   @map("organization_id") @db.Uuid
-  email            String   @db.Text
-  role             String   @db.Text
-  token            String   @unique @db.Text
-  status           String   @default("pending") @db.Text
-  expiresAt        DateTime @map("expires_at") @db.Timestamptz
-  invitedByUserId  String   @map("invited_by_user_id") @db.Uuid
-  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId  String   @map("organization_id") @db.Uuid
+  email           String   @db.Text
+  role            String   @db.Text
+  token           String   @unique @db.Text
+  status          String   @default("pending") @db.Text
+  expiresAt       DateTime @map("expires_at") @db.Timestamptz
+  invitedByUserId String   @map("invited_by_user_id") @db.Uuid
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
@@ -139,33 +134,33 @@ model Job {
 
 // ─── candidates ───────────────────────────────────────────────────────────────
 model Candidate {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId        String   @map("tenant_id") @db.Uuid
-  jobId           String?  @map("job_id") @db.Uuid
-  hiringStageId   String?  @map("hiring_stage_id") @db.Uuid
-  email           String?  @db.Text
-  fullName        String   @map("full_name") @db.Text
-  phone           String?  @db.Text
-  currentRole     String?  @map("current_role") @db.Text
-  location        String?  @db.Text
-  yearsExperience Int?     @map("years_experience") @db.SmallInt
-  salaryExpectationMin Int? @map("salary_expectation_min")
-  salaryExpectationMax Int? @map("salary_expectation_max")
-  skills          String[] @default([])
-  cvText          String?  @map("cv_text") @db.Text
-  cvFileUrl       String?  @map("cv_file_url") @db.Text
-  source          String   @db.Text
-  sourceAgency    String?  @map("source_agency") @db.Text
-  sourceEmail     String?  @map("source_email") @db.Text
-  aiSummary       String?  @map("ai_summary") @db.Text
-  aiScore         Int?     @map("ai_score") @db.SmallInt
-  isScoreOverridden Boolean @default(false) @map("is_score_overridden")
-  metadata        Json?    @db.JsonB
-  status          String   @default("active") @db.Text // "active", "rejected"
-  rejectionReason String?  @map("rejection_reason") @db.VarChar(100) // not_a_fit | overqualified | underqualified | failed_screening | compensation_mismatch | culture_fit | other
-  rejectionNote   String?  @map("rejection_note") @db.Text
-  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  id                   String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenantId             String   @map("tenant_id") @db.Uuid
+  jobId                String?  @map("job_id") @db.Uuid
+  hiringStageId        String?  @map("hiring_stage_id") @db.Uuid
+  email                String?  @db.Text
+  fullName             String   @map("full_name") @db.Text
+  phone                String?  @db.Text
+  currentRole          String?  @map("current_role") @db.Text
+  location             String?  @db.Text
+  yearsExperience      Int?     @map("years_experience") @db.SmallInt
+  salaryExpectationMin Int?     @map("salary_expectation_min")
+  salaryExpectationMax Int?     @map("salary_expectation_max")
+  skills               String[] @default([])
+  cvText               String?  @map("cv_text") @db.Text
+  cvFileUrl            String?  @map("cv_file_url") @db.Text
+  source               String   @db.Text
+  sourceAgency         String?  @map("source_agency") @db.Text
+  sourceEmail          String?  @map("source_email") @db.Text
+  aiSummary            String?  @map("ai_summary") @db.Text
+  aiScore              Int?     @map("ai_score") @db.SmallInt
+  isScoreOverridden    Boolean  @default(false) @map("is_score_overridden")
+  metadata             Json?    @db.JsonB
+  status               String   @default("active") @db.Text // "active", "rejected"
+  rejectionReason      String?  @map("rejection_reason") @db.VarChar(100) // not_a_fit | overqualified | underqualified | failed_screening | compensation_mismatch | culture_fit | other
+  rejectionNote        String?  @map("rejection_note") @db.Text
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz
 
   // Relations
   // relation field name kept as 'tenant' intentionally — see D-31 in 18-CONTEXT.md
@@ -237,8 +232,8 @@ model CandidateJobScore {
   tenant      Organization @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   application Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade)
 
-  @@index([applicationId], name: "idx_scores_application")
   @@unique([tenantId, applicationId], name: "idx_scores_unique_per_app")
+  @@index([applicationId], name: "idx_scores_application")
   @@map("candidate_job_scores")
 }
 
@@ -282,8 +277,8 @@ model EmailIntakeLog {
 
   // Relations
   // relation field name kept as 'tenant' intentionally — see D-31 in 18-CONTEXT.md
-  tenant       Organization   @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  candidate    Candidate?     @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  tenant       Organization  @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  candidate    Candidate?    @relation(fields: [candidateId], references: [id], onDelete: SetNull)
   applications Application[]
 
   // DB-08: unique message_id per tenant — primary idempotency guard
@@ -339,66 +334,6 @@ model ScreeningQuestion {
 
   @@index([jobId], name: "idx_screening_questions_job")
   @@map("screening_questions")
-}
-
-// ─── pm_product_decisions ─────────────────────────────────────────────────────
-// status CHECK constraint ('active','superseded') is added via raw SQL in the migration
-model PmProductDecision {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId     String   @map("tenant_id") @db.Uuid
-  statement    String   @db.Text
-  contextRoute String?  @map("context_route") @db.Text
-  createdBy    String   @map("created_by") @db.Text
-  status       String   @default("active") @db.Text
-  supersededBy String?  @map("superseded_by") @db.Uuid
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz
-
-  organization Organization @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-
-  @@index([tenantId, status], name: "idx_pm_decisions_tenant_status")
-  @@map("pm_product_decisions")
-}
-
-// ─── pm_held_requests ─────────────────────────────────────────────────────────
-// Conflicting PM requests parked for Daniel to approve/reject. Nothing reaches Jira
-// until approved. status CHECK ('pending','approved','rejected') added via raw SQL.
-model PmHeldRequest {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId     String    @map("tenant_id") @db.Uuid
-  rawText      String    @map("raw_text") @db.Text
-  goal         String    @db.Text
-  conversation Json      @db.JsonB
-  brief        Json      @db.JsonB
-  verdict      Json      @db.JsonB
-  status       String    @default("pending") @db.Text
-  createdBy    String    @map("created_by") @db.Text
-  jiraKeys     Json?     @map("jira_keys") @db.JsonB
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  resolvedAt   DateTime? @map("resolved_at") @db.Timestamptz
-
-  organization Organization @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-
-  @@index([tenantId, status], name: "idx_pm_held_tenant_status")
-  @@map("pm_held_requests")
-}
-
-// ─── pm_ticket_reviews ────────────────────────────────────────────────────────
-// PM verdicts on Done tickets, append-only; the latest row per (tenant, jiraKey)
-// wins. action CHECK ('verified','reopened') added via raw SQL migration.
-model PmTicketReview {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  tenantId  String   @map("tenant_id") @db.Uuid
-  jiraKey   String   @map("jira_key") @db.Text
-  action    String   @db.Text            // 'verified' | 'reopened'
-  comment   String?  @db.Text            // reopen reason (null for verified)
-  createdBy String   @map("created_by") @db.Text
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
-
-  organization Organization @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-
-  @@index([tenantId, jiraKey], name: "idx_pm_ticket_reviews_tenant_key")
-  @@map("pm_ticket_reviews")
 }
 
 // ─── candidate_stage_summaries ────────────────────────────────────────────────
