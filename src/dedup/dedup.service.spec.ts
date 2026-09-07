@@ -56,6 +56,7 @@ describe('DedupService', () => {
       expect(prisma.candidate.findFirst).toHaveBeenCalledWith(
         expect.objectContaining({
           where: { tenantId: 'tenant-abc', email: { equals: 'jane.doe@example.com', mode: 'insensitive' } },
+          orderBy: { createdAt: 'asc' },
         }),
       );
       expect(prisma.$queryRaw).not.toHaveBeenCalled();

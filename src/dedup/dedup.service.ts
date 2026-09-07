@@ -36,9 +36,13 @@ export class DedupService {
     // the processor's advisory lock on the lower-cased address serialises concurrent spellings.
     const email = normalizeEmail(candidate.email);
     if (email) {
+      // Oldest row wins: until the case-insensitive unique index exists (migration 20260907000000
+      // WARNING branch), two spellings of one address can coexist — repeated submissions must
+      // converge on the same row, not on whichever the planner returns first.
       const emailMatch = await client.candidate.findFirst({
         where: { tenantId, email: { equals: email, mode: 'insensitive' } },
         select: { id: true },
+        orderBy: { createdAt: 'asc' },
       });
       if (emailMatch) return { outcome: 'match', candidateId: emailMatch.id, field: 'email' };
     }
