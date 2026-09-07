@@ -21,7 +21,14 @@ jest.mock('ai', () => ({ generateObject: jest.fn() }));
 jest.mock('@openrouter/ai-sdk-provider', () => ({ createOpenRouter: jest.fn().mockReturnValue({ chat: jest.fn() }) }));
 
 // Mock pdf-parse and mammoth so AttachmentExtractorService doesn't crash on fake content
-jest.mock('pdf-parse', () => jest.fn().mockResolvedValue({ text: 'pdf text' }));
+// pdf-parse@2.x class API (see attachment-extractor.service.ts) — the old function-style mock
+// made every PDF attachment in this file silently extract to ''.
+jest.mock('pdf-parse', () => ({
+  PDFParse: jest.fn().mockImplementation(() => ({
+    getText: jest.fn().mockResolvedValue({ text: 'pdf text' }),
+    destroy: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
 jest.mock('mammoth', () => ({
   extractRawText: jest.fn().mockResolvedValue({ value: 'docx text' }),
 }));
@@ -61,7 +68,7 @@ describe('IngestionProcessor', () => {
     candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
     job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
     application: { upsert: jest.Mock; findUnique: jest.Mock };
-    candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
+    candidateJobScore: { create: jest.Mock; upsert: jest.Mock; findMany: jest.Mock; aggregate: jest.Mock };
   };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
@@ -110,7 +117,12 @@ describe('IngestionProcessor', () => {
         upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: {
+        create: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+        aggregate: jest.fn().mockResolvedValue({ _max: { score: null } }),
+      },
     };
 
     extractionAgent = {
@@ -735,7 +747,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
     candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
     job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
     application: { upsert: jest.Mock; findUnique: jest.Mock };
-    candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
+    candidateJobScore: { create: jest.Mock; upsert: jest.Mock; findMany: jest.Mock; aggregate: jest.Mock };
   };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
@@ -784,7 +796,12 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
         upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: {
+        create: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+        aggregate: jest.fn().mockResolvedValue({ _max: { score: null } }),
+      },
     };
     extractionAgent = {
       extract: jest.fn().mockResolvedValue(mockCandidateExtract()),
@@ -928,7 +945,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
     job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
     application: { upsert: jest.Mock; findUnique: jest.Mock };
-    candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
+    candidateJobScore: { create: jest.Mock; upsert: jest.Mock; findMany: jest.Mock; aggregate: jest.Mock };
   };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
@@ -981,7 +998,12 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: {
+        create: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+        aggregate: jest.fn().mockResolvedValue({ _max: { score: null } }),
+      },
     };
 
     extractionAgent = {
@@ -1343,7 +1365,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     candidate: { update: jest.Mock; updateMany: jest.Mock; findUniqueOrThrow: jest.Mock };
     job: { findMany: jest.Mock; findFirst: jest.Mock; findUnique: jest.Mock };
     application: { upsert: jest.Mock; findUnique: jest.Mock };
-    candidateJobScore: { create: jest.Mock; upsert: jest.Mock };
+    candidateJobScore: { create: jest.Mock; upsert: jest.Mock; findMany: jest.Mock; aggregate: jest.Mock };
   };
   let extractionAgent: { extract: jest.Mock };
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
@@ -1411,7 +1433,12 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id-1', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: {
+        create: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+        aggregate: jest.fn().mockResolvedValue({ _max: { score: null } }),
+      },
     };
 
     extractionAgent = {
@@ -1566,6 +1593,71 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     expect(prisma.application.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { jobStageId: 'stage-3' } }));
   });
 
+  it('reuses a persisted score when the CV did not change (retry / identical re-send)', async () => {
+    const payload = validJobPayload();
+    // The persisted CV equals what the processor will build from this body → cvChanged === false.
+    prisma.candidate.findUniqueOrThrow.mockResolvedValue({
+      jobId: null,
+      hiringStageId: null,
+      currentRole: null,
+      yearsExperience: null,
+      location: null,
+      skills: [],
+      cvText: `--- Email Body ---\n${payload.TextBody}`,
+      cvFileUrl: null,
+      aiSummary: null,
+    });
+    prisma.candidateJobScore.findMany.mockResolvedValue([{ applicationId: 'app-id-1', score: 64 }]);
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('score-reuse', payload));
+
+    expect(scoringService.score).not.toHaveBeenCalled();
+    expect(prisma.candidateJobScore.upsert).not.toHaveBeenCalled();
+    expect(prisma.candidate.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { aiScore: 64 } }));
+  });
+
+  it('re-scores with a full update when the CV changed', async () => {
+    prisma.candidate.findUniqueOrThrow.mockResolvedValue({
+      jobId: null,
+      hiringStageId: null,
+      currentRole: null,
+      yearsExperience: null,
+      location: null,
+      skills: [],
+      cvText: 'old cv',
+      cvFileUrl: null,
+      aiSummary: null,
+    });
+    prisma.candidateJobScore.findMany.mockResolvedValue([{ applicationId: 'app-id-1', score: 40 }]);
+    // A real document is what replaces an existing CV (body-only text never does — Task 13).
+    const payload = {
+      ...validJobPayload(),
+      Attachments: [
+        {
+          Name: 'cv.pdf',
+          ContentType: 'application/pdf',
+          ContentLength: 150000,
+          Content: Buffer.from('PDF data').toString('base64'),
+        },
+      ],
+    };
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('score-changed', payload));
+
+    expect(scoringService.score).toHaveBeenCalledTimes(1);
+    const upsert = prisma.candidateJobScore.upsert.mock.calls[0][0];
+    expect(upsert.update).toEqual(expect.objectContaining({ score: 72, scoredAt: expect.any(Date) }));
+  });
+
+  it('the headline never drops below an earlier, higher persisted score', async () => {
+    prisma.candidateJobScore.aggregate.mockResolvedValue({ _max: { score: 85 } });
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('headline-max', payload));
+
+    expect(prisma.candidate.updateMany).toHaveBeenCalledWith(expect.objectContaining({ data: { aiScore: 85 } }));
+  });
+
   it('schedules voice calls with per-job scores after the denormalized write', async () => {
     const payload = validJobPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
@@ -1642,7 +1734,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           modelUsed: 'claude-sonnet-4-6',
           breakdown: expect.objectContaining({ version: 1 }),
         }),
-        update: {},
+        // A changed CV replaces the old evaluation (Task 15) — full update, not a no-op.
+        update: expect.objectContaining({ score: 72, scoredAt: expect.any(Date) }),
       }),
     );
     expect(prisma.candidateJobScore.create).not.toHaveBeenCalled();
@@ -1672,7 +1765,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     expect(prisma.candidateJobScore.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { idx_scores_unique_per_app: { tenantId: 'test-tenant-id', applicationId: 'app-id-1' } },
-        update: {},
+        update: expect.objectContaining({ score: 72 }),
       }),
     );
     expect(prisma.candidateJobScore.create).not.toHaveBeenCalled();
@@ -1871,7 +1964,12 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-1', jobId: args.where.idx_applications_unique.jobId })),
           findUnique: jest.fn().mockResolvedValue(null),
         },
-        candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
+        candidateJobScore: {
+        create: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+        aggregate: jest.fn().mockResolvedValue({ _max: { score: null } }),
+      },
       };
       extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };
       storageService = {
@@ -2128,7 +2226,12 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
         upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: {
+        create: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+        aggregate: jest.fn().mockResolvedValue({ _max: { score: null } }),
+      },
     };
     dedupService = {
       check: jest.fn().mockResolvedValue({ outcome: 'new', sharedPhoneWith: null }),
@@ -2257,7 +2360,12 @@ describe('IngestionProcessor — CV Classification Gate', () => {
         upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: {
+        create: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+        aggregate: jest.fn().mockResolvedValue({ _max: { score: null } }),
+      },
     };
     extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };
     dedupService = {
@@ -2408,7 +2516,12 @@ describe('ingest gate (ai_ingest_enabled)', () => {
         upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
-      candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
+      candidateJobScore: {
+        create: jest.fn().mockResolvedValue({}),
+        upsert: jest.fn().mockResolvedValue({}),
+        findMany: jest.fn().mockResolvedValue([]),
+        aggregate: jest.fn().mockResolvedValue({ _max: { score: null } }),
+      },
     };
     extractionAgent = { extract: jest.fn().mockResolvedValue(mockCandidateExtract()) };
     cvClassifier = { classify: jest.fn().mockResolvedValue({ verdict: 'cv', reason: 'resume' }) };

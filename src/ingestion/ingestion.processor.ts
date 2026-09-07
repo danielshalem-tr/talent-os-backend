@@ -728,36 +728,52 @@ export class IngestionProcessor extends WorkerHost {
     // Tuples (not bare numbers): the voice-screening seam below needs per-job scores.
     let jobScores: Array<{ jobId: string; score: number }>;
     try {
+      // Which applications already carry a score? Re-billing the model on a retry, or for the
+      // same CV sent twice, was the single biggest waste in the pipeline.
+      const priorScores = await this.prisma.candidateJobScore.findMany({
+        where: { tenantId, applicationId: { in: enrichment.applications.map((a) => a.id) } },
+        select: { applicationId: true, score: true },
+      });
+      const priorByApplication = new Map(priorScores.map((s) => [s.applicationId, s.score]));
+
       jobScores = await Promise.all(
         matchedJobs.map(async (activeJob) => {
           // SCOR-02: the application row was written in the Phase 7 transaction above.
           const application = enrichment.applications.find((a) => a.jobId === activeJob.id)!;
+          const prior = priorByApplication.get(application.id);
+          if (prior !== undefined && !enrichment.cvChanged) {
+            this.pinoLogger.log(
+              { messageId: payload.MessageID, jobId: activeJob.id, score: prior },
+              'Phase 7 score reused (CV unchanged)',
+            );
+            return { jobId: activeJob.id, score: prior };
+          }
 
-          // SCOR-03: score candidate against this job
+          // SCOR-03: score the PERSISTED CV snapshot — the same text the recruiter opens.
           const scoreResult = await this.scoringService.score({
-            cvText: context.cvText,
+            cvText: enrichment.merged.cvText,
             candidateFields: {
-              currentRole: extraction!.current_role ?? null,
-              yearsExperience: extraction!.years_experience ?? null,
-              skills: extraction!.skills ?? [],
+              currentRole: enrichment.merged.currentRole,
+              yearsExperience: enrichment.merged.yearsExperience,
+              skills: enrichment.merged.skills,
             },
             job: toScoringJob(activeJob),
           } satisfies ScoringInput);
 
-          // SCOR-04, SCOR-05: upsert — idempotent on BullMQ retry
+          const scoreData = {
+            score: scoreResult.score,
+            reasoning: scoreResult.reasoning,
+            strengths: scoreResult.strengths,
+            gaps: scoreResult.gaps,
+            breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
+            modelUsed: scoreResult.modelUsed,
+            scoredAt: new Date(),
+          };
+          // SCOR-04/05: a changed CV REPLACES the old evaluation; retries are handled above.
           await this.prisma.candidateJobScore.upsert({
             where: { idx_scores_unique_per_app: { tenantId, applicationId: application.id } },
-            create: {
-              tenantId,
-              applicationId: application.id,
-              score: scoreResult.score,
-              reasoning: scoreResult.reasoning,
-              strengths: scoreResult.strengths,
-              gaps: scoreResult.gaps,
-              breakdown: scoreResult.breakdown as unknown as Prisma.InputJsonValue,
-              modelUsed: scoreResult.modelUsed,
-            },
-            update: {},
+            create: { tenantId, applicationId: application.id, ...scoreData },
+            update: scoreData,
           });
 
           this.pinoLogger.log(
@@ -781,16 +797,19 @@ export class IngestionProcessor extends WorkerHost {
       throw new IntakePhaseError('scoring', err);
     }
 
-    const maxAiScore = Math.max(-1, ...jobScores.map((r) => r.score));
-
-    // Update denormalized aiScore once after all jobs scored
-    // Only set if we actually scored any jobs (maxAiScore > -1)
-    if (maxAiScore > -1) {
+    // Headline = best score this person has EVER received across their applications (same rule
+    // mergeCandidates() uses). A later email for a weaker-fit job used to overwrite an 85 with a 60.
+    const persisted = await this.prisma.candidateJobScore.aggregate({
+      _max: { score: true },
+      where: { tenantId, application: { candidateId: context.candidateId } },
+    });
+    const headline = Math.max(persisted._max.score ?? -1, ...jobScores.map((r) => r.score));
+    if (headline > -1) {
       // Skip the denormalized write when a recruiter override is sticky (TO-58).
       // Per-job CandidateJobScore rows above are still written for record-keeping.
       await this.prisma.candidate.updateMany({
         where: { id: context.candidateId, isScoreOverridden: false },
-        data: { aiScore: maxAiScore },
+        data: { aiScore: headline },
       });
     }
 
