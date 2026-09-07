@@ -501,12 +501,6 @@ export class IngestionProcessor extends WorkerHost {
 
     let matchedJobs: MatchedJob[] = [];
 
-    // Stage the candidate ends up on for the primary matched job. Hoisted out of the try so
-    // the scoring loop below can keep application.job_stage_id in lockstep with
-    // candidate.hiring_stage_id (everything else goes through moveCandidateToStage, which
-    // writes both; Phase 7 writes the candidate row directly).
-    let primaryStageId: string | null = null;
-
     // Phase 15 job lookup + Phase 7 enrichment are wrapped so any failure here is RECORDED on
     // the intake log (status=failed + errorMessage) instead of being swallowed. Previously an
     // uncaught throw (e.g. a bad char rejected by the cv_text column) left the candidate as a
@@ -622,44 +616,95 @@ export class IngestionProcessor extends WorkerHost {
           );
         }
       }
+    } catch (err) {
+      this.pinoLogger.error(
+        { messageId: payload.MessageID, candidateId: context.candidateId, error: (err as Error).message },
+        'Phase 15 job matching failed',
+      );
+      throw new IntakePhaseError('matching', err);
+    }
 
-      // For backward compatibility: set jobId/hiringStageId from first match (if any)
-      // Later: Phase 7 will iterate over ALL matched jobs for multi-job scoring
-      const primaryJob = matchedJobs.length > 0 ? matchedJobs[0] : null;
-      const jobId = primaryJob?.id ?? null;
+    // Phase 7: enrichment + placement in ONE row-locked transaction, no AI inside.
+    // The candidate row is re-read under FOR UPDATE, so a recruiter's stage move or a second
+    // email for the same person cannot slip between our read and our write (the classic
+    // lost-update the old read-merge-write suffered). Applications are written here too, so
+    // "candidate points at a job" and "application exists for it" are never observed apart.
+    const cvFromDocument = attachmentText.trim().length > 0;
+    let enrichment: { merged: EnrichmentFields; applications: Array<{ id: string; jobId: string }>; cvChanged: boolean };
+    try {
+      enrichment = await this.prisma.$transaction(
+        async (tx) => {
+          await tx.$queryRaw`SELECT id FROM candidates WHERE id = ${context.candidateId}::uuid FOR UPDATE`;
+          const locked = await tx.candidate.findUniqueOrThrow({
+            where: { id: context.candidateId },
+            select: {
+              jobId: true,
+              hiringStageId: true,
+              currentRole: true,
+              yearsExperience: true,
+              location: true,
+              skills: true,
+              cvText: true,
+              cvFileUrl: true,
+              aiSummary: true,
+            },
+          });
 
-      if (primaryJob) {
-        // A stage already recorded on this job's application always wins over the job's
-        // first stage, so re-applying to a job a recruiter already advanced you on cannot
-        // demote you. Same rule assign-candidate.ts enforces for the bulk-assign path.
-        const priorApplication = await this.prisma.application.findUnique({
-          where: { idx_applications_unique: { tenantId, candidateId: context.candidateId, jobId: primaryJob.id } },
-          select: { jobStageId: true },
-        });
-        primaryStageId = priorApplication?.jobStageId ?? primaryJob.hiringStages[0]?.id ?? null;
-      }
+          const primaryJob = matchedJobs[0] ?? null;
+          let primaryStageId: string | null = null;
+          if (primaryJob) {
+            // A stage already recorded on this job's application always wins over the job's
+            // first stage, so re-applying to a job a recruiter already advanced you on cannot
+            // demote you. Same rule assign-candidate.ts enforces for the bulk-assign path.
+            const priorApplication = await tx.application.findUnique({
+              where: { idx_applications_unique: { tenantId, candidateId: context.candidateId, jobId: primaryJob.id } },
+              select: { jobStageId: true },
+            });
+            primaryStageId = priorApplication?.jobStageId ?? primaryJob.hiringStages[0]?.id ?? null;
+          }
 
-      // Phase 7: Candidate enrichment (CAND-01, D-01, D-02, D-03)
-      // ALWAYS enrich candidate fields, even if no job matched — but never downgrade a
-      // field that already holds data (mergeEnrichment).
-      const incoming: EnrichmentFields = {
-        jobId,
-        hiringStageId: primaryStageId,
-        currentRole: extraction!.current_role ?? null,
-        yearsExperience: extraction!.years_experience ?? null,
-        location: extraction!.location ?? null,
-        skills: extraction!.skills ?? [],
-        cvText: context.cvText,
-        cvFileUrl: context.fileKey, // R2 object key used as URL placeholder in Phase 1 (D-02)
-        aiSummary: extraction!.ai_summary ?? null,
-      };
+          // ALWAYS enrich candidate fields, even if no job matched — but never downgrade a
+          // field that already holds data (mergeEnrichment).
+          const incoming: EnrichmentFields = {
+            jobId: primaryJob?.id ?? null,
+            hiringStageId: primaryStageId,
+            currentRole: extraction!.current_role ?? null,
+            yearsExperience: extraction!.years_experience ?? null,
+            location: extraction!.location ?? null,
+            skills: extraction!.skills ?? [],
+            cvText: context.cvText,
+            cvFileUrl: context.fileKey, // R2 object key used as URL placeholder in Phase 1 (D-02)
+            aiSummary: extraction!.ai_summary ?? null,
+          };
+          const merged = mergeEnrichment({ ...locked, cvText: locked.cvText ?? '' }, incoming, { cvFromDocument });
+          await tx.candidate.update({ where: { id: context.candidateId }, data: merged });
 
-      const merged = mergeEnrichment({ ...existing, cvText: existing.cvText ?? '' }, incoming);
-      await this.prisma.candidate.update({ where: { id: context.candidateId }, data: merged });
+          const applications: Array<{ id: string; jobId: string }> = [];
+          for (const activeJob of matchedJobs) {
+            // The primary application mirrors candidate.hiring_stage_id — on create AND update —
+            // so the kanban (reads the candidate) and stage summaries / voice assess (read the
+            // application) cannot disagree about where this person is.
+            const mirrorsCandidate = merged.jobId === activeJob.id && merged.hiringStageId !== null;
+            applications.push(
+              await tx.application.upsert({
+                where: { idx_applications_unique: { tenantId, candidateId: context.candidateId, jobId: activeJob.id } },
+                create: {
+                  tenantId,
+                  candidateId: context.candidateId,
+                  jobId: activeJob.id,
+                  stage: 'new',
+                  ...(mirrorsCandidate ? { jobStageId: merged.hiringStageId } : {}),
+                },
+                update: mirrorsCandidate ? { jobStageId: merged.hiringStageId } : {},
+                select: { id: true, jobId: true },
+              }),
+            );
+          }
 
-      // What the candidate row actually ended up on — mergeEnrichment may have kept the
-      // existing stage. The scoring loop mirrors this onto the application row.
-      primaryStageId = merged.hiringStageId;
+          return { merged, applications, cvChanged: merged.cvText !== (locked.cvText ?? '') };
+        },
+        { timeout: 15_000 },
+      );
     } catch (err) {
       this.pinoLogger.error(
         { messageId: payload.MessageID, candidateId: context.candidateId, error: (err as Error).message },
@@ -684,23 +729,9 @@ export class IngestionProcessor extends WorkerHost {
     let jobScores: Array<{ jobId: string; score: number }>;
     try {
       jobScores = await Promise.all(
-        matchedJobs.map(async (activeJob, index) => {
-          // SCOR-02: upsert application row first — idempotent on retry
-          const application = await this.prisma.application.upsert({
-            where: { idx_applications_unique: { tenantId, candidateId: context.candidateId, jobId: activeJob.id } },
-            create: {
-              tenantId,
-              candidateId: context.candidateId,
-              jobId: activeJob.id,
-              stage: 'new',
-              // Mirror candidate.hiring_stage_id onto the primary job's application so the
-              // kanban (which reads the candidate) and stage summaries / voice assess (which
-              // read the application) cannot disagree about where this person is.
-              ...(index === 0 && primaryStageId ? { jobStageId: primaryStageId } : {}),
-            },
-            update: {}, // No-op on retry
-            select: { id: true },
-          });
+        matchedJobs.map(async (activeJob) => {
+          // SCOR-02: the application row was written in the Phase 7 transaction above.
+          const application = enrichment.applications.find((a) => a.jobId === activeJob.id)!;
 
           // SCOR-03: score candidate against this job
           const scoreResult = await this.scoringService.score({

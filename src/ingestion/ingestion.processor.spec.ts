@@ -69,6 +69,10 @@ describe('IngestionProcessor', () => {
 
   beforeEach(async () => {
     const txClient = {
+      // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+      // prisma.candidate.update / prisma.application.upsert keep working.
+      get candidate() { return prisma.candidate; },
+      get application() { return prisma.application; },
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $executeRaw: jest.fn().mockResolvedValue(0),
@@ -103,7 +107,7 @@ describe('IngestionProcessor', () => {
         findUnique: jest.fn().mockResolvedValue(null),
       },
       application: {
-        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
@@ -517,7 +521,7 @@ describe('IngestionProcessor', () => {
       }),
     );
     // Transaction was used for the Phase 6 atomic block
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2); // Phase 6 + Phase 7
   });
 
   it('skips a stale job whose intake is already terminal', async () => {
@@ -739,6 +743,10 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
 
   beforeEach(async () => {
     const txClient = {
+      // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+      // prisma.candidate.update / prisma.application.upsert keep working.
+      get candidate() { return prisma.candidate; },
+      get application() { return prisma.application; },
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $executeRaw: jest.fn().mockResolvedValue(0),
@@ -773,7 +781,7 @@ describe('IngestionProcessor — Phase 5 StorageService', () => {
         findUnique: jest.fn().mockResolvedValue(null),
       },
       application: {
-        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
@@ -928,6 +936,10 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
 
   beforeEach(async () => {
     const txClient = {
+      // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+      // prisma.candidate.update / prisma.application.upsert keep working.
+      get candidate() { return prisma.candidate; },
+      get application() { return prisma.application; },
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $executeRaw: jest.fn().mockResolvedValue(0),
@@ -966,7 +978,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
         findUnique: jest.fn().mockResolvedValue(null),
       },
       application: {
-        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
@@ -1055,7 +1067,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     expect(dedupService.check).toHaveBeenCalledTimes(1);
     expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
     expect(dedupService.fillContactFields).not.toHaveBeenCalled();
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2); // Phase 6 + Phase 7
   });
 
   it('6-02-02: phone match reuses the existing candidate, fills contact fields, inserts nothing', async () => {
@@ -1079,7 +1091,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
       expect.objectContaining({ candidateId: 'existing-cand-id', matchedOn: 'phone', filled: ['email'] }),
       'intake.dedup_merged',
     );
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2); // Phase 6 + Phase 7
   });
 
   it('6-02-03: no phone → new candidate inserted, nothing flagged, candidateId set on intake log', async () => {
@@ -1094,7 +1106,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     expect(dedupService.insertCandidate).toHaveBeenCalledTimes(1);
     expect(dedupService.fillContactFields).not.toHaveBeenCalled();
     expect(pinoLogger.warn).not.toHaveBeenCalledWith(expect.anything(), 'intake.phone_shared');
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2); // Phase 6 + Phase 7
   });
 
   // 6-02-04: email match → REUSE existing candidate (no INSERT). This is the fix for the
@@ -1120,7 +1132,7 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
     expect(prisma.candidate.update).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'existing-by-email' } }),
     );
-    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2); // Phase 6 + Phase 7
   });
 
   // 6-02-05: race safety — when an email is present we take a per-email advisory lock inside
@@ -1129,6 +1141,10 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   it('6-02-05: email present acquires an advisory lock even when phone is null', async () => {
     const txExecuteRaw = jest.fn().mockResolvedValue(0);
     const txClient = {
+      // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+      // prisma.candidate.update / prisma.application.upsert keep working.
+      get candidate() { return prisma.candidate; },
+      get application() { return prisma.application; },
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $executeRaw: txExecuteRaw,
@@ -1165,6 +1181,10 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
 
     // Override $transaction to simulate failure: invoke the callback but make emailIntakeLog.update throw
     const txClient = {
+      // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+      // prisma.candidate.update / prisma.application.upsert keep working.
+      get candidate() { return prisma.candidate; },
+      get application() { return prisma.application; },
       emailIntakeLog: {
         update: jest.fn().mockRejectedValueOnce(new Error('DB connection lost')),
       },
@@ -1207,6 +1227,10 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   it('advisory lock on phone uses the normalised digits, not the raw string', async () => {
     const txExecuteRaw = jest.fn().mockResolvedValue(0);
     const txClient = {
+      // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+      // prisma.candidate.update / prisma.application.upsert keep working.
+      get candidate() { return prisma.candidate; },
+      get application() { return prisma.application; },
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $executeRaw: txExecuteRaw,
@@ -1243,6 +1267,10 @@ describe('IngestionProcessor — Phase 6 Duplicate Detection', () => {
   it('advisory lock on email uses the case-folded address', async () => {
     const txExecuteRaw = jest.fn().mockResolvedValue(0);
     const txClient = {
+      // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+      // prisma.candidate.update / prisma.application.upsert keep working.
+      get candidate() { return prisma.candidate; },
+      get application() { return prisma.application; },
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $executeRaw: txExecuteRaw,
@@ -1321,6 +1349,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
   let storageService: { upload: jest.Mock; downloadPayload: jest.Mock };
   let dedupService: { check: jest.Mock; insertCandidate: jest.Mock; fillContactFields: jest.Mock };
   let scoringService: { score: jest.Mock };
+  let txClient: any;
 
   const activeJob = {
     id: 'job-id-1',
@@ -1339,7 +1368,11 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
   };
 
   beforeEach(async () => {
-    const txClient = {
+    txClient = {
+      // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+      // prisma.candidate.update / prisma.application.upsert keep working.
+      get candidate() { return prisma.candidate; },
+      get application() { return prisma.application; },
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $executeRaw: jest.fn().mockResolvedValue(0),
@@ -1375,7 +1408,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
         findUnique: jest.fn().mockResolvedValue(activeJob),
       },
       application: {
-        upsert: jest.fn().mockResolvedValue({ id: 'app-id-1' }),
+        upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id-1', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
@@ -1495,6 +1528,44 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
     );
   });
 
+  it('locks the candidate row and mirrors the stage onto the primary application on UPDATE too', async () => {
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('p7-tx', payload));
+
+    const lock = txClient.$queryRaw.mock.calls.find((c: [TemplateStringsArray]) => c[0].join('?').includes('FOR UPDATE'));
+    expect(lock).toBeDefined();
+    expect(prisma.application.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ jobId: 'job-id-1', jobStageId: 'stage-1' }),
+        update: { jobStageId: 'stage-1' },
+      }),
+    );
+  });
+
+  it('a recruiter-advanced stage is kept on re-application to the same job', async () => {
+    prisma.candidate.findUniqueOrThrow.mockResolvedValue({
+      jobId: 'job-id-1',
+      hiringStageId: 'stage-3',
+      currentRole: null,
+      yearsExperience: null,
+      location: null,
+      skills: [],
+      cvText: 'old',
+      cvFileUrl: null,
+      aiSummary: null,
+    });
+    prisma.application.findUnique.mockResolvedValueOnce({ jobStageId: 'stage-3' });
+    const payload = validJobPayload();
+    storageService.downloadPayload.mockResolvedValue(payload);
+    await processor.process(makeJob('p7-keep-stage', payload));
+
+    expect(prisma.candidate.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ hiringStageId: 'stage-3' }) }),
+    );
+    expect(prisma.application.upsert).toHaveBeenCalledWith(expect.objectContaining({ update: { jobStageId: 'stage-3' } }));
+  });
+
   it('schedules voice calls with per-job scores after the denormalized write', async () => {
     const payload = validJobPayload();
     storageService.downloadPayload.mockResolvedValue(payload);
@@ -1557,7 +1628,8 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           idx_applications_unique: { tenantId: 'test-tenant-id', candidateId: 'new-candidate-id', jobId: 'job-id-1' },
         },
         create: expect.objectContaining({ stage: 'new' }),
-        update: {},
+        // Primary application mirrors the candidate's stage on update too (Task 14).
+        update: { jobStageId: 'stage-1' },
       }),
     );
     expect(prisma.candidateJobScore.upsert).toHaveBeenCalledTimes(1);
@@ -1759,6 +1831,10 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     beforeEach(async () => {
       const txClient = {
+        // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+        // prisma.candidate.update / prisma.application.upsert keep working.
+        get candidate() { return prisma.candidate; },
+        get application() { return prisma.application; },
         emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
         $queryRaw: jest.fn().mockResolvedValue([]),
         $executeRaw: jest.fn().mockResolvedValue(0),
@@ -1792,7 +1868,7 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
           findUnique: jest.fn(),
         },
         application: {
-          upsert: jest.fn().mockResolvedValue({ id: 'app-1' }),
+          upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-1', jobId: args.where.idx_applications_unique.jobId })),
           findUnique: jest.fn().mockResolvedValue(null),
         },
         candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
@@ -1884,7 +1960,9 @@ describe('IngestionProcessor — Phase 7 Candidate Enrichment & Scoring', () => 
 
     it('15-03: extracts multiple numeric short_ids and creates applications for each', async () => {
       prisma.job.findMany.mockResolvedValueOnce([job1, job2]);
-      prisma.application.upsert.mockResolvedValueOnce({ id: 'app-1' }).mockResolvedValueOnce({ id: 'app-2' });
+      prisma.application.upsert
+        .mockResolvedValueOnce({ id: 'app-1', jobId: job1.id })
+        .mockResolvedValueOnce({ id: 'app-2', jobId: job2.id });
       const payload = mockEmailPayload({
         Subject: 'CV Submission',
         TextBody: 'I am interested in both position 100 and 101. a'.repeat(5),
@@ -2013,6 +2091,10 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
 
   beforeEach(async () => {
     const txClient = {
+      // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+      // prisma.candidate.update / prisma.application.upsert keep working.
+      get candidate() { return prisma.candidate; },
+      get application() { return prisma.application; },
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $executeRaw: jest.fn().mockResolvedValue(0),
@@ -2043,7 +2125,7 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
       },
       job: { findMany: jest.fn().mockResolvedValue([]) },
       application: {
-        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
@@ -2091,7 +2173,8 @@ describe('IngestionProcessor — Phase 6 idempotency guard', () => {
     await processor.process(job);
 
     expect(dedupService.check).not.toHaveBeenCalled();
-    expect(prisma.$transaction).not.toHaveBeenCalled();
+    // Only the Phase 7 transaction ran — the Phase 6 one was skipped.
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
   });
 
   it('should run Phase 6 normally on first attempt (no candidateId)', async () => {
@@ -2137,6 +2220,10 @@ describe('IngestionProcessor — CV Classification Gate', () => {
 
   beforeEach(async () => {
     const txClient = {
+      // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+      // prisma.candidate.update / prisma.application.upsert keep working.
+      get candidate() { return prisma.candidate; },
+      get application() { return prisma.application; },
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $executeRaw: jest.fn().mockResolvedValue(0),
@@ -2167,7 +2254,7 @@ describe('IngestionProcessor — CV Classification Gate', () => {
       },
       job: { findMany: jest.fn().mockResolvedValue([]) },
       application: {
-        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
@@ -2284,6 +2371,10 @@ describe('ingest gate (ai_ingest_enabled)', () => {
 
   beforeEach(async () => {
     const txClient = {
+      // Phase 7 runs inside a transaction; delegate to the prisma mocks so assertions on
+      // prisma.candidate.update / prisma.application.upsert keep working.
+      get candidate() { return prisma.candidate; },
+      get application() { return prisma.application; },
       emailIntakeLog: { update: jest.fn().mockResolvedValue({}) },
       $queryRaw: jest.fn().mockResolvedValue([]),
       $executeRaw: jest.fn().mockResolvedValue(0),
@@ -2314,7 +2405,7 @@ describe('ingest gate (ai_ingest_enabled)', () => {
       },
       job: { findMany: jest.fn().mockResolvedValue([]) },
       application: {
-        upsert: jest.fn().mockResolvedValue({ id: 'app-id' }),
+        upsert: jest.fn().mockImplementation(async (args: any) => ({ id: 'app-id', jobId: args.where.idx_applications_unique.jobId })),
         findUnique: jest.fn().mockResolvedValue(null),
       },
       candidateJobScore: { create: jest.fn().mockResolvedValue({}), upsert: jest.fn().mockResolvedValue({}) },
