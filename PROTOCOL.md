@@ -1519,9 +1519,9 @@ All endpoints operate within a tenant context:
 
 ## PM Bridge Plugin Token (standalone Box)
 
-Used by the standalone PM Bridge widget (`@triolla-io/pmbridge-react`) when
-`VITE_PM_BRIDGE_MODE=plugin`. The embedded `/pm-bridge/*` endpoints below remain the
-contract while the mode is `embedded`.
+Used by the standalone PM Bridge widget (`@triolla-io/pmbridge-react`), the only PM Bridge
+in the client since the 2026-09 cutover. The Box (`https://pmbridge.triolla.io`) owns the
+conversation, Jira filing, holds and tracker; talent-os only vouches for the user's identity.
 
 ### GET /pmb-token
 
@@ -1538,56 +1538,6 @@ Response `200`:
 
 Errors: `401` no/invalid session · `403` user missing or inactive ·
 `503 NOT_CONFIGURED` when `PMB_API_KEY`/`PMB_SIGNING_SECRET` are unset.
-
-## PM Bridge
-
-All routes are under `/api/pm-bridge`. `/converse`, `/commit`, `/decisions`, and `/tracker`
-require a session cookie and PM-Bridge allowlist membership. `/holds/:id/{approve,reject}` are public,
-gated by a signed token from the notification email. The PM-facing payloads never contain
-Jira concepts (issue type, key, epic, acceptance criteria). The tracker endpoints are the
-deliberate exception: they surface issue keys and links so the PM can review finished work.
-
-### POST /pm-bridge/converse
-Request: `{ "messages": [{ "role": "pm"|"assistant", "content": string }], "page": { "name": string, "route": string } }`
-Response (one of):
-- `{ "type": "clarify", "questions": [{ "id": string, "prompt": string, "chips": string[], "allowFreeText": boolean }] }`
-- `{ "type": "ready", "goal": string, "brief": InternalBrief }`  ← echo `brief` back to /commit unchanged
-- `{ "type": "held" }`
-
-### POST /pm-bridge/commit
-Request: `{ "brief": InternalBrief, "page": { "name": string, "route": string } }`
-Response: `{ "type": "filed" | "merged" | "held" }`
-
-`InternalBrief = { goal, problem, desiredOutcomes: string[], constraints: string[],
-affectedArea: { name, route }, sizeHint: "tiny"|"medium"|"large", devNotes: string[],
-rawText, conversationDigest }` — opaque to the client; pass through verbatim.
-
-### GET|POST /pm-bridge/holds/:id/approve  · GET|POST /pm-bridge/holds/:id/reject
-Public. Query `?t=<signed token>`. GET returns an HTML confirm page; POST performs the action
-and returns an HTML result page.
-
-### GET/POST /pm-bridge/decisions · PATCH /pm-bridge/decisions/:id
-Unchanged from the existing decisions contract.
-
-### GET /pm-bridge/tracker
-Done-review queue: board tickets whose status category became Done in the last 14 days,
-minus tickets whose latest review is a `verified` newer than the ticket's Done transition
-(a verify older than the latest Done means the ticket was reopened and redone — it reappears).
-Response: `{ "tickets": [{ "key": string, "type": string, "summary": string, "doneAt": string (ISO), "url": string }] }`
-
-### POST /pm-bridge/tracker/:key/verify
-Marks the ticket verified in the app DB only — Jira is untouched. Append-only, idempotent.
-`:key` must match `^[A-Z][A-Z0-9]*-\d+$` → 400 `VALIDATION_ERROR` otherwise.
-Response: `{ "status": "verified" }`
-
-### POST /pm-bridge/tracker/:key/reopen
-Request: `{ "comment": string }` — required, trimmed, min 3 chars → 400 `VALIDATION_ERROR`.
-Posts the comment to the Jira issue ("Reopened via PM Bridge by <email>: …"), transitions it
-back to To Do, and records the verdict.
-Response: `{ "status": "reopened" }`
-Partial failure (comment posted, transition failed): the verdict row is still recorded and the
-response is 502 `JIRA_ERROR` with
-`message: "Comment posted, but moving the ticket back failed — move it in Jira manually."`
 
 ---
 
