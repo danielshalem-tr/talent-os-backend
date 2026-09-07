@@ -73,7 +73,8 @@ export class VoiceCallsService {
 
   /**
    * Create a scheduled row + delayed queue job. Returns null when the idempotency key
-   * already exists (P2002 — BullMQ re-runs of ingestion / webhook redeliveries).
+   * already exists (P2002 — BullMQ re-runs of ingestion / webhook redeliveries) — unless the
+   * existing row is one whose enqueue failed, which is re-armed instead (see resumeStrandedCall).
    * An enqueue failure rolls the row to 'failed' so nothing strands in 'scheduled'
    * (mirrors the replayHeld rollback in ingest-control.service.ts).
    */
@@ -104,12 +105,20 @@ export class VoiceCallsService {
       });
     } catch (err) {
       if ((err as { code?: string })?.code === 'P2002') {
+        const resumed = await this.resumeStrandedCall(params.idempotencyKey ?? null, scheduledFor);
+        if (resumed) return resumed;
         this.logger.log(`Duplicate voice call skipped (key: ${params.idempotencyKey})`);
         return null;
       }
       throw err;
     }
 
+    await this.enqueueCall(row, scheduledFor);
+    return row;
+  }
+
+  // `scheduledFor` is passed explicitly: the column is nullable on the row type.
+  private async enqueueCall(row: VoiceCall, scheduledFor: Date): Promise<void> {
     try {
       await this.voiceQueue.add('call', { voiceCallId: row.id } satisfies VoiceCallJobData, {
         jobId: `call-${row.id}`,
@@ -123,6 +132,25 @@ export class VoiceCallsService {
       });
       throw err;
     }
+  }
+
+  /**
+   * The row created before a failed enqueue keeps its idempotency key, so every later attempt
+   * for the same (candidate, job) hit P2002 and returned null — the screening silently never
+   * happened. Re-arm that row instead of creating a new one (the key stays unique).
+   */
+  private async resumeStrandedCall(idempotencyKey: string | null, scheduledFor: Date): Promise<VoiceCall | null> {
+    if (!idempotencyKey) return null;
+    const stranded = await this.prisma.voiceCall.findFirst({
+      where: { idempotencyKey, status: 'failed', error: 'enqueue_failed' },
+    });
+    if (!stranded) return null;
+    const row = await this.prisma.voiceCall.update({
+      where: { id: stranded.id },
+      data: { status: 'scheduled', error: null, scheduledFor },
+    });
+    await this.enqueueCall(row, scheduledFor);
+    this.logger.log(`Re-armed voice call ${row.id} whose enqueue had failed`);
     return row;
   }
 

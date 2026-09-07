@@ -75,6 +75,28 @@ describe('VoiceCallsService', () => {
       expect(queue.add).not.toHaveBeenCalled();
     });
 
+    it('re-arms a row whose enqueue failed instead of treating the P2002 as a duplicate', async () => {
+      const { svc, prisma, queue } = makeMocks();
+      prisma.voiceCall.create.mockRejectedValue({ code: 'P2002' });
+      prisma.voiceCall.findFirst.mockResolvedValueOnce({ id: 'vc-stuck', status: 'failed', error: 'enqueue_failed' });
+      prisma.voiceCall.update.mockResolvedValueOnce({ id: 'vc-stuck', status: 'scheduled', scheduledFor: new Date() });
+      const row = await svc.scheduleCall({
+        tenantId: TENANT,
+        candidateId: CAND,
+        jobId: JOB,
+        trigger: 'auto',
+        idempotencyKey: `auto:${CAND}:${JOB}:1`,
+      });
+      expect(row?.id).toBe('vc-stuck');
+      expect(prisma.voiceCall.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'vc-stuck' },
+          data: expect.objectContaining({ status: 'scheduled', error: null }),
+        }),
+      );
+      expect(queue.add).toHaveBeenCalledWith('call', { voiceCallId: 'vc-stuck' }, expect.objectContaining({ jobId: 'call-vc-stuck' }));
+    });
+
     it('rolls the row to failed when the enqueue throws (never strands scheduled)', async () => {
       const { svc, prisma, queue } = makeMocks();
       prisma.voiceCall.create.mockResolvedValue({ id: 'vc1', scheduledFor: new Date() });
