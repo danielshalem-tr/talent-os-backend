@@ -5,6 +5,7 @@ import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { StorageService } from '../../storage/storage.service';
 import { normalizeNullishString } from '../../common/normalize-nullish';
+import { sanitizePgText } from '../../common/sanitize-pg-text';
 import { aiCallGuards } from '../../common/upstream-errors';
 
 export const CandidateExtractSchema = z.object({
@@ -23,20 +24,25 @@ export const CandidateExtractSchema = z.object({
 export type CandidateExtract = z.infer<typeof CandidateExtractSchema>;
 
 /**
- * Boundary sanitizer for AI output. `full_name` is deliberately left alone: the schema
- * requires a string, and blanking a garbage name would break the candidate insert —
- * a visibly wrong name is a better failure than a missing one.
+ * Boundary sanitizer for AI output. Every string is made Postgres-safe (no NUL / lone
+ * surrogates — an escaped NUL in a cached extraction failed the candidate insert on every
+ * retry) and null-like strings ("null", "N/A") become real nulls. `full_name` is never nulled:
+ * the schema requires a string and the processor has its own fallback for an empty one.
  */
 export function sanitizeExtract(raw: CandidateExtract): CandidateExtract {
+  const clean = (value: string | null): string | null =>
+    value === null ? null : normalizeNullishString(sanitizePgText(value));
+  const email = clean(raw.email);
   return {
     ...raw,
-    email: normalizeNullishString(raw.email),
-    phone: normalizeNullishString(raw.phone),
-    current_role: normalizeNullishString(raw.current_role),
-    location: normalizeNullishString(raw.location),
-    ai_summary: normalizeNullishString(raw.ai_summary),
-    source_agency: normalizeNullishString(raw.source_agency),
-    skills: raw.skills.map(normalizeNullishString).filter((s): s is string => s !== null),
+    full_name: sanitizePgText(raw.full_name).trim(),
+    email: email && email.includes('@') ? email : null,
+    phone: clean(raw.phone),
+    current_role: clean(raw.current_role),
+    location: clean(raw.location),
+    ai_summary: clean(raw.ai_summary),
+    source_agency: clean(raw.source_agency),
+    skills: raw.skills.map((skill) => clean(skill)).filter((skill): skill is string => skill !== null),
   };
 }
 

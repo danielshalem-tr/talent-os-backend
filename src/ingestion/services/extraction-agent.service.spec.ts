@@ -493,3 +493,27 @@ describe('sanitizeExtract', () => {
     expect(result.location).toBe('Tel Aviv, Israel');
   });
 });
+
+describe('sanitizeExtract — Postgres-safe strings', () => {
+  const NUL = String.fromCharCode(0);
+  it('strips NUL from every field and nulls an email without @', () => {
+    const out = sanitizeExtract({
+      full_name: `Da${NUL}na`,
+      email: 'not-an-email',
+      phone: `+972${NUL}52`,
+      current_role: `Dev${NUL}`,
+      years_experience: 3,
+      location: null,
+      skills: [`ts${NUL}`, 'null'],
+      ai_summary: `S${NUL}`,
+      source_hint: null,
+      source_agency: null,
+    });
+    expect(out.full_name).toBe('Dana');
+    expect(out.email).toBeNull();
+    expect(out.phone).toBe('+97252');
+    expect(out.current_role).toBe('Dev');
+    expect(out.skills).toEqual(['ts']);
+    expect(out.ai_summary).toBe('S');
+  });
+});
