@@ -23,6 +23,11 @@ describe('extractShortIds', () => {
     ).toEqual([]);
   });
 
+  it('ignores the leading group of a thousands-separated amount', () => {
+    expect(extractShortIds('', 'Expected salary: 301,000 NIS or 301 000 gross')).toEqual([]);
+    expect(extractShortIds('', 'Job 301, starting 2026')).toEqual(['301']);
+  });
+
   it('still matches hash-prefixed and bare job numbers, in order of appearance', () => {
     expect(extractShortIds('משרה 106', 'Also relevant for #300 and 1053.')).toEqual(['106', '300', '1053']);
   });
