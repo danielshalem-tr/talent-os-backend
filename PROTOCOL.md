@@ -63,6 +63,7 @@ Fetch candidates with optional search and filtering.
       "source": "linkedin",
       "source_agency": null,
       "created_at": "ISO8601",
+      "last_applied_at": "ISO8601",
       "ai_score": 85,
       "cv_readable": true,
       "is_score_overridden": false,
@@ -107,6 +108,10 @@ For email-ingested CVs, if a candidate name cannot be detected, `full_name` will
 - `cv_readable` — derived boolean: `true` when the candidate has non-empty extracted CV text, else `false`. The raw `cv_text` is never returned by the API.
 - `is_score_overridden` — `true` when a recruiter has manually set `ai_score`. Auto-scoring (intake + reassignment) will not overwrite the denormalized score while this is `true`.
 
+**Notes on `last_applied_at`:**
+
+The `received_at` of the newest email intake linked to this candidate, falling back to `created_at` for candidates added manually. Because intake folds re-applicants into their existing row, `created_at` is the FIRST application and `last_applied_at` the latest — the UI's "applied" column shows the latter.
+
 ### `GET /candidates/:id`
 
 Fetch a single candidate by ID.
@@ -129,6 +134,7 @@ Fetch a single candidate by ID.
   "source": "direct",
   "source_agency": null,
   "created_at": "2026-03-29T14:24:39.233Z",
+  "last_applied_at": "2026-03-29T14:24:39.233Z",
   "ai_score": null,
   "cv_readable": true,
   "is_score_overridden": false,

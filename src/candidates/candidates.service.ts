@@ -119,7 +119,6 @@ export class CandidatesService {
         salaryExpectationMax: true,
         aiSummary: true,
         aiScore: true,
-        cvText: true,
         isScoreOverridden: true,
         createdAt: true,
         skills: true,
@@ -137,9 +136,14 @@ export class CandidatesService {
         candidateStageSummaries: {
           select: { jobStageId: true, summary: true },
         },
+        emailIntakeLogs: { select: { receivedAt: true }, orderBy: { receivedAt: 'desc' }, take: 1 },
       },
       orderBy: { createdAt: 'desc' },
     });
+
+    // cv_readable without shipping every CV body out of Postgres (the list used to pull several
+    // MB of cv_text per request just to compute this boolean).
+    const readable = new Set(await this.readableCandidateIds(candidates.map((c) => c.id)));
 
     // Compute derived fields and map to snake_case
     let result: CandidateResponse[] = candidates.map((c) => {
@@ -160,8 +164,9 @@ export class CandidatesService {
         source: c.source,
         source_agency: c.sourceAgency,
         created_at: c.createdAt,
+        last_applied_at: c.emailIntakeLogs?.[0]?.receivedAt ?? c.createdAt,
         ai_score: aiScore,
-        cv_readable: computeCvReadable(c.cvText),
+        cv_readable: readable.has(c.id),
         is_score_overridden: c.isScoreOverridden,
         is_duplicate: false, // deprecated — always false since Round 1 dedup; removed in Round 2
         skills: c.skills,
@@ -194,6 +199,16 @@ export class CandidatesService {
     return { candidates: result, total: result.length };
   }
 
+  /** Ids (within `ids`) whose cv_text is non-blank — decided in SQL so the text never leaves the DB. */
+  private async readableCandidateIds(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.$queryRaw<{ id: string }[]>`
+      SELECT id::text FROM candidates
+      WHERE id = ANY(${ids}::uuid[]) AND cv_text IS NOT NULL AND btrim(cv_text) <> ''
+    `;
+    return rows.map((r) => r.id);
+  }
+
   async findOne(candidateId: string, tenantId: string): Promise<CandidateResponse> {
     const c = await this.prisma.candidate.findFirst({
       where: { id: candidateId, tenantId },
@@ -218,6 +233,7 @@ export class CandidatesService {
         aiScore: true,
         cvText: true,
         isScoreOverridden: true,
+        emailIntakeLogs: { select: { receivedAt: true }, orderBy: { receivedAt: 'desc' }, take: 1 },
         hiringStage: {
           select: { name: true },
         },
@@ -276,6 +292,8 @@ export class CandidatesService {
       source: c.source,
       source_agency: c.sourceAgency,
       created_at: c.createdAt,
+      // Optional-chained: fixtures in several service tests predate this join.
+      last_applied_at: c.emailIntakeLogs?.[0]?.receivedAt ?? c.createdAt,
       ai_score: c.aiScore,
       cv_readable: computeCvReadable(c.cvText),
       is_score_overridden: c.isScoreOverridden,
@@ -1103,6 +1121,7 @@ export class CandidatesService {
       cv_readable: computeCvReadable(candidate.cvText),
       is_score_overridden: candidate.isScoreOverridden,
       created_at: candidate.createdAt,
+      last_applied_at: candidate.createdAt,
       updated_at: candidate.updatedAt,
       application_id: application.id,
     };

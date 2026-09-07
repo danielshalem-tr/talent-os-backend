@@ -34,6 +34,7 @@ function mockCandidate(
     aiSummary: string | null;
     cvText: string | null;
     isScoreOverridden: boolean;
+    emailIntakeLogs: { receivedAt: Date }[];
   }> = {},
 ) {
   return {
@@ -59,6 +60,7 @@ function mockCandidate(
     aiSummary: null,
     cvText: null,
     isScoreOverridden: false,
+    emailIntakeLogs: [],
     ...overrides,
   };
 }
@@ -75,6 +77,7 @@ describe('CandidatesService', () => {
       candidate: {
         findMany: jest.fn(),
       },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
     const scoreResult = {
       score: 75,
@@ -122,12 +125,13 @@ describe('CandidatesService', () => {
   });
 
   describe('cv_readable derivation', () => {
-    it('is true when cv_text is non-empty and false for null/whitespace', async () => {
+    it('is decided in SQL — true for ids the readability query returns, without selecting cv_text', async () => {
       prismaMock.candidate.findMany.mockResolvedValue([
-        mockCandidate({ id: 'c1', cvText: 'Real CV content', isScoreOverridden: false }),
-        mockCandidate({ id: 'c2', cvText: '   ', isScoreOverridden: true }),
-        mockCandidate({ id: 'c3', cvText: null, isScoreOverridden: false }),
+        mockCandidate({ id: 'c1', isScoreOverridden: false }),
+        mockCandidate({ id: 'c2', isScoreOverridden: true }),
+        mockCandidate({ id: 'c3', isScoreOverridden: false }),
       ]);
+      prismaMock.$queryRaw.mockResolvedValue([{ id: 'c1' }]);
 
       const result = await service.findAll(TENANT_ID);
 
@@ -136,8 +140,30 @@ describe('CandidatesService', () => {
       expect(result.candidates[1].cv_readable).toBe(false);
       expect(result.candidates[1].is_score_overridden).toBe(true);
       expect(result.candidates[2].cv_readable).toBe(false);
-      // cv_text must never leak into the response
+      // cv_text must never leak into the response — and is no longer even selected by the list
       expect((result.candidates[0] as Record<string, unknown>).cv_text).toBeUndefined();
+      expect(prismaMock.candidate.findMany.mock.calls[0][0].select).not.toHaveProperty('cvText');
+    });
+
+    it('last_applied_at is the newest intake, falling back to created_at', async () => {
+      prismaMock.candidate.findMany.mockResolvedValue([
+        mockCandidate({ id: 'c1', createdAt: new Date('2026-01-01'), emailIntakeLogs: [{ receivedAt: new Date('2026-09-01') }] }),
+        mockCandidate({ id: 'c2', createdAt: new Date('2026-02-01'), emailIntakeLogs: [] }),
+      ]);
+      const result = await service.findAll(TENANT_ID);
+      expect(result.candidates[0].last_applied_at).toEqual(new Date('2026-09-01'));
+      expect(result.candidates[1].last_applied_at).toEqual(new Date('2026-02-01'));
+      expect(prismaMock.candidate.findMany.mock.calls[0][0].select.emailIntakeLogs).toEqual({
+        select: { receivedAt: true },
+        orderBy: { receivedAt: 'desc' },
+        take: 1,
+      });
+    });
+
+    it('skips the readability query when the list is empty', async () => {
+      prismaMock.candidate.findMany.mockResolvedValue([]);
+      await service.findAll(TENANT_ID);
+      expect(prismaMock.$queryRaw).not.toHaveBeenCalled();
     });
   });
 
@@ -1339,6 +1365,7 @@ describe('CandidatesService.findAll() - Unassigned Filter', () => {
   beforeEach(async () => {
     mockPrisma = {
       candidate: { findMany: jest.fn() },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -1465,6 +1492,7 @@ describe('CandidatesService - Response Format Compliance', () => {
         findMany: jest.fn(),
         findFirst: jest.fn(),
       },
+      $queryRaw: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({

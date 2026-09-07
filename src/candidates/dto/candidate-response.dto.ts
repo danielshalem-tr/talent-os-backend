@@ -13,6 +13,8 @@ export interface CandidateResponse {
   source: string;
   source_agency: string | null;
   created_at: Date;
+  /** Newest email intake for this candidate (received_at); created_at for manual adds. */
+  last_applied_at: Date;
   ai_score: number | null;
   cv_readable: boolean;
   is_score_overridden: boolean;
