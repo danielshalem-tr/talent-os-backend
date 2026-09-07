@@ -13,11 +13,6 @@ const validEnv = {
   R2_BUCKET_NAME: 'triolla-cvs',
   NODE_ENV: 'test' as const,
   JWT_SECRET: 'test-jwt-secret-for-unit-tests-minimum-32chars',
-  JIRA_BASE_URL: 'https://example.atlassian.net',
-  JIRA_EMAIL: 'test@example.com',
-  JIRA_API_TOKEN: 'jira-token',
-  JIRA_DEFAULT_ASSIGNEE_ACCOUNT_ID: 'acc-daniel',
-  PM_HOLD_TOKEN_SECRET: 's'.repeat(32),
 };
 
 describe('envSchema', () => {
@@ -48,21 +43,29 @@ describe('envSchema', () => {
     expect(result.NODE_ENV).toBe('production');
   });
 
-  // The BullMQ worker validates against the base envSchema and never calls Jira, so it must
-  // boot without Jira credentials — otherwise a separate worker deployment crashes on startup.
-  it('worker schema (envSchema) parses without Jira credentials', () => {
-    const { JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, ...noJira } = validEnv;
-    expect(() => envSchema.parse(noJira)).not.toThrow();
-  });
-
-  // The API runs PM Bridge, so its schema must require Jira credentials (fail fast at startup).
+  // PM Bridge moved to the standalone Box (2026-09 cutover). Neither process needs Jira
+  // any more, and stale JIRA_*/PM_* keys still present in a deploy env must be ignored,
+  // not validated — zod's default object mode strips unknown keys.
   it('api schema (apiEnvSchema) parses a valid environment object', () => {
     expect(() => apiEnvSchema.parse(validEnv)).not.toThrow();
   });
 
-  it('api schema (apiEnvSchema) throws when Jira credentials are missing', () => {
-    const { JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN, ...noJira } = validEnv;
-    expect(() => apiEnvSchema.parse(noJira)).toThrow();
+  it('api and worker schemas boot without any Jira / PM Bridge variables and drop stale ones', () => {
+    const stale = {
+      ...validEnv,
+      JIRA_BASE_URL: 'https://example.atlassian.net',
+      JIRA_API_TOKEN: 'leftover',
+      PM_BRIDGE_ALLOWLIST: 'a@b.c',
+      PM_HOLD_TOKEN_SECRET: 'short',
+    };
+    const api = apiEnvSchema.parse(stale);
+    const worker = envSchema.parse(stale);
+    for (const parsed of [api, worker]) {
+      expect(parsed).not.toHaveProperty('JIRA_BASE_URL');
+      expect(parsed).not.toHaveProperty('JIRA_API_TOKEN');
+      expect(parsed).not.toHaveProperty('PM_BRIDGE_ALLOWLIST');
+      expect(parsed).not.toHaveProperty('PM_HOLD_TOKEN_SECRET');
+    }
   });
 
   // Voice screening env — deploys ship BEFORE ElevenLabs setup, so nothing here may be
@@ -109,21 +112,6 @@ describe('AUTH_ALLOWED_DOMAINS / TENANT_ID pairing', () => {
   it('worker base schema does not enforce the pairing (it never runs googleVerify)', () => {
     const { TENANT_ID, ...noTenant } = validEnv;
     expect(() => envSchema.parse({ ...noTenant, AUTH_ALLOWED_DOMAINS: 'triolla.io' })).not.toThrow();
-  });
-});
-
-describe('apiEnvSchema PM-Bridge smart-intake vars', () => {
-  it('requires JIRA_DEFAULT_ASSIGNEE_ACCOUNT_ID and a ≥32-char PM_HOLD_TOKEN_SECRET, defaults the notify email', () => {
-    const { JIRA_DEFAULT_ASSIGNEE_ACCOUNT_ID, PM_HOLD_TOKEN_SECRET, ...missing } = validEnv;
-    expect(() => apiEnvSchema.parse(missing)).toThrow();
-    expect(() => apiEnvSchema.parse({ ...validEnv, PM_HOLD_TOKEN_SECRET: 'too-short' })).toThrow();
-    const ok = apiEnvSchema.parse(validEnv);
-    expect(ok.PM_HOLD_NOTIFY_EMAIL).toBe('daniel.s@triolla.io');
-  });
-
-  it('worker base schema does NOT require the API-only PM-Bridge vars', () => {
-    const { JIRA_DEFAULT_ASSIGNEE_ACCOUNT_ID, PM_HOLD_TOKEN_SECRET, ...noApiVars } = validEnv;
-    expect(() => envSchema.parse(noApiVars)).not.toThrow();
   });
 });
 

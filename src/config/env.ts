@@ -42,25 +42,6 @@ export const envSchema = z.object({
   // numbers belonging to tenant staff / agencies. Matching extracted values are nulled before
   // dedup and before insert, so they can never be attributed to a candidate or create a match.
   INTAKE_CONTACT_BLOCKLIST: z.string().default(''),
-  // PM Bridge — Jira integration.
-  // Optional in this shared/base schema so the BullMQ worker (which never calls Jira) can boot
-  // without these. The API process re-requires JIRA_BASE_URL/EMAIL/API_TOKEN via apiEnvSchema.
-  JIRA_BASE_URL: z.url().optional(),
-  JIRA_EMAIL: z.string().min(1).optional(),
-  JIRA_API_TOKEN: z.string().min(1).optional(),
-  JIRA_PROJECT_KEY: z.string().default('TO'),
-  // Board whose *active* sprint new PM Bridge issues are added to (resolved live each filing).
-  JIRA_BOARD_ID: z.coerce.number().int().positive().optional(),
-  // Optional override: pin issues to a fixed sprint id instead of the board's active sprint.
-  JIRA_SPRINT_ID: z.coerce.number().int().positive().optional(),
-  PM_BRIDGE_ALLOWLIST: z.string().default(''),
-  PM_BRIDGE_MODEL: z.string().default('anthropic/claude-sonnet-4.6'),
-  // PM Bridge smart-intake. Optional in the base schema (worker never uses them);
-  // the API re-requires the secret + assignee via apiEnvSchema.
-  JIRA_DEFAULT_ASSIGNEE_ACCOUNT_ID: z.string().min(1).optional(),
-  JIRA_DEFAULT_ASSIGNEE_EMAIL: z.string().min(1).optional(),
-  PM_HOLD_NOTIFY_EMAIL: z.string().min(1).default('daniel.s@triolla.io'),
-  PM_HOLD_TOKEN_SECRET: z.string().min(32, 'PM_HOLD_TOKEN_SECRET must be at least 32 characters').optional(),
   API_PUBLIC_URL: z.url().optional(),
   MCP_PUBLIC_URL: z.url().optional(),
   MCP_JWT_SECRET: z.string().min(32, 'MCP_JWT_SECRET must be at least 32 characters').optional(),
@@ -109,18 +90,9 @@ const requireTenantWithAllowedDomains = (
   }
 };
 
-// API-process schema. PM Bridge runs only in the API, so Jira credentials are required there:
-// the API fails fast at startup if they're missing. The worker validates against the base
-// envSchema above and therefore boots without any Jira configuration.
-export const apiEnvSchema = envSchema
-  .extend({
-    JIRA_BASE_URL: z.url(),
-    JIRA_EMAIL: z.string().min(1),
-    JIRA_API_TOKEN: z.string().min(1),
-    JIRA_DEFAULT_ASSIGNEE_ACCOUNT_ID: z.string().min(1),
-    PM_HOLD_TOKEN_SECRET: z.string().min(32, 'PM_HOLD_TOKEN_SECRET must be at least 32 characters'),
-  })
-  .superRefine(requireTenantWithAllowedDomains);
+// API-process schema. Since the 2026-09 PM Bridge cutover the API has no Jira dependency;
+// the only API-specific rule left is the AUTH_ALLOWED_DOMAINS / TENANT_ID pairing.
+export const apiEnvSchema = envSchema.superRefine(requireTenantWithAllowedDomains);
 
 export type ApiEnv = z.infer<typeof apiEnvSchema>;
 
