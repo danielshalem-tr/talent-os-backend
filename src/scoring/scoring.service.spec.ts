@@ -194,10 +194,21 @@ describe('completeEvaluation', () => {
     expect(out.nice_to_haves).toEqual([expect.objectContaining({ requirement: 'Docker', status: 'missing' })]);
   });
 
-  it('leaves a complete (or paraphrased but complete) evaluation untouched', () => {
-    const full = [met, { ...met, requirement: 'Postgres' }, { ...met, requirement: 'React' }];
+  it('leaves a complete evaluation untouched (same array reference)', () => {
+    const full = [met, { ...met, requirement: 'PostgreSQL' }, { ...met, requirement: 'React' }];
     expect(
       completeEvaluation({ ...base, must_haves: full, nice_to_haves: [] }, { ...job, niceToHaveSkills: [] }).must_haves,
     ).toBe(full);
+  });
+
+  it('a repeated requirement cannot stand in for a missing one', () => {
+    const out = completeEvaluation(
+      { ...base, must_haves: [{ ...met, requirement: 'TypeScript' }, { ...met, requirement: 'typescript' }], nice_to_haves: [] },
+      { ...job, mustHaveSkills: ['TypeScript', 'Postgres'], niceToHaveSkills: [] },
+    );
+    expect(out.must_haves.map((r) => [r.requirement, r.status])).toEqual([
+      ['TypeScript', 'met'],
+      ['Postgres', 'missing'],
+    ]);
   });
 });

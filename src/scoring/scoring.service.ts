@@ -59,17 +59,30 @@ const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
  * The policy divides by the number of requirements the model RETURNED. If the model drops a
  * must-have it could not find, coverage rises and the must-have cap is skipped — a worse
  * candidate scores higher. Any job requirement with no matching entry is therefore appended as
- * `missing`. Entries the model added or paraphrased are left alone: guessing which one to drop
- * risks discarding a real evaluation.
+ * `missing`, and a requirement the model evaluated twice counts once.
  */
 export function completeEvaluation(evaluation: ScoringEvaluation, job: ScoringJob, logger?: Logger): ScoringEvaluation {
   const fill = (evaluated: RequirementEvaluation[], expected: string[], group: string) => {
-    const seen = new Set(evaluated.map((r) => normalize(r.requirement)));
+    // One entry per requirement name. The old check "evaluated.length >= expected.length" let
+    // a repeated or invented entry stand in for a requirement the model never evaluated —
+    // coverage rose, the must-have cap was skipped, a worse candidate scored higher.
+    const seen = new Set<string>();
+    const deduped = evaluated.filter((r) => {
+      const key = normalize(r.requirement);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     const absent = expected.filter((req) => req.trim() !== '' && !seen.has(normalize(req)));
-    if (absent.length === 0 || evaluated.length >= expected.length) return evaluated;
-    logger?.warn(`Model skipped ${absent.length} ${group} requirement(s), recorded as missing: ${absent.join(' | ')}`);
+    if (absent.length === 0 && deduped.length === evaluated.length) return evaluated;
+    if (deduped.length !== evaluated.length) {
+      logger?.warn(`Model repeated ${evaluated.length - deduped.length} ${group} requirement(s); duplicates dropped`);
+    }
+    if (absent.length > 0) {
+      logger?.warn(`Model skipped ${absent.length} ${group} requirement(s), recorded as missing: ${absent.join(' | ')}`);
+    }
     return [
-      ...evaluated,
+      ...deduped,
       ...absent.map<RequirementEvaluation>((requirement) => ({
         requirement,
         kind: 'other',
