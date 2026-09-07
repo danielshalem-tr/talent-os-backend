@@ -1329,13 +1329,18 @@ Response `200`:
 
 ### `POST /ingest-control/replay`
 
-Re-enqueues every held email (`held` → `pending` + queue job). Idempotent — safe to call again after partial failure.
+Re-enqueues held emails (`held` → `pending` + queue job), oldest first, **up to 200 per call** —
+call again while `held_count > 0`. Idempotent — safe to call again after partial failure. A row whose
+enqueue failed is returned to `held` and counted in `failed`.
 
 Response `200`:
 
 ```json
-{ "replayed": 12 }
+{ "replayed": 12, "failed": 0 }
 ```
+
+Errors: `409 INGEST_PAUSED` — ingest is disabled; enable it (`PATCH /ingest-control`) before replaying.
+Rows held because a provider outage outlived every retry (`error_message` set) are replayed the same way.
 
 ---
 

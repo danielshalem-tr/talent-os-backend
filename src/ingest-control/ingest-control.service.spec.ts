@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { IngestControlService } from './ingest-control.service';
 import { IngestControlController } from './ingest-control.controller';
 import { JwtPayload } from '../auth/jwt.service';
@@ -9,7 +9,7 @@ const viewer: JwtPayload = { sub: 'u2', org: 'org-1', role: 'viewer' };
 
 describe('IngestControlService', () => {
   let prisma: any;
-  let queue: { add: jest.Mock };
+  let queue: { add: jest.Mock; getJob: jest.Mock };
   let service: IngestControlService;
 
   beforeEach(() => {
@@ -27,7 +27,7 @@ describe('IngestControlService', () => {
       },
       $transaction: jest.fn().mockImplementation(async (cb: any) => cb(prisma)),
     };
-    queue = { add: jest.fn().mockResolvedValue({}) };
+    queue = { add: jest.fn().mockResolvedValue({}), getJob: jest.fn().mockResolvedValue(null) };
     service = new IngestControlService(prisma, queue as any);
   });
 
@@ -69,7 +69,7 @@ describe('IngestControlService', () => {
     ]);
     prisma.emailIntakeLog.updateMany.mockResolvedValue({ count: 1 });
     const res = await service.replayHeld(admin);
-    expect(res).toEqual({ replayed: 2 });
+    expect(res).toEqual({ replayed: 2, failed: 0 });
     expect(prisma.emailIntakeLog.updateMany).toHaveBeenCalledWith({
       where: { id: 'i1', tenantId: 'org-1', processingStatus: 'held' },
       data: { processingStatus: 'pending' },
@@ -88,21 +88,44 @@ describe('IngestControlService', () => {
     ]);
     prisma.emailIntakeLog.updateMany.mockResolvedValue({ count: 0 });
     const res = await service.replayHeld(admin);
-    expect(res).toEqual({ replayed: 0 });
+    expect(res).toEqual({ replayed: 0, failed: 0 });
     expect(queue.add).not.toHaveBeenCalled();
   });
 
-  it('replay reverts a row to held when its enqueue fails, so re-running replay recovers it', async () => {
+  it('replayHeld refuses while ingest is paused (the worker would re-hold everything)', async () => {
+    prisma.organization.findUniqueOrThrow.mockResolvedValue({ aiIngestEnabled: false });
+    await expect(service.replayHeld(admin)).rejects.toThrow(ConflictException);
+    expect(prisma.emailIntakeLog.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('replayHeld keeps going after one enqueue failure and reverts only that row', async () => {
     prisma.emailIntakeLog.findMany.mockResolvedValue([
-      { id: 'i1', fromEmail: 'a@b.co', subject: 'CV', receivedAt: new Date(), messageId: 'm1' },
+      { id: 'i1', messageId: 'm1' },
+      { id: 'i2', messageId: 'm2' },
     ]);
     prisma.emailIntakeLog.updateMany.mockResolvedValue({ count: 1 });
-    queue.add.mockRejectedValue(new Error('redis down'));
-    await expect(service.replayHeld(admin)).rejects.toThrow('redis down');
-    expect(prisma.emailIntakeLog.updateMany).toHaveBeenLastCalledWith({
-      where: { id: 'i1', tenantId: 'org-1' },
+    queue.add.mockRejectedValueOnce(new Error('redis down')).mockResolvedValueOnce({});
+    await expect(service.replayHeld(admin)).resolves.toEqual({ replayed: 1, failed: 1 });
+    expect(prisma.emailIntakeLog.updateMany).toHaveBeenCalledWith({
+      where: { id: 'i1', tenantId: 'org-1', processingStatus: 'pending' },
       data: { processingStatus: 'held' },
     });
+  });
+
+  it('replayHeld does NOT revert a row whose job Redis actually accepted', async () => {
+    prisma.emailIntakeLog.findMany.mockResolvedValue([{ id: 'i1', messageId: 'm1' }]);
+    prisma.emailIntakeLog.updateMany.mockResolvedValue({ count: 1 });
+    queue.add.mockRejectedValueOnce(new Error('socket closed after write'));
+    queue.getJob.mockResolvedValueOnce({ id: 'accepted' });
+    await expect(service.replayHeld(admin)).resolves.toEqual({ replayed: 1, failed: 0 });
+    expect(prisma.emailIntakeLog.updateMany).toHaveBeenCalledTimes(1); // the claim only
+  });
+
+  it('replayHeld claims oldest first, at most 200 per call', async () => {
+    await service.replayHeld(admin);
+    expect(prisma.emailIntakeLog.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { receivedAt: 'asc' }, take: 200 }),
+    );
   });
 
   it('replay rejects non-admin roles', async () => {
