@@ -630,7 +630,11 @@ export class IngestionProcessor extends WorkerHost {
     // lost-update the old read-merge-write suffered). Applications are written here too, so
     // "candidate points at a job" and "application exists for it" are never observed apart.
     const cvFromDocument = attachmentText.trim().length > 0;
-    let enrichment: { merged: EnrichmentFields; applications: Array<{ id: string; jobId: string }>; cvChanged: boolean };
+    let enrichment: {
+      merged: EnrichmentFields;
+      applications: Array<{ id: string; jobId: string }>;
+      cvChanged: boolean;
+    };
     try {
       enrichment = await this.prisma.$transaction(
         async (tx) => {
@@ -676,7 +680,10 @@ export class IngestionProcessor extends WorkerHost {
             cvFileUrl: context.fileKey, // R2 object key used as URL placeholder in Phase 1 (D-02)
             aiSummary: extraction!.ai_summary ?? null,
           };
-          const merged = mergeEnrichment({ ...locked, cvText: locked.cvText ?? '' }, incoming, { cvFromDocument });
+          const merged = mergeEnrichment({ ...locked, cvText: locked.cvText ?? '' }, incoming, {
+            cvFromDocument,
+            documentText: attachmentText,
+          });
           await tx.candidate.update({ where: { id: context.candidateId }, data: merged });
 
           const applications: Array<{ id: string; jobId: string }> = [];

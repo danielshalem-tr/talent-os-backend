@@ -110,6 +110,45 @@ describe('mergeEnrichment', () => {
       expect(out.cvFileUrl).toBeNull();
     });
 
+    it('the SAME document re-sent with a new covering note keeps text, file and profile (score reuse)', () => {
+      const doc = 'FULL CV TEXT '.repeat(50).trim();
+      const existing = { ...rich, cvText: `--- Email Body ---\nfirst note\n\n${doc}` };
+      const resent = {
+        ...thin,
+        cvText: `--- Email Body ---\nsecond note, interested in Backend Engineer\n\n${doc}`,
+        currentRole: 'Backend Engineer',
+      };
+      const out = mergeEnrichment(existing, resent, { cvFromDocument: true, documentText: doc });
+      expect(out.cvText).toBe(existing.cvText);
+      expect(out.cvFileUrl).toBe('cvs/t/old.pdf');
+      expect(out.currentRole).toBe('Dev');
+    });
+
+    it('a body-only follow-up never overwrites CV-derived profile fields, only fills empty ones', () => {
+      const note = {
+        ...thin,
+        currentRole: 'Backend Engineer',
+        yearsExperience: 1,
+        location: 'Haifa',
+        aiSummary: 'note',
+      };
+      const out = mergeEnrichment({ ...rich, location: null }, note, { cvFromDocument: false });
+      expect(out.currentRole).toBe('Dev');
+      expect(out.yearsExperience).toBe(5);
+      expect(out.skills).toEqual(['ts']);
+      expect(out.aiSummary).toBe('x');
+      expect(out.location).toBe('Haifa');
+    });
+
+    it('a NEW document updates the profile fields', () => {
+      const out = mergeEnrichment(
+        rich,
+        { ...thin, cvText: 'NEW CV TEXT', currentRole: 'Lead' },
+        { cvFromDocument: true, documentText: 'NEW CV TEXT' },
+      );
+      expect(out.currentRole).toBe('Lead');
+    });
+
     it('defaults to the document rule (mergeCandidates callers unchanged)', () => {
       expect(mergeEnrichment(rich, { ...thin, cvText: 'NEW' }).cvText).toBe('NEW');
     });

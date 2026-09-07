@@ -26,6 +26,12 @@ export interface EnrichmentFields {
 export interface MergeOptions {
   /** True when THIS submission carried a readable CV document (attachment text was extracted). */
   cvFromDocument: boolean;
+  /**
+   * The text extracted from that document alone (no email body). When the existing CV already
+   * contains it verbatim, the applicant re-sent the SAME document: nothing is replaced and the
+   * caller's "CV changed" check stays false, so the persisted score is reused.
+   */
+  documentText?: string;
 }
 
 export function mergeEnrichment(
@@ -35,23 +41,43 @@ export function mergeEnrichment(
 ): EnrichmentFields {
   const jobChanged = incoming.jobId !== null && incoming.jobId !== existing.jobId;
 
-  // The CV text + file PAIR moves together, and only for a real document. Any non-blank incoming
-  // text used to win, so "attaching my CV again" with nothing attached replaced a rich CV with a
-  // two-line note while the old PDF stayed — text, file, readability badge and score then
-  // described three different things. Body-only text still fills an EMPTY slot.
   const hasIncomingCv = incoming.cvText.trim().length > 0;
   const hasExistingCv = existing.cvText.trim().length > 0;
-  const replaceCv = hasIncomingCv && (opts.cvFromDocument || !hasExistingCv);
+  const documentText = opts.documentText?.trim() ?? '';
+  const sameDocument = opts.cvFromDocument && documentText.length > 0 && existing.cvText.includes(documentText);
+  const newDocument = opts.cvFromDocument && !sameDocument;
+
+  // The CV text + file PAIR moves together, and only for a NEW real document. Any non-blank
+  // incoming text used to win, so "attaching my CV again" with nothing attached replaced a rich
+  // CV with a two-line note while the old PDF stayed — text, file, readability badge and score
+  // then described three different things. The same PDF with a different covering note is not
+  // a new CV either (cv_text embeds the body, so a plain text compare re-scored every re-send).
+  // Body-only text still fills an EMPTY slot.
+  const replaceCv = hasIncomingCv && (newDocument || !hasExistingCv);
+
+  // Profile fields (role, years, location, skills, summary) are extracted from body + document
+  // together. Without a new document the body dominates, and a follow-up "interested in the
+  // Backend Engineer role" rewrote a CV-derived "Senior Full Stack Developer". So once a
+  // candidate has CV-derived data, a submission with no new document only fills empty fields.
+  const protectProfile = hasExistingCv && !newDocument;
+  const pick = <T>(incomingValue: T | null, existingValue: T | null): T | null =>
+    protectProfile ? (existingValue ?? incomingValue) : (incomingValue ?? existingValue);
 
   return {
     jobId: incoming.jobId ?? existing.jobId,
     hiringStageId: jobChanged ? incoming.hiringStageId : existing.hiringStageId,
-    currentRole: incoming.currentRole ?? existing.currentRole,
-    yearsExperience: incoming.yearsExperience ?? existing.yearsExperience,
-    location: incoming.location ?? existing.location,
-    skills: incoming.skills.length > 0 ? incoming.skills : existing.skills,
+    currentRole: pick(incoming.currentRole, existing.currentRole),
+    yearsExperience: pick(incoming.yearsExperience, existing.yearsExperience),
+    location: pick(incoming.location, existing.location),
+    skills: protectProfile
+      ? existing.skills.length > 0
+        ? existing.skills
+        : incoming.skills
+      : incoming.skills.length > 0
+        ? incoming.skills
+        : existing.skills,
     cvText: replaceCv ? incoming.cvText : existing.cvText,
     cvFileUrl: replaceCv ? (incoming.cvFileUrl ?? existing.cvFileUrl) : (existing.cvFileUrl ?? incoming.cvFileUrl),
-    aiSummary: incoming.aiSummary ?? existing.aiSummary,
+    aiSummary: pick(incoming.aiSummary, existing.aiSummary),
   };
 }
