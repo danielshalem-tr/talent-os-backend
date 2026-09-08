@@ -5,7 +5,7 @@
  */
 export const AI_CALL_TIMEOUT_MS = 45_000;
 
-/** Spread into generateObject(): one SDK-level retry and a hard deadline. */
+/** Spread into generateText(): one SDK-level retry and a hard deadline. */
 export function aiCallGuards(): { maxRetries: 1; abortSignal: AbortSignal } {
   return { maxRetries: 1, abortSignal: AbortSignal.timeout(AI_CALL_TIMEOUT_MS) };
 }

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { generateObject } from 'ai';
+import { generateText, Output } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { StorageService } from '../../storage/storage.service';
@@ -234,10 +234,9 @@ export class ExtractionAgentService {
     const prompt = [...metadataLines, ``, `--- CV / Email Content ---`, safeFullText].join('\n');
     const instructions = buildInstructions(new Date().getFullYear());
 
-    const { object } = await generateObject({
+    const { output: object } = await generateText({
       model: this.openrouter.chat(this.extractionModel),
-      schema: CandidateExtractSchema,
-      schemaName: 'CandidateExtract',
+      output: Output.object({ schema: CandidateExtractSchema, name: 'CandidateExtract' }),
       system: instructions,
       prompt,
       temperature: 0,

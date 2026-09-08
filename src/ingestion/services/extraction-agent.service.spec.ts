@@ -7,13 +7,14 @@ import {
 import { mockCandidateExtract } from './extraction-agent.service.test-helpers';
 import { ConfigService } from '@nestjs/config';
 import { StorageService } from '../../storage/storage.service';
-import { generateObject } from 'ai';
+import { generateText } from 'ai';
 
 // Re-export for backward compatibility with other specs that import from here
 export { mockCandidateExtract };
 
 jest.mock('ai', () => ({
-  generateObject: jest.fn(),
+  generateText: jest.fn(),
+  Output: { object: jest.fn((spec: unknown) => spec) },
 }));
 
 jest.mock('@openrouter/ai-sdk-provider', () => ({
@@ -22,7 +23,7 @@ jest.mock('@openrouter/ai-sdk-provider', () => ({
   }),
 }));
 
-const mockGenerateObject = generateObject as jest.MockedFunction<typeof generateObject>;
+const mockGenerateText = generateText as jest.MockedFunction<typeof generateText>;
 
 function makeService(storageService?: Partial<{ loadExtractionCache: jest.Mock; saveExtractionCache: jest.Mock }>): ExtractionAgentService {
   const configService = {
@@ -155,7 +156,7 @@ describe('ExtractionAgentService', () => {
     expect(parsed.skills).toEqual([]);
   });
 
-  // When generateObject resolves, returns the AI result
+  // When generateText resolves, returns the AI result
   it('returns AI result on success', async () => {
     const aiResult = {
       full_name: 'Alice Smith',
@@ -170,7 +171,7 @@ describe('ExtractionAgentService', () => {
       source_agency: null,
     };
 
-    mockGenerateObject.mockResolvedValueOnce({ object: aiResult } as any);
+    mockGenerateText.mockResolvedValueOnce({ output: aiResult } as any);
 
     const service = makeService();
     const result = await service.extract('some cv text', DEFAULT_METADATA);
@@ -181,7 +182,7 @@ describe('ExtractionAgentService', () => {
 
   // extract() THROWS when callAI() throws — does NOT return fallback
   it('extract() throws when callAI() throws (no fallback swallowing)', async () => {
-    mockGenerateObject.mockRejectedValueOnce(new Error('Network timeout'));
+    mockGenerateText.mockRejectedValueOnce(new Error('Network timeout'));
 
     const service = makeService();
     await expect(service.extract('some text', DEFAULT_METADATA)).rejects.toThrow('Network timeout');
@@ -201,22 +202,22 @@ describe('ExtractionAgentService', () => {
       source_hint: 'direct' as const,
       source_agency: null,
     };
-    mockGenerateObject.mockResolvedValueOnce({ object: aiResult } as any);
+    mockGenerateText.mockResolvedValueOnce({ output: aiResult } as any);
 
     const service = makeService();
     await service.extract('cv text here', { subject: 'My CV', fromEmail: 'dana@example.com', tenantId: 'tid', messageId: 'mid' });
 
-    expect(mockGenerateObject).toHaveBeenCalledWith(
+    expect(mockGenerateText).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: expect.stringContaining('--- Email Metadata ---'),
       }),
     );
-    expect(mockGenerateObject).toHaveBeenCalledWith(
+    expect(mockGenerateText).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: expect.stringContaining('Subject: My CV'),
       }),
     );
-    expect(mockGenerateObject).toHaveBeenCalledWith(
+    expect(mockGenerateText).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'mocked-model',
         prompt: expect.stringContaining('From: dana@example.com'),
@@ -224,8 +225,8 @@ describe('ExtractionAgentService', () => {
     );
   });
 
-  // extract calls generateObject and returns structured result
-  it('extract calls generateObject and returns structured result', async () => {
+  // extract calls generateText and returns structured result
+  it('extract calls generateText and returns structured result', async () => {
     const expectedResult = {
       full_name: 'Dana Cohen',
       email: 'dana@gmail.com',
@@ -238,17 +239,17 @@ describe('ExtractionAgentService', () => {
       source_hint: 'direct' as const,
       source_agency: null,
     };
-    mockGenerateObject.mockResolvedValueOnce({ object: expectedResult } as any);
+    mockGenerateText.mockResolvedValueOnce({ output: expectedResult } as any);
 
     const service = makeService();
     const result = await service.extract('cv text', DEFAULT_METADATA);
 
     expect(result).toMatchObject(expectedResult);
-    expect(mockGenerateObject).toHaveBeenCalledTimes(1);
+    expect(mockGenerateText).toHaveBeenCalledTimes(1);
   });
 
-  // extract returns cached result from R2 without calling generateObject
-  it('extract returns cached result from R2 without calling generateObject', async () => {
+  // extract returns cached result from R2 without calling generateText
+  it('extract returns cached result from R2 without calling generateText', async () => {
     const cached = {
       full_name: 'Cached Name',
       email: null, phone: null, current_role: null,
@@ -264,7 +265,7 @@ describe('ExtractionAgentService', () => {
     const result = await service.extract('cv text', DEFAULT_METADATA);
 
     expect(result.full_name).toBe('Cached Name');
-    expect(mockGenerateObject).not.toHaveBeenCalled();
+    expect(mockGenerateText).not.toHaveBeenCalled();
   });
 
   // extract saves result to R2 cache after successful AI call
@@ -275,7 +276,7 @@ describe('ExtractionAgentService', () => {
       years_experience: null, location: null, skills: [],
       ai_summary: null, source_hint: null, source_agency: null,
     };
-    mockGenerateObject.mockResolvedValueOnce({ object: aiResult } as any);
+    mockGenerateText.mockResolvedValueOnce({ output: aiResult } as any);
     const mockStorage = {
       loadExtractionCache: jest.fn().mockResolvedValue(null),
       saveExtractionCache: jest.fn().mockResolvedValue(undefined),
@@ -299,7 +300,7 @@ describe('ExtractionAgentService', () => {
       years_experience: null, location: null, skills: [],
       ai_summary: null, source_hint: null, source_agency: null,
     };
-    mockGenerateObject.mockResolvedValueOnce({ object: aiResult } as any);
+    mockGenerateText.mockResolvedValueOnce({ output: aiResult } as any);
     const mockStorage = {
       loadExtractionCache: jest.fn().mockResolvedValue(null),
       saveExtractionCache: jest.fn().mockRejectedValue(new Error('R2 unavailable')),
@@ -308,7 +309,7 @@ describe('ExtractionAgentService', () => {
 
     const result = await service.extract('cv text', DEFAULT_METADATA);
     expect(result.full_name).toBe('New Candidate');
-    expect(mockGenerateObject).toHaveBeenCalledTimes(1);
+    expect(mockGenerateText).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -356,7 +357,7 @@ describe('ExtractionAgentService - context limits', () => {
       years_experience: null, location: null, skills: [], ai_summary: null,
       source_hint: null, source_agency: null,
     };
-    mockGenerateObject.mockResolvedValueOnce({ object: aiResult } as any);
+    mockGenerateText.mockResolvedValueOnce({ output: aiResult } as any);
     const service = makeService();
     const longText = 'a'.repeat(100_000);
     await expect(service.extract(longText, { subject: 'Test', fromEmail: 'a@b.com', tenantId: 'tid', messageId: 'mid' })).resolves.toBeDefined();
@@ -383,7 +384,7 @@ describe('ExtractionAgentService - known agency domain resolution (Issue 3)', ()
 
   // jobhunt.co.il domain → canonical "jobhunt", overrides AI result
   it('overrides source_agency with canonical "jobhunt" for jobhunt.co.il sender', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: agencyAiResult } as any);
+    mockGenerateText.mockResolvedValueOnce({ output: agencyAiResult } as any);
     const service = makeService();
     const result = await service.extract('cv text', {
       subject: 'Presenting candidate',
@@ -397,7 +398,7 @@ describe('ExtractionAgentService - known agency domain resolution (Issue 3)', ()
 
   // alljob.co.il domain → canonical "AllJobs", overrides AI result
   it('overrides source_agency with canonical "AllJobs" for alljob.co.il sender', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: { ...agencyAiResult, source_agency: 'AllJobs' } } as any);
+    mockGenerateText.mockResolvedValueOnce({ output: { ...agencyAiResult, source_agency: 'AllJobs' } } as any);
     const service = makeService();
     const result = await service.extract('cv text', {
       subject: 'New candidate',
@@ -411,7 +412,7 @@ describe('ExtractionAgentService - known agency domain resolution (Issue 3)', ()
 
   // Unknown domain: AI result is preserved as-is
   it('preserves AI source_agency for unknown domain', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: { ...agencyAiResult, source_agency: 'Recruiters Inc' } } as any);
+    mockGenerateText.mockResolvedValueOnce({ output: { ...agencyAiResult, source_agency: 'Recruiters Inc' } } as any);
     const service = makeService();
     const result = await service.extract('cv text', {
       subject: 'Candidate for your role',
@@ -424,7 +425,7 @@ describe('ExtractionAgentService - known agency domain resolution (Issue 3)', ()
 
   // Known domain injects "Resolved Agency Name" line into prompt
   it('injects "Resolved Agency Name" into prompt for known domains', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: agencyAiResult } as any);
+    mockGenerateText.mockResolvedValueOnce({ output: agencyAiResult } as any);
     const service = makeService();
     await service.extract('cv text', {
       subject: 'Presenting candidate',
@@ -432,7 +433,7 @@ describe('ExtractionAgentService - known agency domain resolution (Issue 3)', ()
       tenantId: 'tid',
       messageId: 'mid',
     });
-    expect(mockGenerateObject).toHaveBeenCalledWith(
+    expect(mockGenerateText).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: expect.stringContaining('Resolved Agency Name: jobhunt'),
       }),
@@ -441,7 +442,7 @@ describe('ExtractionAgentService - known agency domain resolution (Issue 3)', ()
 
   // Unknown domain: no "Resolved Agency Name" line in prompt
   it('does NOT inject "Resolved Agency Name" for unknown domain', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: agencyAiResult } as any);
+    mockGenerateText.mockResolvedValueOnce({ output: agencyAiResult } as any);
     const service = makeService();
     await service.extract('cv text', {
       subject: 'Candidate',
@@ -449,7 +450,7 @@ describe('ExtractionAgentService - known agency domain resolution (Issue 3)', ()
       tenantId: 'tid',
       messageId: 'mid',
     });
-    expect(mockGenerateObject).toHaveBeenCalledWith(
+    expect(mockGenerateText).toHaveBeenCalledWith(
       expect.objectContaining({
         prompt: expect.not.stringContaining('Resolved Agency Name'),
       }),
@@ -461,14 +462,14 @@ describe('ExtractionAgentService - location prompt instruction (Issue 1)', () =>
   // Verify the INSTRUCTIONS string explicitly directs the AI to use HOME location signals
   // and not the employer's country — regression guard so the instruction is never accidentally removed.
   it('INSTRUCTIONS prompt contains home-location guidance and phone prefix example', async () => {
-    mockGenerateObject.mockResolvedValueOnce({ object: {
+    mockGenerateText.mockResolvedValueOnce({ output: {
       full_name: 'Test', email: null, phone: null, current_role: null,
       years_experience: null, location: null, skills: [], ai_summary: null,
       source_hint: null, source_agency: null,
     } } as any);
     const service = makeService();
     await service.extract('cv', { subject: 'S', fromEmail: 'a@b.com', tenantId: 'tid', messageId: 'mid' });
-    const callArg = mockGenerateObject.mock.calls[0][0];
+    const callArg = mockGenerateText.mock.calls[0][0];
     expect(callArg.system).toContain('HOME location');
     expect(callArg.system).toContain('Phone country prefix');
     expect(callArg.system).toContain('employer');

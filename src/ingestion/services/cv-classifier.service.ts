@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { generateObject } from 'ai';
+import { generateText, Output } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { StorageService } from '../../storage/storage.service';
@@ -111,10 +111,9 @@ export class CvClassifierService {
       safeFullText,
     ].join('\n');
 
-    const { object } = await generateObject({
+    const { output: object } = await generateText({
       model: this.openrouter.chat(this.classifierModel),
-      schema: CvClassificationSchema,
-      schemaName: 'CvClassification',
+      output: Output.object({ schema: CvClassificationSchema, name: 'CvClassification' }),
       system: INSTRUCTIONS,
       prompt,
       temperature: 0,

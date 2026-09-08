@@ -1,9 +1,9 @@
-jest.mock('ai', () => ({ generateObject: jest.fn() }));
-import { generateObject } from 'ai';
+jest.mock('ai', () => ({ generateText: jest.fn(), Output: { object: jest.fn((spec: unknown) => spec) } }));
+import { generateText } from 'ai';
 import { ConfigService } from '@nestjs/config';
 import { renderAssessment, VoiceAssessmentService } from './voice-assessment.service';
 
-const mockGenerateObject = generateObject as jest.MockedFunction<typeof generateObject>;
+const mockGenerateText = generateText as jest.MockedFunction<typeof generateText>;
 
 function makeConfig(): ConfigService {
   const values: Record<string, string> = { OPENROUTER_API_KEY: 'test-key' };
@@ -43,7 +43,7 @@ describe('renderAssessment', () => {
 describe('VoiceAssessmentService.generateAssessment', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGenerateObject.mockResolvedValue({ object: ASSESSMENT } as never);
+    mockGenerateText.mockResolvedValue({ output: ASSESSMENT } as never);
   });
 
   it('sends numbered questions + labeled transcript turns at temperature 0, returns rendered text', async () => {
@@ -57,7 +57,7 @@ describe('VoiceAssessmentService.generateAssessment', () => {
       attempt: 1,
       durationSecs: 241,
     });
-    const call = mockGenerateObject.mock.calls[0][0] as Record<string, unknown>;
+    const call = mockGenerateText.mock.calls[0][0] as Record<string, unknown>;
     expect(call.prompt).toContain('1. X\n2. Y');
     expect(call.prompt).toContain('Interviewer: שלום, יש כמה רגעים?');
     expect(call.prompt).toContain('Candidate: כן, בטח');
@@ -67,7 +67,7 @@ describe('VoiceAssessmentService.generateAssessment', () => {
   });
 
   it('propagates LLM/schema failures — nothing is swallowed here', async () => {
-    mockGenerateObject.mockRejectedValue(new Error('response did not match schema'));
+    mockGenerateText.mockRejectedValue(new Error('response did not match schema'));
     const svc = new VoiceAssessmentService({} as never, makeConfig());
     await expect(
       svc.generateAssessment({ transcript: [], questions: [], attempt: 1, durationSecs: null }),
@@ -127,7 +127,7 @@ describe('VoiceAssessmentService.assessCall', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGenerateObject.mockResolvedValue({ object: ASSESSMENT } as never);
+    mockGenerateText.mockResolvedValue({ output: ASSESSMENT } as never);
   });
 
   it('writes the assessment to candidate.hiringStageId and advances to the next enabled stage', async () => {
@@ -177,7 +177,7 @@ describe('VoiceAssessmentService.assessCall', () => {
     const { svc, prisma } = makeMocks({ candidate: { hiringStageId: null } });
     prisma.jobStage.findFirst.mockResolvedValue(null);
     await expect(svc.assessCall('vc1')).resolves.toBeUndefined();
-    expect(mockGenerateObject).not.toHaveBeenCalled();
+    expect(mockGenerateText).not.toHaveBeenCalled();
     expect(prisma.candidateStageSummary.create).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -186,7 +186,7 @@ describe('VoiceAssessmentService.assessCall', () => {
     const { svc, prisma } = makeMocks();
     prisma.candidateStageSummary.findUnique.mockResolvedValue({ id: 'existing' });
     await svc.assessCall('vc1');
-    expect(mockGenerateObject).not.toHaveBeenCalled();
+    expect(mockGenerateText).not.toHaveBeenCalled();
     expect(prisma.candidateStageSummary.create).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -206,7 +206,7 @@ describe('VoiceAssessmentService.assessCall', () => {
   });
 
   it('malformed LLM output → rejects, nothing written (BullMQ will retry per VOICE_JOB_OPTS)', async () => {
-    mockGenerateObject.mockRejectedValue(new Error('response did not match schema'));
+    mockGenerateText.mockRejectedValue(new Error('response did not match schema'));
     const { svc, prisma } = makeMocks();
     await expect(svc.assessCall('vc1')).rejects.toThrow('response did not match schema');
     expect(prisma.candidateStageSummary.create).not.toHaveBeenCalled();
@@ -216,7 +216,7 @@ describe('VoiceAssessmentService.assessCall', () => {
   it('defense-in-depth: a non-completed row is never assessed', async () => {
     const { svc } = makeMocks({ status: 'failed' });
     await svc.assessCall('vc1');
-    expect(mockGenerateObject).not.toHaveBeenCalled();
+    expect(mockGenerateText).not.toHaveBeenCalled();
   });
 });
 
@@ -268,7 +268,7 @@ describe('VoiceAssessmentService.assessCall — substance gate + job scoping (re
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockGenerateObject.mockResolvedValue({ object: ASSESSMENT } as never);
+    mockGenerateText.mockResolvedValue({ output: ASSESSMENT } as never);
   });
 
   it('an instant hang-up (agent greeting only) is never assessed and never advances', async () => {
@@ -277,7 +277,7 @@ describe('VoiceAssessmentService.assessCall — substance gate + job scoping (re
       transcript: [{ role: 'agent', message: 'היי, קוראים לי נועה', time_in_call_secs: 0 }],
     });
     await svc.assessCall('vc1');
-    expect(mockGenerateObject).not.toHaveBeenCalled();
+    expect(mockGenerateText).not.toHaveBeenCalled();
     expect(prisma.candidateStageSummary.create).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
@@ -312,7 +312,7 @@ describe('VoiceAssessmentService.assessCall — substance gate + job scoping (re
       ],
     });
     await svc.assessCall('vc1');
-    const call = mockGenerateObject.mock.calls[0][0] as Record<string, unknown>;
+    const call = mockGenerateText.mock.calls[0][0] as Record<string, unknown>;
     expect(call.prompt).not.toContain('null');
     expect(call.prompt).toContain('Candidate: היי');
   });

@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { generateObject } from 'ai';
+import { generateText, Output } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { z } from 'zod';
 import { aiCallGuards } from '../../common/upstream-errors';
@@ -73,10 +73,9 @@ export class JobMatcherService {
     ].join('\n');
 
     try {
-      const { object } = await generateObject({
+      const { output: object } = await generateText({
         model: this.openrouter.chat(this.matcherModel),
-        schema: JobMatchSchema,
-        schemaName: 'JobMatch',
+        output: Output.object({ schema: JobMatchSchema, name: 'JobMatch' }),
         system: INSTRUCTIONS,
         prompt,
         temperature: 0,

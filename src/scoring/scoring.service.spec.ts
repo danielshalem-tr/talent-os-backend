@@ -1,14 +1,17 @@
 import { ConfigService } from '@nestjs/config';
-import { generateObject } from 'ai';
+import { generateText } from 'ai';
 import { completeEvaluation, ScoringAgentService, ScoringInput } from './scoring.service';
 import { SCORING_SYSTEM_PROMPT } from './scoring-prompt';
 
-jest.mock('ai', () => ({ generateObject: jest.fn() }));
+jest.mock('ai', () => ({
+  generateText: jest.fn(),
+  Output: { object: jest.fn((spec: unknown) => spec) },
+}));
 jest.mock('@openrouter/ai-sdk-provider', () => ({
   createOpenRouter: jest.fn().mockReturnValue({ chat: jest.fn().mockReturnValue('mocked-model') }),
 }));
 
-const mockGenerateObject = generateObject as jest.MockedFunction<typeof generateObject>;
+const mockGenerateText = generateText as jest.MockedFunction<typeof generateText>;
 
 function makeService(): ScoringAgentService {
   const configService = { get: jest.fn().mockReturnValue('fake-openrouter-key') } as unknown as ConfigService;
@@ -67,26 +70,26 @@ const input = (): ScoringInput => ({
 describe('ScoringAgentService', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  it('calls generateObject with the system prompt, the built user prompt and temperature 0', async () => {
-    mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
+  it('calls generateText with the system prompt, the built user prompt and temperature 0', async () => {
+    mockGenerateText.mockResolvedValue({ output: evaluation } as never);
     await makeService().score(input());
-    const args = mockGenerateObject.mock.calls[0][0] as unknown as {
+    const args = mockGenerateText.mock.calls[0][0] as unknown as {
       model: string;
       system: string;
       prompt: string;
       temperature: number;
-      schemaName: string;
+      output: { name: string };
     };
     expect(args.model).toBe('mocked-model');
     expect(args.system).toBe(SCORING_SYSTEM_PROMPT);
     expect(args.prompt).toContain('M1. TypeScript');
     expect(args.prompt).toContain('Experienced TypeScript engineer');
     expect(args.temperature).toBe(0);
-    expect(args.schemaName).toBe('CandidateEvaluation');
+    expect(args.output.name).toBe('CandidateEvaluation');
   });
 
   it('computes the score from the evaluation via the policy and returns the breakdown', async () => {
-    mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
+    mockGenerateText.mockResolvedValue({ output: evaluation } as never);
     const result = await makeService().score(input());
     expect(result.score).toBeLessThanOrEqual(60); // one core must-have missing → cap 60
     expect(result.breakdown.caps_applied).toContainEqual({ label: 'core_must_have_missing', cap: 60 });
@@ -98,18 +101,18 @@ describe('ScoringAgentService', () => {
   });
 
   it('always reports the hard-coded anthropic/claude-sonnet-5 model', async () => {
-    mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
+    mockGenerateText.mockResolvedValue({ output: evaluation } as never);
     const result = await makeService().score(input());
     expect(result.modelUsed).toBe('anthropic/claude-sonnet-5');
   });
 
-  it('propagates generateObject failures', async () => {
-    mockGenerateObject.mockRejectedValue(new Error('rate limited'));
+  it('propagates generateText failures', async () => {
+    mockGenerateText.mockRejectedValue(new Error('rate limited'));
     await expect(makeService().score(input())).rejects.toThrow('rate limited');
   });
 
   it('does not throw on a 50K-char CV (truncated internally)', async () => {
-    mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
+    mockGenerateText.mockResolvedValue({ output: evaluation } as never);
     await expect(makeService().score({ ...input(), cvText: 'a'.repeat(50_000) })).resolves.toBeDefined();
   });
 });
@@ -126,31 +129,31 @@ describe('ScoringAgentService sampling', () => {
       reasoning: 'strong',
     };
     const weak = { ...evaluation, must_haves: [{ ...met, status: 'missing' }, missing], reasoning: 'weak' };
-    mockGenerateObject
-      .mockResolvedValueOnce({ object: strong } as never)
-      .mockResolvedValueOnce({ object: weak } as never)
-      .mockResolvedValueOnce({ object: evaluation } as never);
+    mockGenerateText
+      .mockResolvedValueOnce({ output: strong } as never)
+      .mockResolvedValueOnce({ output: weak } as never)
+      .mockResolvedValueOnce({ output: evaluation } as never);
     const result = await makeService().score(input());
-    expect(mockGenerateObject).toHaveBeenCalledTimes(3);
+    expect(mockGenerateText).toHaveBeenCalledTimes(3);
     expect(result.reasoning).toBe('Strong TS, no Postgres.'); // the middle score's evaluation
     expect(result.breakdown.caps_applied).toContainEqual({ label: 'core_must_have_missing', cap: 60 });
   });
 
   it('keeps the successful samples when one of three fails, throws only when all fail', async () => {
-    mockGenerateObject
+    mockGenerateText
       .mockRejectedValueOnce(new Error('429'))
-      .mockResolvedValueOnce({ object: evaluation } as never)
-      .mockResolvedValueOnce({ object: evaluation } as never);
+      .mockResolvedValueOnce({ output: evaluation } as never)
+      .mockResolvedValueOnce({ output: evaluation } as never);
     const ok = await makeService().score(input());
     expect(ok.reasoning).toBe('Strong TS, no Postgres.');
-    mockGenerateObject.mockRejectedValue(new Error('all down'));
+    mockGenerateText.mockRejectedValue(new Error('all down'));
     await expect(makeService().score(input())).rejects.toThrow('all down');
   });
 
   it('honours opts.samples for the eval harness', async () => {
-    mockGenerateObject.mockResolvedValue({ object: evaluation } as never);
+    mockGenerateText.mockResolvedValue({ output: evaluation } as never);
     await makeService().score(input(), { samples: 1 });
-    expect(mockGenerateObject).toHaveBeenCalledTimes(1);
+    expect(mockGenerateText).toHaveBeenCalledTimes(1);
   });
 });
 

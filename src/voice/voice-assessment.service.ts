@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { generateObject } from 'ai';
+import { generateText, Output } from 'ai';
 import { z } from 'zod';
 import { PrismaService } from '../prisma/prisma.service';
 import { moveCandidateToStage } from '../candidates/stage-move';
@@ -105,10 +105,9 @@ export class VoiceAssessmentService {
         ? input.questions.map((q, i) => `${i + 1}. ${q.text}`).join('\n')
         : '(no screening questions were configured — this was a general screening conversation)';
 
-    const { object } = await generateObject({
+    const { output: object } = await generateText({
       model: this.openrouter.chat(this.model),
-      schema: AssessmentSchema,
-      schemaName: 'ScreeningCallAssessment',
+      output: Output.object({ schema: AssessmentSchema, name: 'ScreeningCallAssessment' }),
       system: ASSESSMENT_INSTRUCTIONS,
       prompt: `## Screening questions\n${questions}\n\n## Call transcript\n${turns}`,
       temperature: 0,

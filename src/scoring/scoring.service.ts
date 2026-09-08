@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { generateObject } from 'ai';
+import { generateText, Output } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { ScoringJob } from './scoring-job-context';
 import { computeScore, RequirementEvaluation, ScoreBreakdown, ScoringEvaluation } from './scoring-policy';
@@ -126,10 +126,11 @@ export class ScoringAgentService {
 
     const settled = await Promise.allSettled(
       Array.from({ length: samples }, async () => {
-        const { object: evaluation } = await generateObject({
+        // `generateObject` is deprecated in ai@6; `generateText` + `Output.object` validates against
+        // the same schema and throws the same NoObjectGeneratedError on a schema miss.
+        const { output: evaluation } = await generateText({
           model: this.openrouter.chat(model),
-          schema: EvaluationSchema,
-          schemaName: 'CandidateEvaluation',
+          output: Output.object({ schema: EvaluationSchema, name: 'CandidateEvaluation' }),
           system: SCORING_SYSTEM_PROMPT,
           prompt,
           temperature: 0,

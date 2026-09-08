@@ -22,7 +22,7 @@ export const EvaluationSchema = z.object({
   must_haves: z.array(RequirementEvaluationSchema),
   nice_to_haves: z.array(RequirementEvaluationSchema),
   // Clamp rather than reject: a model that says "55 years" or "105" must not fail the whole
-  // intake (generateObject throws on schema violations and ingestion marks the email failed).
+  // intake (the SDK throws on schema violations and ingestion marks the email failed).
   relevant_years: z
     .number()
     .nullable()

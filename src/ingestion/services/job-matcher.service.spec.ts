@@ -1,14 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { generateObject } from 'ai';
+import { generateText } from 'ai';
 import { JobMatcherService, JobMatcherInput } from './job-matcher.service';
 
-jest.mock('ai', () => ({ generateObject: jest.fn() }));
+jest.mock('ai', () => ({ generateText: jest.fn(), Output: { object: jest.fn((spec: unknown) => spec) } }));
 jest.mock('@openrouter/ai-sdk-provider', () => ({
   createOpenRouter: jest.fn().mockReturnValue({ chat: jest.fn().mockReturnValue('model-handle') }),
 }));
 
-const generateObjectMock = generateObject as unknown as jest.Mock;
+const generateTextMock = generateText as unknown as jest.Mock;
 
 const baseInput: JobMatcherInput = {
   openJobs: [
@@ -35,40 +35,40 @@ describe('JobMatcherService', () => {
   });
 
   it('returns the matched short_ids', async () => {
-    generateObjectMock.mockResolvedValue({ object: { short_ids: ['106'] } });
+    generateTextMock.mockResolvedValue({ output: { short_ids: ['106'] } });
     await expect(service.match(baseInput)).resolves.toEqual(['106']);
   });
 
   it('calls the model with a deadline and a single SDK retry', async () => {
-    generateObjectMock.mockResolvedValue({ object: { short_ids: ['106'] } });
+    generateTextMock.mockResolvedValue({ output: { short_ids: ['106'] } });
     await service.match(baseInput);
-    const callArg = generateObjectMock.mock.calls[0][0];
+    const callArg = generateTextMock.mock.calls[0][0];
     expect(callArg.maxRetries).toBe(1);
     expect(callArg.abortSignal).toBeInstanceOf(AbortSignal);
   });
 
   it('drops ids that are not in the open-job list', async () => {
-    generateObjectMock.mockResolvedValue({ object: { short_ids: ['106', '999'] } });
+    generateTextMock.mockResolvedValue({ output: { short_ids: ['106', '999'] } });
     await expect(service.match(baseInput)).resolves.toEqual(['106']);
   });
 
   it('de-duplicates repeated ids', async () => {
-    generateObjectMock.mockResolvedValue({ object: { short_ids: ['106', '106'] } });
+    generateTextMock.mockResolvedValue({ output: { short_ids: ['106', '106'] } });
     await expect(service.match(baseInput)).resolves.toEqual(['106']);
   });
 
   it('returns an empty array when the model declines to guess', async () => {
-    generateObjectMock.mockResolvedValue({ object: { short_ids: [] } });
+    generateTextMock.mockResolvedValue({ output: { short_ids: [] } });
     await expect(service.match(baseInput)).resolves.toEqual([]);
   });
 
   it('returns an empty array instead of throwing when the call fails', async () => {
-    generateObjectMock.mockRejectedValue(new Error('openrouter 503'));
+    generateTextMock.mockRejectedValue(new Error('openrouter 503'));
     await expect(service.match(baseInput)).resolves.toEqual([]);
   });
 
   it('does not call the model when there are no open jobs', async () => {
     await expect(service.match({ ...baseInput, openJobs: [] })).resolves.toEqual([]);
-    expect(generateObjectMock).not.toHaveBeenCalled();
+    expect(generateTextMock).not.toHaveBeenCalled();
   });
 });

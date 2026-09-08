@@ -17,7 +17,7 @@ import { DedupService } from '../dedup/dedup.service';
 import { ScoringAgentService } from '../scoring/scoring.service';
 
 // Mock AI SDK modules to prevent ESM parse errors (ExtractionAgentService is provided as a mock anyway)
-jest.mock('ai', () => ({ generateObject: jest.fn() }));
+jest.mock('ai', () => ({ generateText: jest.fn(), Output: { object: jest.fn((spec: unknown) => spec) } }));
 jest.mock('@openrouter/ai-sdk-provider', () => ({ createOpenRouter: jest.fn().mockReturnValue({ chat: jest.fn() }) }));
 
 // Mock pdf-parse and mammoth so AttachmentExtractorService doesn't crash on fake content
